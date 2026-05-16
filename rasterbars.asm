@@ -35,7 +35,7 @@
 .const SCROLL_SCR   = SCREEN + SCROLL_ROW * 40
 .const SCROLL_COL   = COLOUR_RAM + SCROLL_ROW * 40
 
-.const BAR_TOP      = $80       // first line of bar zone (after FLD + music)
+.const BAR_TOP      = $80       // first line of bar zone (after FLD; music is in irq_open now)
 .const BAR_BOT      = $ec       // first line PAST bar zone (in open bot border)
 
 // Zero-page
@@ -256,9 +256,11 @@ irq_open:
         // frame at raster ~282. This window is safe → no tearing.
         jsr move_sprites
 
-        // Chain to irq_fld at line $33 (top of display zone). irq_fld
-        // does the FLD per-line yscroll trick to multi-row bounce the
-        // logo, then plays SID, then chains to bars.
+        // Music here in irq_open (line $01..$33 window, ~3100 cy).
+        // Frees up the full $33..BAR_TOP window for FLD.
+        jsr music.play
+
+        // Chain to irq_fld at line $33 (top of display zone).
         lda #<irq_fld
         sta $fffe
         lda #>irq_fld
@@ -344,8 +346,6 @@ irq_fld:
         // what gives the pixel-level shift. (HCL pattern.)
 
 !skip:
-        jsr music.play
-
         lda #<irq_bars
         sta $fffe
         lda #>irq_bars
@@ -595,11 +595,11 @@ sprite_xphase: .byte 0, 32, 64, 96, 128, 160, 192, 224
 sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 
 // FLD bounce: total number of FLD lines to insert before logo.
-// Each FLD line pushes the bitmap down by 1 line. Sine wave 0..28
-// over 256 frames → smooth ~5-sec bounce cycle.
+// Each FLD line pushes the bitmap down by 1 line. Sine wave 0..60
+// over 256 frames → smooth ~5-sec bounce cycle, ~7.5 char rows.
 .align 256
 bounce_total:
-        .fill 256, round(14 + 14 * sin(toRadians(i * 360 / 256)))
+        .fill 256, round(30 + 30 * sin(toRadians(i * 360 / 256)))
 
 // Sprite Y for top-border sprites — range 14..30
 .align 256
