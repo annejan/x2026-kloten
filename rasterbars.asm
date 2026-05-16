@@ -33,6 +33,9 @@
 .const SCROLL_SCR   = SCREEN + SCROLL_ROW * 40
 .const SCROLL_COL   = COLOUR_RAM + SCROLL_ROW * 40
 
+.const BAR_TOP      = $40       // first line of bar zone
+.const BAR_BOT      = $d0       // first line PAST bar zone
+
 // Zero-page
 .const zp_text_ptr  = $fb
 .const zp_smooth    = $fd
@@ -238,6 +241,57 @@ irq_open:
         sta VIC_CTRL2           // X-scroll (CSEL=0)
         jsr update_scroll_colors
 
+        lda #<irq_bars
+        sta $fffe
+        lda #>irq_bars
+        sta $ffff
+        lda #BAR_TOP
+        sta VIC_RASTER
+
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
+
+
+//==================================================================
+// irq_bars — fires at line BAR_TOP. Polls $d012 per line and writes
+// $d021 from bar_palette[(line + frame/2) & $1f]. Palette is a smooth
+// 32-entry gradient so per-line seams blend visually. The CPU is
+// tied up in this loop until line BAR_BOT — no other work scheduled
+// during this window. Chains to irq_close at $f9.
+//==================================================================
+irq_bars:
+        pha
+        tya
+        pha
+
+        lda #$ff
+        sta $d019
+
+        lda zp_frame
+        lsr                     // /2 for slower colour drift
+        sta zp_tmp
+
+        // Tight raster-following loop. Read current raster line as
+        // the palette index — robust to IRQ entry jitter and won't
+        // hang on overshoot (unlike cpx equality polling).
+!loop:  lda VIC_RASTER
+        cmp #BAR_BOT
+        bcs !done+
+        clc
+        adc zp_tmp
+        and #$1f
+        tay
+        lda bar_palette,y
+        sta VIC_BG
+        jmp !loop-
+
+!done:  lda #$00
+        sta VIC_BG              // restore bg to black
+
         lda #<irq_close
         sta $fffe
         lda #>irq_close
@@ -248,9 +302,15 @@ irq_open:
         pla
         tay
         pla
-        tax
-        pla
         rti
+
+
+bar_palette:
+        // 32-entry smooth rainbow gradient (each colour repeated)
+        .byte $06,$06,$0e,$0e,$03,$03,$0d,$0d
+        .byte $07,$07,$01,$01,$07,$07,$0d,$0d
+        .byte $03,$03,$0e,$0e,$06,$06,$04,$04
+        .byte $02,$02,$04,$04,$06,$06,$0e,$0e
 
 
 //==================================================================
