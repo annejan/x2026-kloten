@@ -6,12 +6,13 @@ KickAssembler 6510, tested on VICE x64sc (PAL).
 ## What's in the demo
 
 - **Open top/bottom borders** via the canonical HCL polling trick (`$d011` 24/25-row toggle in IRQs at line `$f9` and `$01`).
-- **Multicolour bitmap "de FEEST" logo** in the centre (160×200 Koala, encoded from a PNG by `tools/png_to_koala.py`).
-- **Stable bitmap scroller** at the top — chargen-ROM font rolled left 1 px/frame via a 40-cell ROL chain on bitmap row 0. Trigger raster moved from line `$33` to `$43` so FLD doesn't disturb rows 0 + 1, keeping the scroller stationary while the logo bounces below.
+- **Multicolour bitmap "deFEEST" logo** mid-screen (160×200 Koala, encoded from a PNG by `tools/png_to_koala.py`). Wipes in column-by-column from the left via `reveal_column`, then floats on a flexible-line-distance bounce.
+- **FLD logo bounce** — anchor-style "late write" pattern at line `$3B`. Per-frame `K = bounce_total[frame]` writes increment `$D011`'s yscroll after VIC's cycle-14 check, so each line's badline check sees the previous write and fires a spurious badline. Smooth 0..28 px bounce, 3× sine frequency.
+- **Fixed bitmap scroller** at the very top, bitmap row 0 (lines `$33..$3A`). Below the open border, above the FLD trigger at `$3B` — so the scroll stays put while the logo bounces below. Mixed-case chargen, **zig-zag scroll** (even pixel rows shift left, odd rows shift right), 1 px/frame via 40-cell ROL/ROR chains.
 - **Rainbow rasterbars** wrapping the logo. The bar IRQ at line `$80` polls `$d012` and writes both `$d021` (background, behind the bitmap's transparent pixels) and `$d020` (border / side stripes) per scanline from a page-aligned 512-byte palette. 21-cy tight loop fits within the bad-line CPU budget.
-- **Eight Y-expanded "koorballen" sprites** bouncing on sine paths — three in the open top border, three in the display, two in the open bottom border. Sprites 0-2 are disabled during VBL to hide their Y+256 wrap-around duplicates.
+- **Eight X+Y-expanded "koorballen" sprites** bouncing on sine paths — three in the open top border, three in the display (Y range 90..200, clear of the FLD zone), two in the open bottom border. Sprites 0-2 are disabled during VBL to hide their Y+256 wrap-around duplicates.
 - **Custom 3-voice SID music** — bass pulse, lead pulse, sustained arp over a 32-step Am-Em-F-G chord progression with a 128-step lead melody.
-- **Sequenced intro** driven by `zp_intro` saturating frame counter: phase 0 logo only → phase 1 (`T_BARS=60`) bars in → phase 2 (`T_BALLS=120`) balls in → phase 3 (`T_SCROLLER=180`) scroller in. Music master volume ramps from `$00` to `$0f` over the first ~4 sec, and SID voices gate in on the same boundaries (V1 bass at `T_BARS`, V2 lead at `T_BALLS`, V3 arp at `T_SCROLLER`).
+- **Sequenced intro** driven by `zp_intro` saturating frame counter: phase 0 logo wipe-reveal → phase 1 (`T_BARS=40`) bars in → phase 2 (`T_BALLS=120`) balls in → phase 3 (`T_SCROLLER=200`) scroller in. Music master volume ramps from `$00` to `$0f`, and SID voices gate in on the same boundaries (V1 bass at `T_BARS`, V2 lead at `T_BALLS`, V3 arp at `T_SCROLLER`).
 
 50 Hz PAL, locked.
 
@@ -32,16 +33,18 @@ x64sc rasterbars.prg
 
 ## Memory layout (VIC bank 0)
 
-| Range          | Contents                              |
-| -------------- | ------------------------------------- |
-| `$0801-$080c`  | BASIC SYS stub (`BasicUpstart2`)      |
-| `$0810-$0999`  | Main code + IRQs                      |
-| `$0a00-$0a3f`  | Sprite shape data (block `$28`)       |
-| `$0c00-$0fe7`  | Bitmap-mode screen RAM (colour info)  |
-| `$0ff8-$0fff`  | Sprite pointers                       |
-| `$1000-$1d77`  | Nightshift.sid                        |
-| `$2000-$3f3f`  | Logo bitmap (multicolour, 8000 bytes) |
-| `$4000-$4acc`  | Page-aligned tables (palette, sines)  |
+| Range          | Contents                                       |
+| -------------- | ---------------------------------------------- |
+| `$0801-$080c`  | BASIC SYS stub (`BasicUpstart2`)               |
+| `$0810-$09f9`  | Main code + IRQs                               |
+| `$0b00-$0b3f`  | Sprite shape data (block `$2c`)                |
+| `$0c00-$0fe7`  | Bitmap-mode screen RAM (colour info)           |
+| `$0ff8-$0fff`  | Sprite pointers                                |
+| `$1000-$125d`  | Hand-written 3-voice SID player + patterns     |
+| `$2000-$3f3f`  | Logo bitmap (multicolour, 8000 bytes)          |
+| `$4000-$46ff`  | Page-aligned tables (palette, sines, bounce)   |
+| `$4c00-$53ff`  | Chargen-ROM copy (mixed-case font for scroll)  |
+| `$5400-$5dc1`  | Bitmap scroll renderer + scroll text           |
 
 > **Trap to remember:** VIC sees the chargen ROM at `$1000-$1fff` in bank 0, *not* RAM. Sprite shape data placed there is invisible to VIC — VIC reads chargen glyphs as sprite data. Keep sprite blocks outside that window.
 
@@ -52,6 +55,6 @@ x64sc rasterbars.prg
 
 ## Credits
 
-- Music: *Nightshift* by Ari Yliaho (Agemixer), 2001
+- Music: hand-written 3-voice SID jam (bass + lead + arp)
 - Logo: defeest.nl
 - Assembly: Anne Jan Brouwer with Claude (Anthropic) Opus 4.7

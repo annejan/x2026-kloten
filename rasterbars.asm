@@ -1,12 +1,20 @@
 //==================================================================
-// outline-64 — clean: open borders + 4 visible sprites + scroller
+// outline-64 — Outline 2026 demo
 //
-// No bars. Focus on the sprites being PRESENT (no Y-wraparound
-// blink) and the scroll being smooth.
+// Layout (top to bottom):
+//   open top border       lines $00..$32  (HCL trick)
+//   bitmap row 0 scroller lines $33..$3A  (fixed, zig-zag scroll)
+//   FLD stretch zone      lines $3B..$3B+K  (K = bounce_total)
+//   logo wipe-reveal      rows 8..16, sliding down by K px
+//   rainbow rasterbars    lines $80..$EB  (behind logo, with sides)
+//   open bottom border    lines $EC..$FF  (HCL trick)
 //
-// Sprite blink fix: sprites 0,1 disabled at line $f9 and re-enabled
-// at line $01. Their Y-wraparound duplicates (at raster Y+256) fall
-// between those lines, where SPR_EN says they're off.
+// IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld@$3B
+//          → irq_bars@$80 → irq_close@$F9.
+//
+// Sprite blink fix: balls 0..2 disabled in irq_close (line $F9) so
+// their Y+256 wrap duplicates between $F9 and next-frame $01 don't
+// re-fire. Re-enabled in irq_open along with 3..7.
 //==================================================================
 
 .const SPR_X        = $d000
@@ -32,7 +40,7 @@
 .const SPR_BLOCK    = SPR_DATA / 64
 .const FONT_BASE    = $4c00        // chargen ROM copy
 .const SCROLL_ROW_BMP = BITMAP + 0 * 40 * 8    // bitmap row 0: $2000..$213F
-                                                // Above FLD trigger ($43) so it doesn't bounce.
+                                                // Row 0 displays at $33..$3A — before FLD trigger ($3B) → no bounce.
 
 
 .const BAR_TOP      = $80       // first line of bar zone (after FLD + music)
@@ -275,14 +283,14 @@ irq_open:
         // frame at raster ~282. This window is safe → no tearing.
         jsr move_sprites
 
-        // Chain to irq_fld at line $43. Rows 0 (scroll) and 1 (empty)
-        // display normally before FLD kicks in — so the scroll at the
-        // top is stable while FLD bounces the logo below.
+        // Chain to irq_fld at line $3B. Row 0 (scroller) has already
+        // displayed at $33..$3A by the time FLD kicks in — so the
+        // scroll at the top is stable while FLD bounces the logo below.
         lda #<irq_fld
         sta $fffe
         lda #>irq_fld
         sta $ffff
-        lda #$43
+        lda #$3b                // FLD trigger AFTER row 0 finishes
         sta VIC_RASTER
 
         pla
@@ -294,20 +302,16 @@ irq_open:
 
 
 //==================================================================
-// irq_fld — fires at line $43 (row 2's natural badline). REPEATING
-// CHAR-LINE technique (codebase64 base:repeating_char-lines):
-// instead of suppressing badlines (plain FLD), we FORCE EXTRA
-// badlines on row 2 at lines $4A, $51, $58, $5F (every 7 raster
-// lines, each at RC=7 cycle 14). Each forced badline does
-// VC := VCBASE (still row 2's base) and RC := 0 — restarting the
-// row's display without advancing VCBASE. After K forces, leave
-// yscroll alone; the next natural badline fires when line%8 ==
-// final-yscroll, and at THAT point VCBASE has finally advanced
-// (cycle 58 of the RC=7 line that follows the last force), so
-// VC := row 3's base cleanly.
-//
-// Per-force shift: exactly 7 pixels. K=0..4 → bounce 0,7,14,21,28.
-// Rows 0+1 (above $43) untouched. Logo at row 8+ shifts uniformly.
+// irq_fld — fires at line $3B (row 1's natural badline). Row 0 has
+// already displayed at $33..$3A and the scroller in row 0 is locked
+// in place. Canonical HCL FLD pattern: write yscroll=5 before $3C
+// cycle 14, then loop "increment yscroll and write" once per line.
+// Late-write trick: each iteration's $D011 update lands at cy ~24
+// (AFTER VIC's cy-14 check), so the change is seen by the NEXT
+// line's cy-14 check, where yscroll now matches line%8 → VIC fires
+// a SPURIOUS badline that restarts row 1 with VCBASE pinned. After
+// K writes, row 1 has been stretched K times and row 2+ slide down
+// by K pixels. Bitmap shifts from $73 (K=0) to $73+K (K=28).
 //==================================================================
 irq_fld:
         pha
@@ -319,54 +323,38 @@ irq_fld:
         sta $d019
 
         ldx zp_frame
-        lda bounce_total,x      // K = forced-badline count (0..4)
-        beq !skip+              // K=0 → no forces, fall straight to music
-        sta zp_tmp              // zp_tmp = K
+        lda bounce_total,x      // K = FLD writes (0..28)
+        tax
+        beq !skip+
 
-        // ----- force 1 at line $4A (yscroll=2 = $4A & 7) -----
-        // Pre-load $D011 byte into A; spin until raster reaches target;
-        // STA lands ~cycle 10 of target line, before VIC's cycle-14
-        // badline check sees yscroll == line%8 → forced badline →
-        // RC := 0, VC := VCBASE (= row 2's base, NO advance because
-        // RC hadn't reached 7 yet → row 2 RESTARTS).
-        lda #$3a                // BMM+DEN+RSEL + yscroll=2
-        ldy #$4a
-!w1:    cpy VIC_RASTER
-        bne !w1-
+        // Wait for raster to leave $3B (= we're now at $3C).
+        lda #$3b
+!w1:    cmp VIC_RASTER
+        beq !w1-
+
+        // First write at $3C cycle ~11 (BEFORE cycle 14): yscroll=5.
+        // $3C%8=4, ys=5 → diff=1 → no badline at $3C.
+        lda #$3d                // BMM + DEN + RSEL + yscroll=5
         sta VIC_CTRL1
 
-        lda zp_tmp
-        cmp #2
-        bcc !skip+
+        dex
+        beq !skip+
 
-        // ----- force 2 at line $51 (yscroll=1) -----
-        lda #$39
-        ldy #$51
-!w2:    cpy VIC_RASTER
-        bne !w2-
+!fld_loop:
+        lda VIC_RASTER
+!w2:    cmp VIC_RASTER
+        beq !w2-
+        // Per-line write at cy ~24 (AFTER cy 14). The PREVIOUS line's
+        // yscroll therefore matches THIS line's line%8 at cy 14 → a
+        // spurious badline fires, restarting row 2 with VCBASE pinned.
+        clc
+        lda VIC_CTRL1
+        adc #$01
+        and #$07
+        ora #$38
         sta VIC_CTRL1
-
-        lda zp_tmp
-        cmp #3
-        bcc !skip+
-
-        // ----- force 3 at line $58 (yscroll=0) -----
-        lda #$38
-        ldy #$58
-!w3:    cpy VIC_RASTER
-        bne !w3-
-        sta VIC_CTRL1
-
-        lda zp_tmp
-        cmp #4
-        bcc !skip+
-
-        // ----- force 4 at line $5F (yscroll=7) -----
-        lda #$3f
-        ldy #$5f
-!w4:    cpy VIC_RASTER
-        bne !w4-
-        sta VIC_CTRL1
+        dex
+        bne !fld_loop-
 
 !skip:
         jsr my_music_play
@@ -826,30 +814,16 @@ sprite_xphase: .byte 0, 32, 64, 96, 128, 160, 192, 224
 // 8 Y-phase offsets — also distinct
 sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 
-// Repeating-char-line bounce: K = number of FORCED badlines on row 2.
-// Each force re-runs row 2 with the same VCBASE (no advance), so the
-// next row's badline lands 7 lines later for each force in the chain.
-//   K=0 → shift 0
-//   K=1 → shift 7
-//   K=2 → shift 14
-//   K=3 → shift 21
-//   K=4 → shift 28
-// 3× frequency (~1.7s per cycle vs 5s) so the bounce feels lively.
+// Anchor HCL FLD bounce: K = number of yscroll writes per frame.
+// With the late-write per-line loop, each write causes the NEXT
+// line's cy-14 check to fire a spurious badline that restarts row 2.
+// Empirical shift function: 0 for K=0, K+1 for K=1..28. Smooth.
+// 3× sine frequency → ~1.7s per cycle.
 .align 256
 bounce_total:
-        .fill 256, round((14 + 14 * sin(toRadians(i * 1080 / 256))) / 7)
+        .fill 256, round(14 + 14 * sin(toRadians(i * 1080 / 256)))
 
 
-// Pre-computed $D011 values for cycle-exact FLD. yscroll cycles
-// 5,6,7,0,1,2,3,4 — bytes $3d,$3e,$3f,$38,$39,$3a,$3b,$3c — keeping
-// BMM+DEN+RSEL bits set ($38) and yscroll bits 0-2 sweeping.
-// 36 entries cover K up to 36 (we use K=7..35).
-fl_table:
-        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
-        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
-        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
-        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
-        .byte $3d, $3e, $3f, $38
 
 
 //==================================================================
@@ -1164,10 +1138,13 @@ update_bmp_scroll:
 sine_top:
         .fill 256, 14 + round(8 * (1 - cos(toRadians(i * 360 / 256))))
 
-// Sprite Y for display-area sprites — range 60..200
+// Sprite Y for display-area sprites — range 90..200.
+// Floor 90 keeps mid sprites out of the FLD zone ($3C..$58 max):
+// sprite DMA during FLD lines would steal cycles from the per-line
+// yscroll writes and drift them past VIC's cycle-14 check.
 .align 256
 sine_mid:
-        .fill 256, 60 + round(70 * (1 - cos(toRadians(i * 360 / 256))))
+        .fill 256, 90 + round(55 * (1 - cos(toRadians(i * 360 / 256))))
 
 // Sprite Y for bottom-border sprites — range 226..240 (≤ $f4)
 .align 256
