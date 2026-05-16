@@ -310,46 +310,44 @@ irq_fld:
         sta $d019
 
         ldx zp_frame
-        lda bounce_total,x      // total FLD lines (0..28)
-        tax
+        lda bounce_total,x      // total FLD lines K (0..28)
         beq !skip+
+        sta zp_tmp              // zp_tmp = K (iteration cap)
 
-        // HCL pattern (codebase64 base:fld): wait for next line,
-        // then write yscroll = (yscroll+1) & 7. Both yscroll and
-        // line%8 increment by 1 each line → diff stays constant →
-        // no badline fires. After K lines, exit.
+        // CYCLE-EXACT FLD. The previous implementation computed yscroll
+        // inline (clc/lda/adc/and/ora/sta = 16 cy after wait), which
+        // pushed the write to cycle ~20 of the new line — AFTER VIC's
+        // badline check at cycle 14. The check therefore saw the
+        // PREVIOUS line's yscroll, and at K%8 == 2 boundaries that old
+        // value happened to match line%8, firing a spurious badline that
+        // restarted the row and bumped the shift by 7 lines.
         //
-        // We enter at line $43 with yscroll=3 (row 2's badline just
-        // fired naturally). At $44 (line%8=4) we set yscroll=5 to
-        // suppress, then increment per line. Row 2 (empty) repeats
-        // N times. $44%8 = $34%8 = 4 so the yscroll math is identical
-        // to the row-0 FLD case.
+        // Fix: pre-compute the next yscroll into A while still on the
+        // current line, then STA $d011 immediately after the raster
+        // tick (cycle ~7-8, well before cycle 14).
 
-        // Wait for line $44 (next line after IRQ entry).
+        // Wait for line $44.
         lda #$43
 !w1:    cmp VIC_RASTER
         beq !w1-
 
-        // First write: yscroll=5 (= line%8 + 1 at $44, since $44%8=4)
+        // First write: yscroll=5 (== line%8+1 at $44).
         lda #$3d                // BMM + DEN + RSEL + yscroll=5
         sta VIC_CTRL1
 
-        dex
-        beq !done+
+        ldx #1                  // X = next fl_table index
+        cpx zp_tmp
+        bcs !done+              // K==1: just the first write, done.
 
 !fld_loop:
-        lda VIC_RASTER
-!w2:    cmp VIC_RASTER
-        beq !w2-
-        // yscroll++ (and #7 keeps in range, ora #$38 preserves mode bits)
-        clc
-        lda VIC_CTRL1
-        adc #$01
-        and #$07
-        ora #$38
-        sta VIC_CTRL1
-        dex
-        bne !fld_loop-
+        lda fl_table,x          // 4 cy — pre-loaded value
+        ldy VIC_RASTER          // 4 cy — sample raster
+!w2:    cpy VIC_RASTER          // 4 cy
+        beq !w2-                // 2/3 cy — exits at cycle ~4 of new line
+        sta VIC_CTRL1           // 4 cy — write at cycle ~8, BEFORE cycle 14
+        inx                     // 2 cy
+        cpx zp_tmp              // 3 cy
+        bne !fld_loop-          // 2/3 cy
 
 !done:
         // DON'T restore yscroll — leaving it at incremented value
@@ -827,6 +825,18 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 .align 256
 bounce_total:
         .fill 256, round(21 + 14 * sin(toRadians(i * 360 / 256)))
+
+
+// Pre-computed $D011 values for cycle-exact FLD. yscroll cycles
+// 5,6,7,0,1,2,3,4 — bytes $3d,$3e,$3f,$38,$39,$3a,$3b,$3c — keeping
+// BMM+DEN+RSEL bits set ($38) and yscroll bits 0-2 sweeping.
+// 36 entries cover K up to 36 (we use K=7..35).
+fl_table:
+        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
+        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
+        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
+        .byte $3d, $3e, $3f, $38, $39, $3a, $3b, $3c
+        .byte $3d, $3e, $3f, $38
 
 
 //==================================================================
