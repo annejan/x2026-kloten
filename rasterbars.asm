@@ -242,7 +242,11 @@ irq_open:
 
         lda #$ff
         sta $d019
-        lda #$3b                // 25-row, DEN, BMM
+        // 25-row + DEN + BMM ($38) | sine-wave yscroll (0..7) → 8-px
+        // vertical wobble of the bitmap. Logo bounces.
+        ldx zp_frame
+        lda yscroll_bounce,x
+        ora #$38
         sta VIC_CTRL1
         lda #%11111111          // all 8 sprites on
         sta SPR_EN
@@ -506,6 +510,11 @@ sine_x_hi:
 sprite_xphase: .byte 0, 32, 64, 96, 128, 160, 192, 224
 // 8 Y-phase offsets — also distinct
 sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
+
+// Sine wave 0..7 indexed by zp_frame → bitmap yscroll bounce.
+.align 256
+yscroll_bounce:
+        .fill 256, round(3.5 + 3.5 * sin(toRadians(i * 360 / 256)))
 
 // Sprite Y for top-border sprites — range 14..30
 .align 256
