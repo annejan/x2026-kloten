@@ -37,6 +37,7 @@
 .const zp_text_ptr  = $fb
 .const zp_smooth    = $fd
 .const zp_frame     = $fe
+.const zp_tmp       = $f9
 
 BasicUpstart2(start)
 
@@ -120,19 +121,21 @@ init_sprites:
         dex
         bpl !loop-
 
+        // All 8 sprite pointers → same shape block
+        ldx #7
         lda #SPR_BLOCK
-        sta SPR_PTRS+0
-        sta SPR_PTRS+1
-        sta SPR_PTRS+2
-        sta SPR_PTRS+3
+!ptrs:  sta SPR_PTRS,x
+        dex
+        bpl !ptrs-
 
-        lda #%00001111
+        lda #%11111111          // all 8 sprites enabled
         sta SPR_EN
-        sta SPR_XEXP
-        sta SPR_YEXP            // round balls
+        sta SPR_XEXP            // X-expanded
+        sta SPR_YEXP            // Y-expanded → round balls
         lda #0
         sta SPR_MC
 
+        // 8 distinct colours
         lda #$01                // white
         sta SPR_COL+0
         lda #$03                // cyan
@@ -141,6 +144,14 @@ init_sprites:
         sta SPR_COL+2
         lda #$05                // green
         sta SPR_COL+3
+        lda #$0e                // light blue
+        sta SPR_COL+4
+        lda #$0a                // light red
+        sta SPR_COL+5
+        lda #$08                // orange
+        sta SPR_COL+6
+        lda #$04                // purple
+        sta SPR_COL+7
         rts
 
 
@@ -183,7 +194,10 @@ irq_close:
         sta $d019
         lda #$13                // 24-row, DEN
         sta VIC_CTRL1
-        lda #%00001100          // sprites 2, 3 only
+        // Disable sprites 0,1,2 — their low Y causes the comparator
+        // to fire again at Y+256 (in the bottom of the rendered area).
+        // Sprites 3..7 don't have visible duplicates so stay on.
+        lda #%11111000          // sprites 3,4,5,6,7 enabled
         sta SPR_EN
         lda #<irq_open
         sta $fffe
@@ -210,7 +224,7 @@ irq_open:
         sta $d019
         lda #$1b                // 25-row, DEN
         sta VIC_CTRL1
-        lda #%00001111          // all 4 sprites on
+        lda #%11111111          // all 8 sprites on
         sta SPR_EN
 
         jsr do_scroll
@@ -234,73 +248,58 @@ irq_open:
 
 
 //==================================================================
-// move_sprites — each ball bounces in its own zone via sine.
-//   sprite 0: TOP border, narrow Y range (Y stays in 14..30
-//             so it's safely visible at top of rendered area)
-//   sprite 1: TOP border, narrow Y range, different phase
-//   sprite 2: BOTTOM border, narrow Y range (≤ $f4)
-//   sprite 3: BOTTOM border, narrow Y range, different phase
-//
-// Y-wraparound: for sprites at Y < 56, the comparator also fires
-// at raster Y+256 (in lower part of rendered frame). We hide that
-// duplicate by disabling sprites 0+1 in irq_close. Sprites 2 and 3
-// at Y > 200 have their duplicate at Y+256 > 311 — past the PAL
-// frame end — so they don't need disabling.
+// move_sprites — 8 balls roaming.
+//   sprites 0,1,2: TOP border (sine_top, Y 14..30) — disabled
+//                  during VBL to hide Y+256 duplicates
+//   sprites 3,4,5: DISPLAY area (sine_mid, Y 60..200) — no wrap
+//   sprites 6,7:   BOTTOM border (sine_bot, Y 226..240) — no wrap
+// Each sprite gets a different X phase and Y phase via sprite_phase.
 //==================================================================
 move_sprites:
-        // sprite 0
+        ldx #7
+!loop:
+        // X position
         lda zp_frame
         clc
-        adc #0
+        adc sprite_xphase,x
         tay
         lda sine_x,y
-        sta SPR_X+0
-        lda zp_frame
+        sta zp_tmp
+        txa
+        asl                     // sprite index × 2 = SPR_X offset
         tay
+        lda zp_tmp
+        sta SPR_X,y
+
+        // Y position — choose sine table by sprite index
+        lda zp_frame
+        clc
+        adc sprite_yphase,x
+        tay
+        cpx #3
+        bcs !mid_or_bot+
+        // sprites 0,1,2 → top
         lda sine_top,y
-        sta SPR_Y+0
-
-        // sprite 1
-        lda zp_frame
-        clc
-        adc #64
-        tay
-        lda sine_x,y
-        sta SPR_X+2
-        lda zp_frame
-        clc
-        adc #128
-        tay
-        lda sine_top,y
-        sta SPR_Y+2
-
-        // sprite 2
-        lda zp_frame
-        clc
-        adc #128
-        tay
-        lda sine_x,y
-        sta SPR_X+4
-        lda zp_frame
-        clc
-        adc #64
-        tay
+        jmp !writey+
+!mid_or_bot:
+        cpx #6
+        bcs !bot+
+        // sprites 3,4,5 → mid (display)
+        lda sine_mid,y
+        jmp !writey+
+!bot:
+        // sprites 6,7 → bot
         lda sine_bot,y
-        sta SPR_Y+4
-
-        // sprite 3
-        lda zp_frame
-        clc
-        adc #192
+!writey:
+        sta zp_tmp
+        txa
+        asl
         tay
-        lda sine_x,y
-        sta SPR_X+6
-        lda zp_frame
-        clc
-        adc #192
-        tay
-        lda sine_bot,y
-        sta SPR_Y+6
+        iny                     // SPR_Y is SPR_X+1
+        lda zp_tmp
+        sta SPR_X,y             // SPR_X[2N+1] = SPR_Y[N]
+        dex
+        bpl !loop-
 
         lda #0
         sta SPR_MSB
@@ -348,15 +347,22 @@ do_scroll:
 sine_x:
         .fill 256, 50 + round(75 * (1 + sin(toRadians(i * 360 / 256))))
 
+// 8 X-phase offsets so sprites swing at different positions
+sprite_xphase: .byte 0, 32, 64, 96, 128, 160, 192, 224
+// 8 Y-phase offsets — also distinct
+sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
+
 // Sprite Y for top-border sprites — range 14..30
-// (14 = top of rendered area, 30 = safe inside top border zone)
 .align 256
 sine_top:
         .fill 256, 14 + round(8 * (1 - cos(toRadians(i * 360 / 256))))
 
-// Sprite Y for bottom-border sprites — range 226..240
-// (226 = past bar area, 240 = ≤ $f4 so safely before the Y > $f7
-// sprite display quirk)
+// Sprite Y for display-area sprites — range 60..200
+.align 256
+sine_mid:
+        .fill 256, 60 + round(70 * (1 - cos(toRadians(i * 360 / 256))))
+
+// Sprite Y for bottom-border sprites — range 226..240 (≤ $f4)
 .align 256
 sine_bot:
         .fill 256, 226 + round(7 * (1 - cos(toRadians(i * 360 / 256))))
