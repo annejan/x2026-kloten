@@ -3,5 +3,7 @@
 *.png
 *.zip
 *.log
+*.pyc
+__pycache__/
 kickass/
 rasterbars_full.asm
