@@ -824,7 +824,10 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 // Last FLD line at $44+34=$66, badline at $67, well before BAR_TOP=$80.
 .align 256
 bounce_total:
-        .fill 256, round(21 + 14 * sin(toRadians(i * 360 / 256)))
+        // K=0..6: stays within first 7 RC values (RC 0..6 during FLD),
+        // never hits RC=7 transition so VCBASE doesn't drift. Smooth
+        // 7-pixel bounce. To go bigger we'd need a multi-pass FLD.
+        .fill 256, round(3 + 3 * sin(toRadians(i * 360 / 256)))
 
 
 // Pre-computed $D011 values for cycle-exact FLD. yscroll cycles
