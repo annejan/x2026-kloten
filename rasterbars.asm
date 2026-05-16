@@ -33,8 +33,8 @@
 .const SCROLL_SCR   = SCREEN + SCROLL_ROW * 40
 .const SCROLL_COL   = COLOUR_RAM + SCROLL_ROW * 40
 
-.const BAR_TOP      = $40       // first line of bar zone
-.const BAR_BOT      = $d0       // first line PAST bar zone
+.const BAR_TOP      = $20       // first line of bar zone (in open top border)
+.const BAR_BOT      = $ec       // first line PAST bar zone (in open bot border)
 
 // Zero-page
 .const zp_text_ptr  = $fb
@@ -271,26 +271,29 @@ irq_bars:
         lda #$ff
         sta $d019
 
+        // Self-modify the lda's lo byte so the palette shifts per
+        // frame. bar_palette is page-aligned and 512 bytes long (16
+        // reps of the 32-entry palette), so any low-byte offset 0..$ff
+        // plus y of $40..$cf always lands within the table.
         lda zp_frame
         lsr                     // /2 for slower colour drift
-        sta zp_tmp
+        sta bar_lda+1
 
-        // Tight raster-following loop. Read current raster line as
-        // the palette index — robust to IRQ entry jitter and won't
-        // hang on overshoot (unlike cpx equality polling).
-!loop:  lda VIC_RASTER
-        cmp #BAR_BOT
-        bcs !done+
-        clc
-        adc zp_tmp
-        and #$1f
-        tay
-        lda bar_palette,y
-        sta VIC_BG
-        jmp !loop-
+        // 21-cy tight loop writing BOTH $d021 (bg) and $d020 (border).
+        // Border writes extend bars into the left/right side stripes.
+        // 21 cy fits within the 23-cy badline CPU budget.
+!loop:  ldy VIC_RASTER          // 4
+bar_lda:
+        lda bar_palette,y       // 4 (5 if page-cross — rare)
+        sta VIC_BG              // 4
+        sta VIC_BORDER          // 4
+        cpy #BAR_BOT            // 2
+        bcc !loop-              // 3
 
-!done:  lda #$00
+        lda #$00
         sta VIC_BG              // restore bg to black
+        lda #$06
+        sta VIC_BORDER          // restore border to blue
 
         lda #<irq_close
         sta $fffe
@@ -305,12 +308,16 @@ irq_bars:
         rti
 
 
+// Page-aligned 512-byte palette = 16 reps of the 32-entry rainbow.
+// Self-modified lda base + y(<$d0) always stays inside the table.
+.align 256
 bar_palette:
-        // 32-entry smooth rainbow gradient (each colour repeated)
+.for (var rep = 0; rep < 16; rep++) {
         .byte $06,$06,$0e,$0e,$03,$03,$0d,$0d
         .byte $07,$07,$01,$01,$07,$07,$0d,$0d
         .byte $03,$03,$0e,$0e,$06,$06,$04,$04
         .byte $02,$02,$04,$04,$06,$06,$0e,$0e
+}
 
 
 //==================================================================
