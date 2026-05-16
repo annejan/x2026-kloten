@@ -1,0 +1,24 @@
+# outline-64 — Spindle load script
+#
+# First paragraph: auto-loaded by Spindle's boot loader, jumped to.
+# Subsequent paragraphs: loaded on each jsr $c90 from running code.
+
+# Part 1: loading screen at $4000 (away from main demo's $0810..).
+parts/screenfill/screenfill.prg
+
+# Part 2: main demo, extracted as chunks from the single PRG so we
+# don't write through Spindle's resident loader at $0c00..$0dff.
+# Format: <file>  <load_addr>  <file_offset>  <byte_count>
+# main.prg's PRG load address is $0400, data starts at offset $02.
+# BitmapScreenRAM (1000 bytes)
+parts/main/main.prg   400   2      3e8
+# Main code + IRQs
+parts/main/main.prg   810   412    1ea
+# Music (SID player + patterns)
+parts/main/main.prg   1000  c02    25e
+# Bitmap (logo data, 8000 bytes)
+parts/main/main.prg   2000  1c02   1f40
+# Tables (palette, sines, bounce)
+parts/main/main.prg   4000  3c02   700
+# BmpScroll renderer + scroll text
+parts/main/main.prg   5400  5002   9c4

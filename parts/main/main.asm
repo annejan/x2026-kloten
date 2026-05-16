@@ -32,11 +32,14 @@
 .const SPR_COL      = $d027
 
 .const SCREEN       = $0400        // text-mode screen (unused in bitmap mode)
-.const BMP_SCREEN   = $0c00        // bitmap-mode colour-info screen RAM
+.const BMP_SCREEN   = $0400        // bitmap-mode colour-info screen RAM — moved
+                                   // here so Spindle's resident loader
+                                   // ($0c00-$0dff) stays intact across part loads.
 .const BITMAP       = $2000        // 8000-byte bitmap data (VIC sees in bank 0)
 .const COLOUR_RAM   = $d800
-.const SPR_PTRS     = BMP_SCREEN + $3f8   // last 8 bytes of bitmap-mode screen
-.const SPR_DATA     = $0b00        // sprite shape block $2c (free area below bitmap screen RAM at $0c00; $1000-$1FFF is chargen ROM from VIC's view!)
+.const SPR_PTRS     = BMP_SCREEN + $3f8   // last 8 bytes of bitmap-mode screen ($07f8)
+.const SPR_DATA     = $0b00        // sprite shape block $2c (free area below
+                                   // $0c00; $1000-$1FFF is chargen ROM from VIC view!)
 .const SPR_BLOCK    = SPR_DATA / 64
 .const FONT_BASE    = $4c00        // chargen ROM copy
 .const SCROLL_ROW_BMP = BITMAP + 0 * 40 * 8    // bitmap row 0: $2000..$213F
@@ -64,8 +67,7 @@
 
 .var logo  = LoadBinary("defeest.kla", BF_KOALA)
 
-BasicUpstart2(start)
-
+// No BasicUpstart2 — Spindle's screenfill part JMPs to $0810 directly.
 .pc = $0810 "Main"
 start:
         sei
@@ -99,13 +101,13 @@ start:
         sta VIC_BG              // bitmap-mode bg (also used by bars/IRQ)
 
         // Multicolour bitmap mode: D011=$3B (BMM+DEN+RSEL+yscroll=3),
-        // D016=$D8 (MCM+CSEL+xscroll=0), D018=$38 (screen at $0C00,
+        // D016=$D8 (MCM+CSEL+xscroll=0), D018=$18 (screen at $0400,
         // bitmap at $2000 within VIC bank 0).
         lda #$3b
         sta VIC_CTRL1
         lda #$d8
         sta VIC_CTRL2
-        lda #$38
+        lda #$18
         sta $d018
 
         // raster IRQ chain
@@ -705,7 +707,7 @@ my_music_play:
 // Bitmap-mode screen RAM ($0C00) holds 2 colour nibbles per cell —
 // uniform for our 4-colour logo. We could also do this at runtime
 // in clear_screen; doing it at compile time saves startup time.
-.pc = $0c00 "BitmapScreenRAM"
+.pc = $0400 "BitmapScreenRAM"
 .fill 1000, $67
 
 // Page-aligned tables segment — placed past bitmap.
@@ -881,16 +883,16 @@ copy_chargen:
 // by column from the left.
 //==================================================================
 init_slide_hide:
-        // Rows 8-16 of screen RAM: $0C00+8*40=$0D40 .. $0E87 (360 bytes)
+        // Rows 8-16 of screen RAM: $0400+8*40=$0540 .. $0687 (360 bytes)
         // Rows 8-16 of colour RAM: $D800+8*40=$D940 .. $DA87 (360 bytes)
         lda #0
         ldx #0
-!c1:    sta $0d40,x
+!c1:    sta $0540,x
         sta $d940,x
         inx
         bne !c1-
         ldx #0
-!c2:    sta $0e40,x
+!c2:    sta $0640,x
         sta $da40,x
         inx
         cpx #104          // 360 - 256
@@ -915,15 +917,15 @@ reveal_column:
         tax                       // X = column index 0..39
 
         lda #$67                  // screen RAM nibbles: blue/yellow
-        sta $0d40,x               // row 8
-        sta $0d68,x               // row 9
-        sta $0d90,x               // row 10
-        sta $0db8,x               // row 11
-        sta $0de0,x               // row 12
-        sta $0e08,x               // row 13
-        sta $0e30,x               // row 14
-        sta $0e58,x               // row 15
-        sta $0e80,x               // row 16
+        sta $0540,x               // row 8
+        sta $0568,x               // row 9
+        sta $0590,x               // row 10
+        sta $05b8,x               // row 11
+        sta $05e0,x               // row 12
+        sta $0608,x               // row 13
+        sta $0630,x               // row 14
+        sta $0658,x               // row 15
+        sta $0680,x               // row 16
 
         lda #$01                  // colour RAM: white
         sta $d940,x
