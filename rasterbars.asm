@@ -28,8 +28,14 @@
 .const BITMAP       = $2000        // 8000-byte bitmap data (VIC sees in bank 0)
 .const COLOUR_RAM   = $d800
 .const SPR_PTRS     = BMP_SCREEN + $3f8   // last 8 bytes of bitmap-mode screen
-.const SPR_DATA     = $0a00        // sprite shape block $28 (free area; $1000-$1FFF is chargen ROM from VIC's view!)
+.const SPR_DATA     = $0b00        // koorball shape block $2C (main code grows to $0Axx)
 .const SPR_BLOCK    = SPR_DATA / 64
+.const SCROLL_DATA  = $0b40        // sprite 7 scroll-text data (block $2D)
+.const SCROLL_BLOCK = SCROLL_DATA / 64
+.const SCROLL_SPR   = 7
+.const SCROLL_BASE_X = 150         // centred in 38-col window
+.const SCROLL_Y     = 99           // ends at 119, before bar zone ($80=128)
+.const FONT_BASE    = $4c00
 
 .const SCROLL_ROW   = 4
 .const SCROLL_SCR   = SCREEN + SCROLL_ROW * 40
@@ -62,6 +68,7 @@ start:
         bit $dc0d
         bit $dd0d
 
+        jsr copy_chargen
         jsr clear_screen
         jsr init_sprites
         jsr init_scroll
@@ -110,6 +117,145 @@ forever:
 
 
 //==================================================================
+// copy_chargen — bank CHARGEN ROM in, copy uppercase font to RAM
+// at FONT_BASE, restore. SEI is on from start.
+//==================================================================
+copy_chargen:
+        lda #$33
+        sta $01
+        ldx #0
+!loop:  lda $d000,x
+        sta FONT_BASE+$000,x
+        lda $d100,x
+        sta FONT_BASE+$100,x
+        lda $d200,x
+        sta FONT_BASE+$200,x
+        lda $d300,x
+        sta FONT_BASE+$300,x
+        lda $d400,x
+        sta FONT_BASE+$400,x
+        lda $d500,x
+        sta FONT_BASE+$500,x
+        lda $d600,x
+        sta FONT_BASE+$600,x
+        lda $d700,x
+        sta FONT_BASE+$700,x
+        inx
+        bne !loop-
+        lda #$35
+        sta $01
+        rts
+
+
+//==================================================================
+render_scroll_chars:
+        // 3 chars from (zp_text_ptr+0..+2) → SCROLL_DATA (sprite 7).
+        ldy #0
+        lda (zp_text_ptr),y
+        sta zp_tmp
+        asl
+        asl
+        asl
+        sta $02
+        lda zp_tmp
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #>FONT_BASE
+        sta $03
+        iny
+        lda (zp_text_ptr),y
+        sta zp_tmp
+        asl
+        asl
+        asl
+        sta $04
+        lda zp_tmp
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #>FONT_BASE
+        sta $05
+        iny
+        lda (zp_text_ptr),y
+        sta zp_tmp
+        asl
+        asl
+        asl
+        sta $06
+        lda zp_tmp
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #>FONT_BASE
+        sta $07
+        // Copy 8 rows × 3 bytes, then clear remaining 39 bytes.
+        ldy #0
+        ldx #0
+!row:
+        lda ($02),y
+        sta SCROLL_DATA,x
+        inx
+        lda ($04),y
+        sta SCROLL_DATA,x
+        inx
+        lda ($06),y
+        sta SCROLL_DATA,x
+        inx
+        iny
+        cpy #8
+        bne !row-
+        lda #0
+!clr:   sta SCROLL_DATA,x
+        inx
+        cpx #63
+        bne !clr-
+        rts
+
+
+//==================================================================
+// update_scroll_sprite — slide sprite 7 left 1 phys px each frame
+// (sub-pixel via SPR_X). Every 16 frames, advance text by 1 char and
+// re-render. Called from irq_close (post-critical-work).
+//==================================================================
+update_scroll_sprite:
+        dec zp_smooth
+        bpl !slide+
+        // sub wrapped → reset to 15, advance text, re-render
+        lda #15
+        sta zp_smooth
+        inc zp_text_ptr
+        bne !nowrap+
+        inc zp_text_ptr+1
+!nowrap:
+        ldy #0
+        lda (zp_text_ptr),y
+        cmp #$ff
+        bne !render+
+        lda #<(scroll_text + 40)
+        sta zp_text_ptr
+        lda #>(scroll_text + 40)
+        sta zp_text_ptr+1
+!render:
+        jsr render_scroll_chars
+!slide:
+        lda zp_smooth
+        clc
+        adc #SCROLL_BASE_X
+        sta $d000 + SCROLL_SPR*2
+        rts
+
+
+//==================================================================
 clear_screen:
         // Bitmap-mode screen RAM at $0C00 holds 2 colour nibbles per
         // cell: hi=%01 slot, lo=%10 slot. Our logo encoding uses the
@@ -150,10 +296,19 @@ init_sprites:
 
         lda #%11111111          // all 8 sprites enabled
         sta SPR_EN
-        sta SPR_XEXP            // X-expanded
-        sta SPR_YEXP            // Y-expanded → round balls
+        sta SPR_XEXP            // all X-expanded
+        lda #%01111111          // sprite 7 NOT Y-expanded (text)
+        sta SPR_YEXP
         lda #0
         sta SPR_MC
+
+        // Sprite 7 = scroll text. Own block, fixed Y, X set by update.
+        lda #SCROLL_BLOCK
+        sta SPR_PTRS + SCROLL_SPR
+        lda #SCROLL_Y
+        sta $d001 + SCROLL_SPR*2
+        lda #SCROLL_BASE_X
+        sta $d000 + SCROLL_SPR*2
 
         // 8 distinct colours
         lda #$01                // white
@@ -170,36 +325,22 @@ init_sprites:
         sta SPR_COL+5
         lda #$08                // orange
         sta SPR_COL+6
-        lda #$04                // purple
+        lda #$01                // sprite 7 white (scroll text)
         sta SPR_COL+7
         rts
 
 
 //==================================================================
 init_scroll:
-        ldx #0
-!fill:  lda scroll_text,x
-        sta SCROLL_SCR,x
-        inx
-        cpx #40
-        bne !fill-
-
         lda #<(scroll_text + 40)
         sta zp_text_ptr
         lda #>(scroll_text + 40)
         sta zp_text_ptr+1
-
-        lda #7
+        lda #15
         sta zp_smooth
         lda #0
         sta zp_frame
-
-        ldx #0
-!col:   lda #$03                // cyan
-        sta SCROLL_COL,x
-        inx
-        cpx #40
-        bne !col-
+        jsr render_scroll_chars
         rts
 
 
@@ -209,6 +350,10 @@ init_scroll:
 // here and line $01 of next frame — keep them off).
 //==================================================================
 irq_close:
+        pha
+        txa
+        pha
+        tya
         pha
         lda #$ff
         sta $d019
@@ -225,6 +370,12 @@ irq_close:
         sta $ffff
         lda #$01
         sta VIC_RASTER
+        // Scroll update runs HERE: ~4000 cy free, not time-critical.
+        jsr update_scroll_sprite
+        pla
+        tay
+        pla
+        tax
         pla
         rti
 
@@ -458,7 +609,7 @@ bar_palette:
 move_sprites:
         lda #0
         sta zp_msb
-        ldx #7
+        ldx #6                  // sprite 7 reserved for scroll text
 !loop:
         // X position low byte
         lda zp_frame
