@@ -45,7 +45,7 @@
 .const zp_fade     = $fb         // fade-in counter, 0..FADE_DONE, ticks each frame; drives SID volume + text reveal
 .const zp_wrap_pending = $fc     // set non-zero in irq_top when yscroll wraps; consumed later to fire scroll_rows_up
 
-.const N_CREDIT_ROWS = 46        // KEEP IN SYNC with the .text blocks below
+.const N_CREDIT_ROWS = 48        // KEEP IN SYNC with the .text blocks below
 .const FADE_DONE     = 99        // fade-in completes after 99 frames (~2 sec @50Hz)
 .const TEXT_REVEAL   = FADE_DONE // colour RAM flips from black to the gradient at this fade tick
 .const SCROLL_TICK_MASK = $03    // tick yscroll every (mask+1) frames — $03 = every 4 frames
@@ -1101,7 +1101,9 @@ credit_text:
         row("              Kleuter/deFEEST           ")
         row("                                        ")
         row("           music                        ")
-        row("              ai-coded 3-voice sid      ")
+        row("              composed and arranged     ")
+        row("              by Anus                   ")
+        row("              with help from Kloot AI   ")
         row("                                        ")
         row("           graphics                     ")
         row("              defeest.nl                ")
