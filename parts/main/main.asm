@@ -1026,18 +1026,21 @@ update_scroll_colors:
 
 // Per-frame: shift each pixel row of scroll bitmap by 1 bit.
 // zp_scroll_mode picks the per-row direction:
-//   0 = LEFT scroll (all rows ROL) — text scrolls right-to-left, readable
-//   1 = LEFT scroll (same as mode 0) — slot kept for future variation
-//   2 = ZIG-ZAG (even rows ROL, odd rows ROR — visual split)
+//   0 = LEFT scroll  (all rows ROL) — text scrolls right-to-left, readable
+//   1 = RIGHT scroll (all rows ROR) — deFEEST classic: chars enter on the
+//       left and slide right, so you read each sentence from its END
+//   2 = ZIG-ZAG     (even rows ROL, odd rows ROR — visual split)
 // Mode advances at $fe sentinel bytes in scroll_text and wraps after mode 2.
 update_bmp_scroll:
         ldx #0
 !rowloop:
         // Dispatch on scroll mode → ROL/ROR per row.
         lda zp_scroll_mode
-        cmp #2
-        bne !row_left+          // mode 0 or 1 → all left
-        // mode 2: zig-zag — pick by row parity
+        beq !row_left+          // mode 0 → all left
+        cmp #1
+        bne !row_zigzag+        // not 0 or 1 → zig-zag (mode 2)
+        jmp !row_odd+           // mode 1 → all right (jmp: out of branch range)
+!row_zigzag:
         txa
         and #$01
         bne !row_odd+           // odd row in zig-zag → ROR
@@ -1228,21 +1231,19 @@ sine_bot:
 scroll_text:
         .text "                                        "
         // ---- block 1: mode 0 (left scroll, normal) ----
-        .text "deFEEST presents a little C64 intro for the OUTLINE 2026 demoparty... "
-        .text "Co-written by Anne Jan Brouwer and Claude Opus 4.7 over many cycle-exact hours. "
+        .text "deFEEST presents a little C64 intro for the X 2026 demoparty.. "
+        .text "Co-written by Anus and Claude Opus 4.7 over many cycle-exact hours.                           "
         .byte $fe
         // ---- block 2: mode 1 (right scroll, inverse) ----
         .text "On display: open top and bottom borders via the canonical HCL trick, "
-        .text "a multicolour bitmap logo that wipe-reveals from the left and then bounces on a flexible-line-distance effect, "
+        .text "a multicolour bitmap logo that bounces on a flexible-line-distance effect, "
         .text "cylinder-shaded rasterbars with border-wrap stripes in a 21-cycle bad-line loop, "
-        .text "eight expanded koorballen sprites swinging on sine paths. "
+        .text "eight expanded sprites swinging on sine paths.                         "
         .byte $fe
         // ---- block 3: mode 2 (zig-zag split) ----
         .text "a stable bitmap-mode scroller on row zero riding above the bounce, "
         .text "and a hand-written three-voice SID jam that fades in voice by voice during the intro. "
-        .text "Greetings to everyone who still codes the breadbin and thanks to the OUTLINE crew. "
-        .text "Assembled with KickAssembler, run on VICE x64sc PAL, committed to git while screenshots were piped through MCP. "
-        .text "Looping now...                          "
+        .text "Greetings to everyone who still codes the breadbin and thanks to the X crew. "
         .byte $ff
 
 
@@ -1252,7 +1253,7 @@ sprite_shape:
         .byte %00001111, %11111111, %00000000
         .byte %00011111, %11111111, %10000000
         .byte %00111111, %11111111, %11000000
-        .byte %00111111, %11111111, %11000000
+        .byte %00111101, %11111011, %11000000
         .byte %01111111, %11111111, %11100000
         .byte %01111111, %11111111, %11100000
         .byte %11111111, %11111111, %11110000
