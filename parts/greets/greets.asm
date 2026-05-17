@@ -83,12 +83,15 @@ setup:
         inx
         bne !clr-
 
-        // Reassert SID master volume + keep V1 (bass) muted (pad-only,
-        // same vibe as interlude — we'll layer the climax in later).
-        lda #$1f
+        // SID: full vol, no filter mode (interlude left LP mode +
+        // routing on for its sweep — clear that here so greets gets
+        // a clean dry mix). V1 (bass) is NOT muted: greets is the
+        // payoff — bass returns, layered with lead + arp.
+        lda #$0f
         sta $d418
         lda #$00
-        sta $d404
+        sta $d417                  // no voices routed to filter
+        sta $d416                  // cutoff 0 (filter unused)
 
         // Copy 16-glyph font into sprite shape area ($2000-$23FF).
         jsr copy_font
@@ -167,8 +170,10 @@ interrupt:
         sta VIC_IRQ
 
         jsr INTRO_MUSIC_PLAY
-        lda #$00
-        sta $d404                  // keep V1 muted (pad only)
+        // V1 (bass) plays naturally now — no per-frame mute. Re-assert
+        // master vol $0F since my_music_play wrote vol_in there.
+        lda #$0f
+        sta $d418
 
         // Beat counter → drives pefchain transition condition
         inc zp_beat_phase

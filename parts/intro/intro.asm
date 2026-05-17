@@ -630,12 +630,14 @@ my_music_init:
 
 
 my_music_play:
-        // --- Master volume: intro fades in, outro fades out ---
-        // vol_in  = min(intro >> 3, $0f)  — reaches $0f at intro=120 (~4.8s)
-        // vol_out = min(outro >> 3, $0f)  — reaches $0f at outro=120 (~4.8s)
-        // final   = max(vol_in - vol_out, 0)
-        // Once outro armed, audio fades to silence over the first ~4.8s
-        // of the outro window (well before T_OUTRO_DONE).
+        // --- Master volume: fade IN over intro tick window only ---
+        // vol = min(zp_intro >> 3, $0f) — reaches $0f at intro=120 (~4.8s).
+        // We intentionally DO NOT subtract a vol_out fade here: the music
+        // needs to carry continuously through intro outro → interlude →
+        // greets (interlude / greets call this routine too via my_music_play
+        // residency). The "transitioning out" feel during intro's outro
+        // is carried by the visual cascade (sprites, bars, logo) and by
+        // V1 muting in interlude — not by silencing the SID.
         lda zp_intro
         lsr
         lsr
@@ -644,24 +646,6 @@ my_music_play:
         bcc !vin_ok+
         lda #$0f
 !vin_ok:
-        sta zp_tmp                // vol_in
-
-        lda zp_outro
-        lsr
-        lsr
-        lsr
-        cmp #$10
-        bcc !vout_ok+
-        lda #$0f
-!vout_ok:
-        sta zp_msb                // vol_out (borrowing zp_msb as scratch)
-
-        lda zp_tmp
-        sec
-        sbc zp_msb
-        bcs !vfinal+
-        lda #0                    // clamp negative result
-!vfinal:
         sta $d418
 
         // --- V3 arpeggio: change freq every frame ---
