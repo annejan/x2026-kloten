@@ -4,8 +4,10 @@
 // First part loaded from the .d64 by Spindle's boot loader.
 // Port of ranzbak's defeest-screenfill: walks a "DEFEEST" string
 // over the screen, choosing upper or lower case per cell via a
-// rotating bit-mask. Waits ~3 sec, then triggers Spindle's loader
-// (jsr $c90) and JMPs into the main demo at $0810.
+// rotating bit-mask. After the fill, runs a water-ripple colour
+// cycle for ~3 sec — concentric rings expand from screen centre —
+// then triggers Spindle's loader (jsr $c90) and JMPs into the main
+// demo at $0810.
 //
 // Lives at $c000 — well above main demo's $0810..$5dc3 range so the
 // screenfill code SURVIVES the `jsr $c90` that loads main into RAM.
@@ -28,6 +30,8 @@
 .const CHARCNT = $02           // position within "DEFEEST" (0..6)
 .const SCRPOS  = $03           // 0..255 within current screen page
 .const WCNT    = $04           // word counter / mask seed
+.const PHASE   = $05           // ripple phase (incremented per frame)
+.const HOLDCNT = $06           // remaining ripple frames
 
 * = $c000 "ScreenFill"
 start:
@@ -46,7 +50,7 @@ start:
         lda #$06                // bg blue
         sta VIC_BG
 
-        // Colour RAM → light blue.
+        // Colour RAM → light blue. (Ripple overwrites it during hold.)
         ldx #0
         lda #$0e
 !col:   sta COLOUR_RAM+$000,x
@@ -118,17 +122,103 @@ scroffset:
         inc WCNT
         jmp loop_outer
 
+
+//==================================================================
+// end_fill — run the water-ripple effect for ~3 sec then load main.
+//
+// Per frame:
+//   1. Vsync on line $ff.
+//   2. Build current_pal[i] = ripple_palette[(i - PHASE) & 15]
+//      (16 entries — recompute once per frame, then index by dist).
+//   3. For every colour-RAM byte, write current_pal[dist_table[c]].
+//      dist_table is a precomputed 1024-byte table of scaled radial
+//      distances from screen centre, range 0..15. Increasing PHASE
+//      walks the palette inward in cell-space which → rings appear
+//      to EXPAND outward (drop-on-water look).
+//
+// Cost per frame: ~18.5k cy (4×256 inner loop + 16-entry palette
+// build). Just fits a PAL frame; effectively updates at ~50 Hz.
+//==================================================================
 end_fill:
-        // Hold ~3 sec (150 frames at 50Hz).
-        ldx #150
+        lda #0
+        sta PHASE
+        lda #150
+        sta HOLDCNT
+
 hold:
+        // Vsync (wait for line $ff to pass).
         lda #$ff
 !w1:    cmp $d012
         bne !w1-
 !w2:    cmp $d012
         beq !w2-
-        dex
+
+        // current_pal[i] = ripple_palette[(i - PHASE) & 15]
+        ldy #0
+!bp:    tya
+        sec
+        sbc PHASE
+        and #$0f
+        tax
+        lda ripple_palette,x
+        sta current_pal,y
+        iny
+        cpy #16
+        bne !bp-
+
+        // Splatter rings across all four colour-RAM pages.
+        ldy #0
+!r1:    ldx dist_table+$000,y
+        lda current_pal,x
+        sta $d800,y
+        iny
+        bne !r1-
+!r2:    ldx dist_table+$100,y
+        lda current_pal,x
+        sta $d900,y
+        iny
+        bne !r2-
+!r3:    ldx dist_table+$200,y
+        lda current_pal,x
+        sta $da00,y
+        iny
+        bne !r3-
+!r4:    ldx dist_table+$300,y
+        lda current_pal,x
+        sta $db00,y
+        iny
+        bne !r4-
+
+        // Fadeout: in the last 48 frames of hold, every 8 frames apply
+        // fadetab to ripple_palette. After ~6 steps every entry reaches
+        // $00, so the ripple keeps animating but dims smoothly to black.
+        lda HOLDCNT
+        cmp #48
+        bcs !nofade+
+        lda HOLDCNT
+        and #$07
+        bne !nofade+
+        ldy #15
+!fl:    ldx ripple_palette,y
+        lda fadetab,x
+        sta ripple_palette,y
+        dey
+        bpl !fl-
+        // Bg fades through the same table so the whole screen dims
+        // together rather than text-on-blue → snap-to-black.
+        ldx VIC_BG
+        lda fadetab,x
+        sta VIC_BG
+!nofade:
+
+        inc PHASE
+        dec HOLDCNT
         bne hold
+
+        // Snap bg to black so the gap between here and main's first
+        // VIC writes is clean black, not blue.
+        lda #$00
+        sta VIC_BG
 
         // Spindle: load next paragraph (main demo).
         jsr $c90
@@ -136,7 +226,47 @@ hold:
         // Jump to main demo entry.
         jmp $0810
 
+// Fade-to-black table. Every colour walks one step darker per apply;
+// all paths converge to $00 within ~4 iterations. Used by the ripple
+// fadeout at end of hold.
+fadetab:
+        .byte $00, $0c, $09, $0e, $06, $09, $0b, $08
+        .byte $09, $0b, $08, $00, $0b, $0c, $06, $0c
+
 // "DEFEEST" as upper-case screencodes in screencode_mixed:
 // D=$44 E=$45 F=$46 E=$45 E=$45 S=$53 T=$54
 dtext:
         .byte $44, $45, $46, $45, $45, $53, $54
+
+
+//==================================================================
+// Ripple data tables — placed at $c200 so they live well above the
+// code and don't conflict with Spindle's $0c00 loader or main's
+// $0400-$5dxx layout. They're only used BEFORE jsr $c90, so they
+// don't need to survive the load.
+//==================================================================
+
+* = $c200 "RippleDist"
+// dist_table[c] = scaled radial distance from screen centre (20,12),
+// mapped to 0..15 so it indexes a 16-entry palette without seams.
+// 1024 bytes — last 24 are past row 24 and never displayed.
+dist_table:
+.for (var i = 0; i < 1024; i++) {
+    .var y  = floor(i / 40)
+    .var x  = i - y * 40
+    .var dx = x - 20
+    .var dy = y - 12
+    .var d  = round(sqrt(dx*dx + dy*dy) * 15 / 23)
+    .byte d & $0f
+}
+
+* = $c600 "RipplePal"
+// Symmetric palette: black → blue → cyan → white → cyan → blue → black.
+// As PHASE advances, each ring index rotates through this ramp, so
+// the same brightness band appears to expand outward = water wave.
+ripple_palette:
+        .byte $00, $06, $06, $0e, $0e, $03, $03, $01
+        .byte $01, $03, $03, $0e, $0e, $06, $06, $00
+
+current_pal:
+        .fill 16, 0
