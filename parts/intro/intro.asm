@@ -147,13 +147,11 @@ setup:
 
 //==================================================================
 // fadeout — pefchain calls this after the script transition condition
-// fires (we use "f6 = f0", i.e. zp_outro == T_OUTRO_DONE). At that
-// point main's IRQ-driven outro animation has already completed, so
-// fadeout just silences SID and returns carry set so pefchain moves on.
+// fires (we use "f6 = f0", i.e. zp_outro == T_OUTRO_DONE). Music tables
+// stay resident ($10-$12) and interlude calls my_music_play, so we do
+// NOT silence SID here — we want audio to carry across the transition.
 //==================================================================
 fadeout:
-        lda #0
-        sta $d418
         sec
         rts
 
