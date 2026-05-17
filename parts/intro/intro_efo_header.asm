@@ -1,23 +1,23 @@
 //==================================================================
-// EFO2 header for main.pef. Built with `-binfile`, then concatenated
-// with main.prg to produce main.efo.
+// EFO2 header for intro.pef. Built with `-binfile`, then concatenated
+// with intro.prg to produce intro.efo.
 //
-// `setup`, `irq_close`, `fadeout` symbols come from main.sym.
+// `setup`, `irq_close`, `fadeout` symbols come from intro.sym.
 //==================================================================
 
-.import source "main.sym"
+.import source "intro.sym"
 
 .pc = $0000 "EfoHeader"
         .text "EFO2"             // magic
         .word $0000              // prepare
         .word setup              // setup
         .word irq_close          // interrupt (first link in raster chain)
-        .word $0000              // main
+        .word $0000              // intro
         .word fadeout            // fadeout (silences SID, returns C=1)
         .word $0000              // cleanup
         .word $0000              // callmusic (music driven from IRQ chain)
 
-        // Memory pages used by main:
+        // Memory pages used by intro:
         //   $04-$09 BitmapScreenRAM ($0400-$09f1)
         //   $0B     Sprite shape
         //   $10-$12 Music

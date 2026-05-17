@@ -3,11 +3,18 @@
 # Pefchain links the .pef effects below in sequence, background-loading
 # each upcoming part during the current one (via the NMI-driven loader).
 #
-# Transitions: each part has a condition for advancing to the next.
-#   06 = 00   wait until zp $06 == 0 (screenfill: HOLDCNT drained)
-#   f6 = f0   wait until zp $f6 == $f0 (main: zp_outro hit T_OUTRO_DONE)
-#   stay      never advance (end runs forever)
+# Transitions: each part auto-advances on a timer / state condition.
+# No space-key required — the demo plays straight through to the end
+# card, which loops forever ("stay").
+#
+#   06 = 00   wait until zp $06 == 0  (screenfill: HOLDCNT drained ~3s)
+#   f6 = f0   wait until zp $f6 == $f0 (intro: zp_outro hit T_OUTRO_DONE)
+#   f6 = 20   wait until zp $f6 == $20 (interlude: 32 kicks ≈ 15 sec)
+#                                       — same byte, repurposed by
+#                                       interlude's setup which resets it
+#   stay      never advance (end card loops forever)
 
 parts/screenfill/screenfill.pef     06 = 00
-parts/main/main.pef                 f6 = f0
+parts/intro/intro.pef               f6 = f0
+parts/interlude/interlude.pef       f6 = 20
 parts/end/end.pef                   stay

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(gh search *)",
+      "Bash(arm-none-eabi-nm *)",
+      "Bash(arm-none-eabi-size *)",
+      "Bash(cargo info *)"
+    ]
+  }
+}
