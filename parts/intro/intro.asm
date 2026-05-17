@@ -1394,13 +1394,17 @@ update_bmp_scroll:
         bcc !nm2+
         lda #0
 !nm2:   sta zp_scroll_mode
-        // Entering mode 1: jump ptr to last char of block 2 so the
-        // backwards advance walks toward block2_start.
+        // Entering mode 1: jump ptr to last TEXT char of block 2 so
+        // the backwards advance walks toward block2_start. block2_end
+        // is the first byte AFTER the closing $fe sentinel, so
+        // (block2_end - 2) is the last text char and (block2_end - 1)
+        // is the $fe itself. Pointing at the $fe would make recheck
+        // bump straight to mode 2 — silently skipping all of block 2.
         cmp #1
         bne !nm_done+
-        lda #<(block2_end - 1)
+        lda #<(block2_end - 2)
         sta zp_text_ptr
-        lda #>(block2_end - 1)
+        lda #>(block2_end - 2)
         sta zp_text_ptr+1
 !nm_done:
         jmp !recheck-
