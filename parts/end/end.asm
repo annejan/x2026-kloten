@@ -821,6 +821,31 @@ end_music_play:
 !vol_ok:ora #$10                  // bit 4 = LP filter on
         sta $d418
 
+        // --- V3 arp shimmer: PWM + gentle filter cutoff sweep ---
+        // PWM affects only V3 (V1/V2 are triangle wave). The pulse hi
+        // nibble walks 4..11 over a 5.12s sine cycle for a gentle phaser
+        // tone on the arp.  Filter cutoff cycles 90° out of phase across
+        // a narrow $20..$58 band so the pad "breathes" without losing
+        // its soft character.
+        ldx zp_frame
+        lda wave_xscroll,x        // 0..7
+        clc
+        adc #$04                  // 4..11
+        and #$0f
+        sta $d411                 // V3 pulse hi nibble
+
+        txa
+        clc
+        adc #$40                  // 90° phase offset
+        tax
+        lda wave_xscroll,x        // 0..7
+        asl
+        asl
+        asl                       // *8 → 0..56
+        clc
+        adc #$20                  // baseline → $20..$58
+        sta $d416                 // filter cutoff hi
+
         // --- V3 arp: change freq every 4 frames within step ---
         lda zp_mu_frame
         and #$03
@@ -982,17 +1007,17 @@ credit_text:
         row("                                        ")
         row("                                        ")
         row("              you were watching         ")
-        row("                  deFEEST               ")
-        row("              X2026                     ")
+        row("                  defeest               ")
+        row("                  x 2026                ")
         row("                                        ")
         row("                                        ")
         row("                                        ")
         row("           code                         ")
-        row("              Anus                      ")
+        row("              anus                      ")
         row("              claude opus 4.7           ")
         row("                                        ")
         row("           music                        ")
-        row("              AI coded 3-voice sid      ")
+        row("              ai-coded 3-voice sid      ")
         row("                                        ")
         row("           graphics                     ")
         row("              defeest.nl                ")
@@ -1000,8 +1025,8 @@ credit_text:
         row("           tools                        ")
         row("              claude code               ")
         row("              kickassembler             ")
-        row("              spindle 2.3               ")
-        row("              VICE MCP                  ")
+        row("              spindle 3.1               ")
+        row("              vice-mcp                  ")
         row("                                        ")
         row("           greetings                    ")
         row("              outline 2026 crew         ")
