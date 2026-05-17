@@ -43,6 +43,7 @@
 .const zp_frame    = $f9         // free-running frame counter (for $D016 wobble + SID filter sweep)
 .const zp_tmp      = $fa
 .const zp_fade     = $fb         // fade-in counter, 0..FADE_DONE, ticks each frame; drives SID volume + text reveal
+.const zp_wrap_pending = $fc     // set non-zero in irq_top when yscroll wraps; consumed later to fire scroll_rows_up
 
 .const N_CREDIT_ROWS = 36        // KEEP IN SYNC with the .text blocks below
 .const FADE_DONE     = 99        // fade-in completes after 99 frames (~2 sec @50Hz)
@@ -514,6 +515,7 @@ start:
         sta zp_text_row
         sta zp_frame
         sta zp_fade
+        sta zp_wrap_pending
         jsr push_next_credit_row
 
         // --- SID drone: sustained Am chord (A2 + C3 + E3) with filter ---
@@ -616,6 +618,31 @@ irq_top:
         jsr reveal_text
 !fade_done:
 
+        // --- yscroll: compute first so CTRL1 is stable BEFORE display ---
+        // Previously this block ran AFTER scroll_rows_up, so on shift
+        // frames CTRL1 got updated ~line 220 (mid-screen). Badlines
+        // before the update used the OLD yscroll, after used the NEW;
+        // the 0..7-line gap between old-badline-window and new-badline-
+        // window left rows stuck on the same char pointer, repeating
+        // the row across that strip. Setting CTRL1 here (line ~3)
+        // makes badlines consistent for the entire frame.
+        lda zp_yscroll
+        sec
+        sbc #1
+        bpl !no_wrap+
+        // Wrap: flag scroll_rows_up to run later, reset yscroll to 7.
+        ldx #1
+        stx zp_wrap_pending
+        lda #7
+        bne !apply_y+           // bne always taken (A=7)
+!no_wrap:
+        ldx #0
+        stx zp_wrap_pending
+!apply_y:
+        sta zp_yscroll
+        ora #$18                // DEN + RSEL + BMM=0 + ECM=0 + yscroll
+        sta VIC_CTRL1
+
         // --- SID: master volume fades in with zp_fade ---
         // Volume 0..$0f. $d418 bit 4 enables low-pass filter — voices
         // are routed to filter via $d417 in setup, so we need LP here
@@ -649,21 +676,16 @@ irq_top:
         and #$07                // only xscroll bits
         sta VIC_CTRL2
 
-        // --- yscroll handling ---
-        lda zp_yscroll
-        sec
-        sbc #1
-        bpl !no_wrap+
-        // Wrap path: scroll text rows up by 1, pull next credit line.
+        // --- Wrap action: shift screen up + pull next credit line ---
+        // Runs AFTER CTRL1 is settled. The scroll_rows_up row-major
+        // writes still race the beam (row K written by line ~12+9K,
+        // VIC reads row K at line $32+yscroll+8K → margin 22+ for the
+        // worst row even with new yscroll=7).
+        lda zp_wrap_pending
+        beq !skip_wrap+
         jsr scroll_rows_up
         jsr push_next_credit_row
-        lda #7
-!no_wrap:
-        sta zp_yscroll
-
-        // Compose $d011: DEN=1, RSEL=1, BMM=0, ECM=0 → $18 plus yscroll.
-        ora #$18
-        sta VIC_CTRL1
+!skip_wrap:
 
         // Re-arm raster IRQ for line $00 of next frame (we are the only IRQ).
         lda #$00
