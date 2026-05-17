@@ -34,10 +34,16 @@
 .const zp_text_row = $f8         // index into credit_text (advances on hardware-scroll wrap)
 .const zp_frame    = $f9         // free-running frame counter (for bar palette drift)
 .const zp_tmp      = $fa
+.const zp_fade     = $fb         // fade-in counter, 0..BAR_FADE_DONE, ticks each frame
+.const zp_wave     = $fc         // wave-phase LSB for $D016 wobble
 
 .const N_CREDIT_ROWS = 36        // KEEP IN SYNC with the .text blocks below
 .const BAR_TOP       = $32       // first display line; bars run BAR_TOP..BAR_BOT
-.const BAR_BOT       = $f8
+.const BAR_BOT       = $f8       // last bar line
+.const BAR_LINES     = BAR_BOT - BAR_TOP   // = 198
+.const BAR_REVEAL_RATE = 2       // lines per frame the bars roll in
+.const BAR_FADE_DONE  = BAR_LINES / BAR_REVEAL_RATE   // = 99 frames ~2s
+.const TEXT_REVEAL    = BAR_FADE_DONE                  // text pops in once bars are fully visible
 
 
 //==================================================================
@@ -459,9 +465,15 @@ start:
         lda #%00011100
         sta VIC_MEM
 
-        // Text mode, DEN, RSEL, yscroll=7 (will animate).
+        // Text mode, DEN, RSEL, yscroll=7 (will animate). zp_yscroll
+        // stores just the yscroll bits (0-7); irq_top OR's #$18 each
+        // frame to rebuild CTRL1. Storing the full $1f here would make
+        // the first wrap take 32 frames instead of 8 (the bpl-based
+        // wrap detect only fires when the saved value goes negative),
+        // and the screen would visibly jump every 8 frames until then.
         lda #$1f
         sta VIC_CTRL1
+        lda #$07
         sta zp_yscroll
         // 38-column mode (CSEL=0): the 8-px left/right strips become
         // extended border, which the bar IRQ then rainbows.
@@ -474,7 +486,9 @@ start:
         sta SPR_EN              // sprites off
         sta $d418               // silence SID (master vol = 0)
 
-        // Clear screen to space ($20) and colour RAM to white.
+        // Clear screen to space ($20) and colour RAM to BLACK ($00) so the
+        // text is invisible until the fade-in reveal (reveal_text pops it
+        // to $01 once bars are fully rolled in).
         ldx #0
         lda #$20
 !cs:    sta SCREEN+$000,x
@@ -484,7 +498,7 @@ start:
         inx
         bne !cs-
         ldx #0
-        lda #$01
+        lda #$00                // $00 = black → text invisible on black bg
 !cc:    sta COLRAM+$000,x
         sta COLRAM+$100,x
         sta COLRAM+$200,x
@@ -492,11 +506,67 @@ start:
         inx
         bne !cc-
 
-        // Init scroll state and prime row 24 with the first credit line.
+        // Init scroll state, fade counter, and prime row 24.
         lda #0
         sta zp_text_row
         sta zp_frame
+        sta zp_fade
         jsr push_next_credit_row
+
+        // --- SID drone: sustained Am chord (A2 + C3 + E3) with filter ---
+        // Frequencies from main.asm sid_freq_lo/hi table (PAL).
+        // Voice 1: A2, pulse 12.5%
+        lda #$52                     // freq lo A2 (main.asm index 33)
+        sta $d400
+        lda #$07                     // freq hi A2
+        sta $d401
+        lda #$00
+        sta $d402                     // pulse lo
+        lda #$08                     // pulse hi = 12.5%
+        sta $d403
+        lda #$41                     // gate + pulse, hold
+        sta $d404
+        lda #$08                     // AD: attack=0, decay=8
+        sta $d405
+        lda #$f0                     // SR: sustain=15, release=0
+        sta $d406
+        // Voice 2: C3, pulse 25%
+        lda #$b4                     // freq lo C3 (main.asm index 36)
+        sta $d407
+        lda #$08                     // freq hi C3
+        sta $d408
+        lda #$00
+        sta $d409
+        lda #$04
+        sta $d40a                    // pulse 25%
+        lda #$41
+        sta $d40b
+        lda #$08
+        sta $d40c
+        lda #$f0
+        sta $d40d
+        // Voice 3: E3, pulse 25%
+        lda #$fc                     // freq lo E3 (main.asm index 40)
+        sta $d40e
+        lda #$0a                     // freq hi E3
+        sta $d40f
+        lda #$00
+        sta $d410
+        lda #$04
+        sta $d411
+        lda #$41
+        sta $d412
+        lda #$08
+        sta $d413
+        lda #$f0
+        sta $d414
+        // Master volume: fades in with zp_fade (ramped by irq_top each frame).
+        // Route V1+V2+V3 through filter (LP mode), start vol=0.
+        lda #%00000111              // route voices 1+2+3 to filter
+        sta $d417
+        lda #$00                    // LP filter mode, vol = 0 (fade in)
+        sta $d418
+        // Filter cutoff sweeps via zp_frame in irq_top.
 
         // Raster IRQ chain: irq_top@$00 (yscroll + maybe row-shift),
         // then irq_bars@$32..$f8 for the side rainbow.
@@ -532,7 +602,79 @@ irq_top:
 
         inc zp_frame
 
-        // yscroll = (yscroll - 1). At 0, wrap to 7 and trigger hardware scroll.
+        // --- Fade-in counter: saturates at BAR_FADE_DONE (99 frames ~2s) ---
+        lda zp_fade
+        cmp #BAR_FADE_DONE
+        beq !fade_done+
+        inc zp_fade
+        lda zp_fade
+        cmp #TEXT_REVEAL
+        bne !fade_done+
+        jsr reveal_text
+!fade_done:
+
+        // --- Bar reveal: grow bar_end by BAR_REVEAL_RATE lines/frame ---
+        // Self-modifies the cpy operand in irq_bars so the rainbow rolls
+        // down from BAR_TOP toward BAR_BOT. BAR_REVEAL_RATE=2 means we
+        // multiply zp_fade by 2 (asl) — at zp_fade=BAR_FADE_DONE=99 the
+        // result is 198, +BAR_TOP=50 → 248=BAR_BOT (full reveal).
+        lda zp_fade
+        asl                     // *2 = lines revealed so far
+        clc
+        adc #BAR_TOP
+        cmp #BAR_BOT
+        bcc !bar_ok+
+        lda #BAR_BOT
+!bar_ok:sta bar_end+1
+
+        // --- Bar palette drift with sine modulation ---
+        // zp_frame/2 gives a steady drift; adding a sine term makes the
+        // bars breathe up-and-down.
+        lda zp_frame
+        lsr
+        sta zp_tmp              // base drift
+        lda zp_frame
+        tax
+        lda bar_offset_mod,x
+        lsr
+        clc
+        adc zp_tmp
+        sta bar_lda+1
+
+        // --- SID: master volume fades in with zp_fade ---
+        // Volume 0..$0f. $d418 bit 4 enables low-pass filter — voices
+        // are routed to filter via $d417 in setup, so we need LP here
+        // for the filter cutoff sweep below to actually be audible.
+        lda zp_fade
+        lsr
+        lsr                     // /4, reaches $0f at fade=60 (~1.2s)
+        cmp #$10
+        bcc !vol_ok+
+        lda #$0f
+!vol_ok:ora #$10                // bit 4 = LP filter enable
+        sta $d418
+
+        // --- Filter cutoff sweep ---
+        lda zp_frame
+        lsr
+        lsr
+        lsr                     // 0..31 slow tick
+        and #$07                // $d416 hi cutoff = bits 0-2
+        sta $d416
+        lda #$20
+        sta $d415               // cutoff lo fixed, hi sweeps
+
+        // --- Text wave: $D016 xscroll wobble ---
+        // CSEL=0 (38-col), xscroll 0..7 from a sine table.  The entire
+        // text area rocks left/right for a gentle DYCP-lite feel.
+        lda zp_frame
+        lsr                     // slower wave (every 2 frames)
+        tax
+        lda wave_xscroll,x
+        and #$07                // only xscroll bits
+        sta VIC_CTRL2
+
+        // --- yscroll handling ---
         lda zp_yscroll
         sec
         sbc #1
@@ -577,18 +719,18 @@ irq_bars:
         lda #$ff
         sta VIC_IRQ
 
-        // Self-modify lda's lo byte to shift palette per frame.
-        lda zp_frame
-        lsr                      // /2 for slower drift
-        sta bar_lda+1
+        // bar_lda+1 (palette base lo byte) was already set in irq_top with
+        // sine modulation — no need to redo it here.
 
-        // 18-cy loop: ldy raster (4), lda pal,y (4), sta $d020 (4),
-        // cpy #bot (2), bcc (3) = 17. Fits within badline budget.
+        // 17-cy loop: ldy raster (4), lda pal,y (4), sta border (4),
+        // cpy end (2), bcc (3) = 17. Fits within badline budget.
+        // bar_end is self-modified in irq_top to roll the bars in.
 !loop:  ldy VIC_RASTER           // 4
 bar_lda:
         lda bar_palette,y        // 4
         sta VIC_BORDER           // 4
-        cpy #BAR_BOT             // 2
+bar_end:
+        cpy #BAR_BOT             // 2  (self-modified operand)
         bcc !loop-               // 3
 
         lda #$00
@@ -606,6 +748,35 @@ bar_lda:
         tay
         pla
         rti
+
+
+//==================================================================
+// reveal_text — one-time blast of colour RAM rows 0-23 from $00 to $01.
+// Makes the credit text visible after the bars have finished rolling in.
+// Called from irq_top when zp_fade hits TEXT_REVEAL.
+// Timing: ~3000 cy (~48 lines) — fits in VBL before text display starts.
+//==================================================================
+reveal_text:
+        ldx #0
+        lda #$01
+!c0:    sta COLRAM+$000,x
+        sta COLRAM+$100,x
+        sta COLRAM+$200,x
+        inx
+        bne !c0-
+        ldx #0
+!c1:    sta COLRAM+$300,x
+        inx
+        cpx #(24*40 - 768)      // 960 - 768 = 192 remaining bytes
+        bne !c1-
+        // Also reveal row 24 (the incoming credit line) — it was placed
+        // with colour $00 by push_next_credit_row during the fade phase.
+        ldx #0
+!c2:    sta COLRAM + 24*40, x
+        inx
+        cpx #40
+        bne !c2-
+        rts
 
 
 //==================================================================
@@ -642,6 +813,7 @@ scroll_rows_up:
 // N_CREDIT_ROWS for an infinite loop).
 //==================================================================
 push_next_credit_row:
+        // Write screen RAM row 24 (40 bytes).
         ldx zp_text_row
         lda row_ptr_lo,x
         sta !src+ + 1
@@ -653,6 +825,21 @@ push_next_credit_row:
         dey
         bpl !src-
 
+        // Write colour RAM for row 24: $01 (visible) if fade-in is complete,
+        // $00 (invisible) during the initial bar roll-in phase.
+        lda zp_fade
+        cmp #TEXT_REVEAL
+        bcs !colour_on+
+        lda #$00
+        jmp !write_col+
+!colour_on:
+        lda #$01
+!write_col:
+        ldy #39
+!col:   sta COLRAM + 24*40, y
+        dey
+        bpl !col-
+
         inc zp_text_row
         lda zp_text_row
         cmp #N_CREDIT_ROWS
@@ -663,18 +850,39 @@ push_next_credit_row:
 
 
 //==================================================================
-// bar_palette — 256-byte rainbow indexed by raster line (low byte).
-// Built from a smooth 32-entry blue→cyan→white→cyan→blue ramp,
-// repeated 8 times so any raster value lands inside the table.
+// bar_palette — 512-byte rainbow indexed by raster line (low byte).
+// 16 reps of the 32-entry ramp. The self-modified `bar_lda+1` offset
+// (frame/2 + sine/2) can reach ~158, plus y up to 248, lands inside
+// 512 cleanly without reading past into wave_xscroll.
 //==================================================================
 .align 256
 bar_palette:
-.for (var rep = 0; rep < 8; rep++) {
+.for (var rep = 0; rep < 16; rep++) {
         .byte $00, $06, $06, $0e, $0e, $03, $03, $01
         .byte $01, $03, $03, $0e, $0e, $06, $06, $00
         .byte $00, $02, $02, $0a, $0a, $07, $07, $01
         .byte $01, $07, $07, $0a, $0a, $02, $02, $00
 }
+
+//==================================================================
+// wave_xscroll — 256-byte sine for $D016 horizontal wobble.
+// CSEL=0 (38-column), xscroll 0..7. The text rocks smoothly left/right.
+// Amplitude centred on 3.5 so the rounded range is exactly 0..7 with
+// no discontinuity at the peaks (a 4-centred version with `and #$07`
+// wrapped 8→0 and visibly jittered).
+//==================================================================
+.align 256
+wave_xscroll:
+        .fill 256, round(3.5 + 3.5 * sin(toRadians(i * 360 / 256)))
+
+//==================================================================
+// bar_offset_mod — 256-byte sine for modulating the bar palette drift.
+// Added to zp_frame/2 so the bar colours breathe up and down.
+// Range 0..63, page-aligned for fast LDA abs,X.
+//==================================================================
+.align 256
+bar_offset_mod:
+        .fill 256, round(32 + 31 * sin(toRadians(i * 360 / 256)))
 
 
 //==================================================================

@@ -32,4 +32,4 @@ parts/main/main.prg   5400  5002   7bd
 # outro hand-off (`jsr $c90 / jmp $3800`) lands at end's entry.
 # Byte count = (font_end - $3000) reported by KickAssembler memory
 # map for the End segment + $800; bump when end.asm grows.
-parts/end/end.prg     3000   2     1200
+parts/end/end.prg     3000   2     15e8
