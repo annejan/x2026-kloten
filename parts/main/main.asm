@@ -1026,9 +1026,12 @@ update_scroll_colors:
 
 // Per-frame: shift each pixel row of scroll bitmap by 1 bit.
 // zp_scroll_mode picks the per-row direction:
-//   0 = LEFT scroll  (all rows ROL) — text scrolls right-to-left, readable
-//   1 = RIGHT scroll (all rows ROR) — deFEEST classic: chars enter on the
-//       left and slide right, so you read each sentence from its END
+//   0 = LEFT scroll  (all rows ROL) — text scrolls right-to-left, reads
+//       forward in source order.
+//   1 = RIGHT scroll (all rows ROR) — text scrolls left-to-right. The
+//       source still reads forward because advance walks zp_text_ptr
+//       BACKWARDS from block2_end-1 down to block2_start, so the last
+//       source char is loaded first and ends up leftmost on screen.
 //   2 = ZIG-ZAG     (even rows ROL, odd rows ROR — visual split)
 // Mode advances at $fe sentinel bytes in scroll_text and wraps after mode 2.
 update_bmp_scroll:
@@ -1144,13 +1147,42 @@ update_bmp_scroll:
         inc zp_smooth
         lda zp_smooth
         cmp #8
-        bne !done+
+        beq !advance+
+        rts                     // not a step boundary — bail (was bne !done+, now out of branch range)
+!advance:
         lda #0
         sta zp_smooth
+        // Mode 1 walks zp_text_ptr backwards through block 2 so chars
+        // sliding rightward off cell 0 spell the source forward.
+        lda zp_scroll_mode
+        cmp #1
+        beq !back+
         inc zp_text_ptr
         bne !nowrap+
         inc zp_text_ptr+1
 !nowrap:
+        jmp !recheck+
+!back:
+        // If ptr == block2_start we've just displayed the first source
+        // char of the block — jump ptr to the closing $fe so recheck
+        // bumps mode 1→2 and we resume forward through block 3.
+        lda zp_text_ptr
+        cmp #<block2_start
+        bne !back_dec+
+        lda zp_text_ptr+1
+        cmp #>block2_start
+        bne !back_dec+
+        lda #<block2_end
+        sta zp_text_ptr
+        lda #>block2_end
+        sta zp_text_ptr+1
+        jmp !recheck+
+!back_dec:
+        lda zp_text_ptr
+        bne !no_borrow+
+        dec zp_text_ptr+1
+!no_borrow:
+        dec zp_text_ptr
 !recheck:
         ldy #0
         lda (zp_text_ptr),y
@@ -1178,6 +1210,15 @@ update_bmp_scroll:
         bcc !nm2+
         lda #0
 !nm2:   sta zp_scroll_mode
+        // Entering mode 1: jump ptr to last char of block 2 so the
+        // backwards advance walks toward block2_start.
+        cmp #1
+        bne !nm_done+
+        lda #<(block2_end - 1)
+        sta zp_text_ptr
+        lda #>(block2_end - 1)
+        sta zp_text_ptr+1
+!nm_done:
         jmp !recheck-
 !load:
         // Load pending from font of new char
@@ -1231,19 +1272,19 @@ sine_bot:
 scroll_text:
         .text "                                        "
         // ---- block 1: mode 0 (left scroll, normal) ----
-        .text "deFEEST presents a little C64 demo for the X 2026 demoparty.. "
-        .text "Co-written by Anus and Claude Opus 4.7 over many cycle-exact hours.                "
+        .text " deFEEST presents a little C64 demo for X 2026.. "
+        .text "Anus and Claude Opus 4.7 using codebase.c64.org                                    "
         .byte $fe
-        // ---- block 2: mode 1 (right scroll, inverse) ----
-        .text "On display: open top and bottom borders via the canonical HCL trick, "
-        .text "a multicolour bitmap logo that bounces on a flexible-line-distance effect, "
-        .text "cylinder-shaded rasterbars with border-wrap stripes in a 21-cycle bad-line loop, "
-        .text "eight expanded sprites swinging on sine paths.                         "
+        // ---- block 2: mode 1 (right scroll) ----
+        // update_bmp_scroll walks zp_text_ptr backwards across this
+        // block (block2_end-1 → block2_start) so the source reads
+        // forward despite chars sliding rightward off cell 0.
+block2_start:
+        .text "                             Open borders, FLD-bounce logo, rainbow bars, 8-sprite balls, hand-written SID."
         .byte $fe
+block2_end:
         // ---- block 3: mode 2 (zig-zag split) ----
-        .text "A stable bitmap-mode scroller on row zero riding above the bounce, "
-        .text "and a hand-written three-voice SID jam that fades in voice by voice during the intro. "
-        .text "Greetings to everyone who still codes the breadbin and thanks to the X crew. "
+        .text "  Greetings to everyone who still codes the breadbin and thanks to the X crew.                     "
         .byte $ff
 
 
