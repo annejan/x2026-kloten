@@ -1,9 +1,19 @@
+# Build artifacts
 *.prg
 *.sym
+outline-64.d64
+
+# Spindle (built locally per-checkout)
+spindle-2.3/
+spindle-2.3.tgz
+
+# Screenshots / scratch
 *.png
-*.zip
-*.log
-*.pyc
+
+# Python cache
 __pycache__/
-kickass/
+
+# Local upstream archives / backups
+KickAssembler.zip
 rasterbars_full.asm
+kickass/
