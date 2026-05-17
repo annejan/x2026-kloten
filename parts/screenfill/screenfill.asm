@@ -189,28 +189,23 @@ hold:
         bne !r4-
 
         // ----- staged fadeout -----
-        // Stage 1 (during ripple, HOLDCNT=100): bg+border $06 → $0B
-        // Stage 2 (during ripple, HOLDCNT=70):  bg+border $0B → $00
-        // Stage 3 (HOLDCNT < 70): step ripple_palette through fadetab
-        //         every 8 frames. fadetab only walks within blue/grey
-        //         family ($01→$0F→$0C→$0B→$00, $03→$0E→$06→$00, etc.)
-        //         so the dim doesn't dart through green/yellow.
+        // On new-VIC there is NO luminance step between $06 (blue, lum
+        // 63) and $00 (black, lum 0) — $0B (dark grey, lum 79) is
+        // actually BRIGHTER than blue, so any $06→$0B→$00 ramp inverts
+        // perceived darkness mid-fade. COLFADE v2 also fades $06 → $00
+        // directly. So bg+border just snap to black during the ripple.
         lda HOLDCNT
-        cmp #100
-        bne !nb1+
-        lda #$0b
-        sta VIC_BG
-        sta VIC_BORDER
-!nb1:
-        lda HOLDCNT
-        cmp #70
-        bne !nb2+
+        cmp #85
+        bne !nb+
         lda #$00
         sta VIC_BG
         sta VIC_BORDER
-!nb2:
+!nb:
+        // Text palette fade: every 8 frames step ripple_palette through
+        // a hue-stable fadetab (each path monotonically darker:
+        // $01→$0F→$0C→$0B→$00 and $03→$0E→$06→$00).
         lda HOLDCNT
-        cmp #70
+        cmp #85
         bcs !nofade+
         and #$07
         bne !nofade+
