@@ -49,9 +49,13 @@
 .const zp_scroll_tick = $f8
 .const zp_kick_remain = $f9    // frames left in current kick window
 
-// Kick window: how long V3 stays in noise-percussion mode after a beat
-// before the music engine's arp resumes. ~120 ms.
-.const KICK_FRAMES = 6
+// Pitch-swept kick (808/Tel-style): noise+gate for the first frame
+// gives a percussive transient, then pulse with a fast downward
+// pitch sweep over the rest of the window for the deep thump.
+// Total ≈ 200 ms, plenty of body to land on the beat.
+.const KICK_FRAMES   = 10
+.const KICK_FREQ_HI  = $20     // starting freq hi byte (mid-bass)
+.const KICK_SWEEP    = $03     // freq hi decrement per frame
 
 
 * = $8000 "Greets"
@@ -182,26 +186,54 @@ interrupt:
         sta zp_kick_remain
 !no_beat:
 
-        // V3 kick override: while kick window is active, force V3 to
-        // noise + percussive ADSR + low pitch. After the window, write
-        // back intro's arp ADSR ($00/$F0) so the arp resumes audibly.
-        // music_play already wrote V3 pulse + arp freq + gate above,
-        // so we're overriding those writes per frame inside the window.
+        // V3 kick override (pitch-sweep style). While the kick window
+        // is active, we override the music engine's V3 writes:
+        //   • Frame N=KICK_FRAMES (just-armed): noise wave + gate +
+        //     short percussive AD/SR for the attack transient.
+        //   • Frames N-1..1: pulse wave + gate, freq swept down
+        //     (mid → sub) for the deep body.
+        //   • Frame N=0: idle — restore intro's arp ADSR so the
+        //     engine's next V3 freq/control write resumes the arp.
         lda zp_kick_remain
         beq !no_kick+
-        dec zp_kick_remain
-        lda #$08
-        sta $d413                  // V3 AD: attack 0, decay fast
+        cmp #KICK_FRAMES
+        bne !kick_sustain+
+
+        // First frame of kick: noise transient + reset envelope.
         lda #$00
-        sta $d414                  // V3 SR: no sustain, no release
+        sta $d413                  // V3 AD = $00 (instant attack/decay)
+        lda #$30
+        sta $d414                  // V3 SR = $30 (mid sustain for body)
+        lda #$00
         sta $d40e                  // V3 freq lo = 0
-        lda #$03
-        sta $d40f                  // V3 freq hi (low pitch kick)
-        lda #$81
-        sta $d412                  // V3 control: noise + gate on
+        lda #KICK_FREQ_HI
+        sta $d40f
+        lda #$81                   // noise wave + gate on
+        sta $d412
+        jmp !kick_tick+
+
+!kick_sustain:
+        // Subsequent frames: switch to pulse, sweep pitch down each
+        // frame so it goes from mid-bass to sub.
+        lda #$81                   // (was already noise+gate; flip to pulse)
+        and #$7f                   // clear bit 7 (noise) — leaves gate alone
+        ora #$41                   // pulse + gate on
+        sta $d412
+        // Sweep: subtract KICK_SWEEP from freq hi each frame.
+        lda $d40f
+        sec
+        sbc #KICK_SWEEP
+        bcs !sweep_ok+
+        lda #$01                   // floor at $0100 so it stays audible
+!sweep_ok:
+        sta $d40f
+
+!kick_tick:
+        dec zp_kick_remain
         jmp !kick_done+
+
 !no_kick:
-        // Restore intro's arp envelope so the arp sustains again.
+        // Restore intro's arp envelope so the arp resumes audibly.
         lda #$00
         sta $d413
         lda #$f0

@@ -15,6 +15,9 @@ The deeper guides live under [`docs/`](./docs/):
 - [`docs/pefchain-notes.md`](./docs/pefchain-notes.md) — Spindle 3.1
   specifics: EFO header tags, transition conditions, segment-size
   traps, load-gap analysis.
+- [`docs/sid-drums.md`](./docs/sid-drums.md) — classic SID percussion
+  techniques (pitched kick, noise+pulse layering, snare, hat, voice-
+  sharing patterns) and how we apply them in greets.
 
 If you're updating long-form guidance, prefer editing those files
 over creating new top-level docs.
