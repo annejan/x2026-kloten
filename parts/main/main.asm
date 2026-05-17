@@ -23,6 +23,7 @@
 .const VIC_CTRL1    = $d011
 .const VIC_RASTER   = $d012
 .const SPR_EN       = $d015
+.const SPR_FORE     = $d01b     // sprite-foreground priority; set bit = sprite BEHIND foreground pixels
 .const SPR_YEXP     = $d017
 .const VIC_CTRL2    = $d016
 .const SPR_MC       = $d01c
@@ -173,6 +174,11 @@ init_sprites:
         sta SPR_YEXP            // Y-expanded → round balls
         lda #0
         sta SPR_MC
+        // Top sprites 0,1,2 pass behind the scroller letters: their
+        // foreground-priority bit set means the bitmap %01/%10/%11
+        // pixels (letter strokes) overdraw the sprite where they meet.
+        lda #%00000111
+        sta SPR_FORE
 
         // 8 distinct colours
         lda #$01                // white

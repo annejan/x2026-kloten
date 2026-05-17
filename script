@@ -13,7 +13,7 @@ parts/screenfill/screenfill.prg
 # BitmapScreenRAM (1000 bytes)
 parts/main/main.prg   400   2      3e8
 # Main code + IRQs
-parts/main/main.prg   810   412    1ed
+parts/main/main.prg   810   412    1f2
 # Music (SID player + patterns)
 parts/main/main.prg   1000  c02    25e
 # Bitmap (logo data, 8000 bytes)
