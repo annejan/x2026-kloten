@@ -243,17 +243,20 @@ interrupt:
         bne !p4-
 
         inc RADIUS
+        // On the last ring (RADIUS just became 16) → one-shot transition
+        // border from BASIC's light-blue ($0E) to blue ($06). MUST be a
+        // one-shot: writing $06 every ripple frame would clobber the
+        // $00 snap at HOLDCNT=56 next frame and the border would flicker.
+        lda RADIUS
+        cmp #16
+        bne irq_done_jmp
+        lda #$06
+        sta VIC_BORDER
+irq_done_jmp:
         jmp irq_done
 
 !do_ripple:
         // ===== RIPPLE + FADE =====
-        // First entry into ripple — drop border from BASIC's light-blue
-        // ($0E) to blue ($06) to match bg. Idempotent: writing $06 every
-        // subsequent ripple frame doesn't hurt until the late-fade snap
-        // to $00 takes over.
-        lda #$06
-        sta VIC_BORDER
-
         lda HOLDCNT
         beq irq_done
 
@@ -294,28 +297,10 @@ interrupt:
         bne !r4-
 
         // ----- staged fadeout -----
-        // On new-VIC there is NO luminance step between $06 (blue, lum
-        // 63) and $00 (black, lum 0) — $0B (dark grey, lum 79) is
-        // actually BRIGHTER than blue, so any $06→$0B→$00 ramp inverts
-        // perceived darkness mid-fade. COLFADE v2 also fades $06 → $00
-        // directly. So bg+border just snap to black during the ripple.
-        // BG snaps to black at HOLDCNT=85, border lags a few frames
-        // (snaps at HOLDCNT=75) — the border holding blue a tiny bit
-        // after bg already darkened feels right; black border at the
-        // same moment as bg-going-black feels abrupt.
-        lda HOLDCNT
-        cmp #85
-        bne !nbg+
-        lda #$00
-        sta VIC_BG
-!nbg:   cmp #75
-        bne !nb+
-        lda #$00
-        sta VIC_BORDER
-!nb:
         // Text palette fade: every 8 frames step ripple_palette through
         // a hue-stable fadetab (each path monotonically darker:
-        // $01→$0F→$0C→$0B→$00 and $03→$0E→$06→$00).
+        // $01→$0F→$0C→$0B→$00 and $03→$0E→$06→$00). 4 ticks at
+        // HOLDCNT 80/72/64/56 walk the palette fully to $00.
         lda HOLDCNT
         cmp #85
         bcs !nofade+
@@ -328,6 +313,21 @@ interrupt:
         dey
         bpl !fl-
 !nofade:
+        // bg + border snap at HOLDCNT=72 — mid-fade, after the palette
+        // has stepped through fadetab once (at HOLDCNT=80) so the rings
+        // are already partially dimmed when the bg drops. The remaining
+        // fade ticks (at 64, 56) walk the rings the rest of the way to
+        // $00 on a black bg, keeping the ripple visible right through
+        // to the end. No early bg blink (snapping at 85 used to drop
+        // bg to black while rings were still full bright), bg + border
+        // drop together so neither lingers behind the other.
+        lda HOLDCNT
+        cmp #72
+        bne !nbg+
+        lda #$00
+        sta VIC_BG
+        sta VIC_BORDER
+!nbg:
 
         inc PHASE
         dec HOLDCNT
