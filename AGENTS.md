@@ -36,7 +36,7 @@ Seven parts loaded by Spindle's pefchain framework:
 | 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $20` (beat counter) |
 | 4 | `parts/sinus/`       | Comedown: sine-wobble DEFEEST + colour cycling, LP filter close, drums silent | `$F6 = $30` (set when `$FC` frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: DYCP sprite-font scroller with sine wobble + kick drums returning | `$F6 = $20` |
-| 6 | `parts/coda/`        | Title card "KLOOT AND THE BREADBIN" with slow border colour cycle + dedicated V3 kick | `$F6 = $30` (frame counter hits N_FRAMES) |
+| 6 | `parts/coda/`        | Title card hold: "KLOOT AND THE BREADBIN", sine border, V3 kick | `$F6 = $30` |
 | 7 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
@@ -104,8 +104,8 @@ outline-64/
 │   ├── screenfill/{screenfill.asm, screenfill_efo_header.asm}
 │   ├── intro/    {intro.asm,    intro_efo_header.asm}
 │   ├── interlude/{interlude.asm, interlude_efo_header.asm}
+│   ├── greets/   {greets.asm,   greets_efo_header.asm, greets_test.asm}
 │   ├── sinus/    {sinus.asm,    sinus_efo_header.asm}
-│   ├── greets/   {greets.asm,   greets_efo_header.asm}
 │   ├── coda/     {coda.asm,     coda_efo_header.asm}
 │   └── end/      {end.asm,      end_efo_header.asm}
 ├── tools/
@@ -378,11 +378,42 @@ In rough order of likelihood:
 
 ---
 
+## Standalone part testing
+
+For fast iteration on a single part without running the full 7-part demo:
+
+```bash
+# Build a standalone test .prg that includes the part code plus a
+# boot harness (BASIC SYS, VIC init, raster IRQ, music stub).
+java -jar kickass/KickAss.jar parts/greets/greets_test.asm
+x64sc -autostart parts/greets/greets_test.prg
+```
+
+The test harness must:
+- Set VIC bank 0 (`$DD00` bits 0-1 = 11) — the default bank for most parts
+- Disable CIA IRQs (`$DC0D` / `$DD0D`)
+- Set up a raster IRQ at line 50 calling the part's `interrupt`
+- Stub `INTRO_MUSIC_PLAY` at `$119E` (just `rts`) if music isn't needed
+
+**Gotcha:** VIC bank selection in the boot harness must match the part's
+expectations. Greets needs bank 0 (`$DD00 |= $03`), not the KERNAL default.
+
+See `parts/greets/greets_test.asm` for a working example.
+
+---
+
 ## Pending work
 
-- **Real graphics / artwork pass** (improve logo, custom font polish,
-  sinus image swap from DEFEEST tile to something more artful,
-  end-screen background)
+- **Greets** — DYCP sprite scroller currently produces flashing/illegible
+  letters. Suspect: sine Y wobble too aggressive, or sprite colour
+  assignments blend into background. Fix approach: reduce/remove wobble,
+  adjust colours, verify sprite font scaling.
+- **Interlude** — too long at 32 beats (~15s). Needs `BEAT_COUNT_MAX`
+  reduced from $20 to $10 or similar.
+- **Sinus** — boring. Single `$D016` sine wobble + colour cycling on
+  repeated "DEFEEST" text needs replacement.
+- **Coda** — placeholder. Needs real content.
+- **Screenfill/intro** — wording/lettering polish needed.
 
 **Completed recent work (all shipped to main):**
 - 7-part structure: screenfill → intro → interlude → sinus → greets → coda → end

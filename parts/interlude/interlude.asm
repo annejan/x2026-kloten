@@ -32,7 +32,7 @@
 .const INTRO_MUSIC_PLAY = $119e
 
 .const BEAT_PERIOD   = 24
-.const BUILDUP_BEAT  = 24
+.const BUILDUP_BEAT  = 8
 .const FILT_CUT_LO   = $40
 .const FILT_CUT_STEP = $18
 
