@@ -48,23 +48,27 @@
 .const zp_scroll_pos  = $f7
 .const zp_scroll_tick = $f8
 .const zp_kick_state  = $f9    // V3 kick state machine (0=idle)
+.const zp_kick_freq   = $fa    // shadow of V3 freq hi (SID regs are write-only)
 
-// Pitch-swept kick state machine. Required because SID 6581 needs
-// "hard restart" to retrigger an envelope: gate must drop LOW for
-// >= 1 frame before going HIGH again or the new attack is silently
-// dropped (we hit this — previous static-pitch noise burst wrote
-// gate=1 over an already-gated V3 and produced no audible kick).
+// Pitch-swept kick state machine. SID 6581 ignores gate-on if gate
+// is already high, and music_play writes V3 ctrl = $41 (pulse + gate)
+// every frame. The trick: state 1 drops gate AND installs the kick's
+// AD/SR so when music_play raises gate in the NEXT frame, the envelope
+// attacks using OUR ADSR rather than something stale.
 //
 // State values:
-//   0       = idle (let music engine's arp run on V3)
-//   1       = HARD RESTART frame: gate off + ADSR cleared (silent)
-//   2       = ATTACK frame: gate on with noise + new ADSR + freq
-//   3..N    = SUSTAIN frames: pulse + pitch sweep down
-//   on the beat-detect we set zp_kick_state = 1 so the audible
-//   attack lands ~20 ms after the beat — close enough.
-.const KICK_LAST_FRAME = 12      // sustain frames run 3..LAST inclusive
-.const KICK_FREQ_HI    = $30     // starting freq hi byte (mid-bass)
-.const KICK_SWEEP      = $04     // freq hi decrement per frame
+//   0       = idle (arp on V3, restore intro AD/SR each frame)
+//   1       = HARD RESTART: gate off + INSTALL kick AD/SR + set freq.
+//             Envelope releases during this frame.
+//   2       = ATTACK frame: music_play's $41 will trigger envelope
+//             with kick AD/SR. We override wave to noise for click.
+//   3..N    = BODY frames: pulse (let music_play's $41 do it), sweep
+//             freq from shadow var (SID $D40F is write-only).
+//   N+1     = END: restore intro arp AD/SR, back to idle.
+.const KICK_LAST_FRAME = 12      // body frames run 3..LAST inclusive
+.const KICK_FREQ_HI    = $0C     // starting freq hi (~183 Hz, audible kick attack)
+.const KICK_SWEEP      = $01     // freq hi decrement per body frame
+.const KICK_FLOOR      = $03     // sub-bass floor (~46 Hz)
 
 
 * = $8000 "Greets"
@@ -152,6 +156,8 @@ setup:
         sta zp_beat_phase
         sta zp_beat_count
         sta zp_scroll_tick
+        sta zp_kick_state         // CRITICAL: was leaking stale interlude value
+        sta zp_kick_freq
 
         lda #$00
         sta VIC_RASTER
@@ -202,62 +208,69 @@ interrupt:
 
         cmp #1
         bne !chk_attack+
-        // STATE 1 — HARD RESTART: gate off, zero AD/SR. V3 envelope
-        // drops to 0 over the frame so the next gate-on triggers a
-        // proper attack instead of being ignored.
+        // STATE 1 — HARD RESTART: gate off + INSTALL kick AD/SR
+        // (NOT zero — we need these to be the kick envelope when
+        // music_play's gate-on rising edge fires in the next frame).
+        // Also install the freq + shadow.
         lda #$00
-        sta $d413                    // V3 AD = 0
-        sta $d414                    // V3 SR = 0
         sta $d412                    // V3 control = 0 (gate off, no wave)
+        lda #$09
+        sta $d413                    // V3 AD: attack 0 (2ms), decay 9 (~750ms)
+        lda #$00
+        sta $d414                    // V3 SR: no sustain (decays to 0)
+        sta $d40e                    // V3 freq lo = 0
+        lda #KICK_FREQ_HI
+        sta $d40f                    // V3 freq hi (start pitch)
+        sta zp_kick_freq             // shadow
         inc zp_kick_state
         jmp !kick_done+
 
 !chk_attack:
         cmp #2
-        bne !kick_sustain+
-        // STATE 2 — ATTACK: set kick ADSR, freq, noise + gate on.
-        // Rising edge triggers the new envelope cleanly.
-        lda #$09
-        sta $d413                    // AD: attack 0 (2ms), decay 9 (~240ms)
-        lda #$00
-        sta $d414                    // SR: no sustain (drops to 0 after decay)
-        sta $d40e                    // freq lo
-        lda #KICK_FREQ_HI
-        sta $d40f                    // freq hi (mid-bass)
-        lda #$81                     // noise + gate on
+        bne !kick_body+
+        // STATE 2 — ATTACK frame. music_play this frame writes
+        // ctrl = $41 (gate ON, rising edge from state 1's gate off) —
+        // that fires the envelope using the kick AD/SR we installed
+        // in state 1. We then override the waveform to noise for a
+        // percussive click. AD/SR are already kick values, gate is
+        // already on; we just change wave.
+        lda #$81                     // noise + gate (gate already 1)
         sta $d412
         inc zp_kick_state
         jmp !kick_done+
 
-!kick_sustain:
-        // STATES 3..KICK_LAST_FRAME — switch to pulse + pitch sweep.
+!kick_body:
+        // STATES 3..KICK_LAST_FRAME — pulse body + freq sweep down.
         cmp #KICK_LAST_FRAME
         bcs !kick_end+
-        lda #$41                     // pulse + gate (still high — wave change)
-        sta $d412
-        lda $d40f
+        // Wave: leave as pulse (music_play wrote $41 already this
+        // frame, gate stays on, envelope continues its decay).
+        // Sweep freq from shadow (SID $D40F is write-only — can't
+        // read back what music_play just wrote).
+        lda zp_kick_freq
         sec
         sbc #KICK_SWEEP
+        cmp #KICK_FLOOR
         bcs !sweep_ok+
-        lda #$01                     // floor at $0100 so it stays audible
+        lda #KICK_FLOOR
 !sweep_ok:
+        sta zp_kick_freq
         sta $d40f
         inc zp_kick_state
         jmp !kick_done+
 
 !kick_end:
         // Kick done — restore intro's arp envelope so the arp resumes.
-        // Leave gate alone (music engine writes $41 each frame anyway).
         lda #$00
         sta $d413
         lda #$f0
         sta $d414
-        sta zp_kick_state            // back to idle (0)
+        lda #$00
+        sta zp_kick_state            // back to idle — explicit (not via A)
         jmp !kick_done+
 
 !kick_arp:
-        // Idle — make sure arp ADSR stays at intro's settings every
-        // frame (defensive, in case something else clobbered it).
+        // Idle — keep V3 AD/SR at intro's arp settings every frame.
         lda #$00
         sta $d413
         lda #$f0
