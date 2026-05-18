@@ -10,7 +10,7 @@ work.
 The deeper guides live under [`docs/`](./docs/):
 
 - [`docs/sound-arc.md`](./docs/sound-arc.md) — how music flows from
-  intro's resident tables through interlude / greets / sinus into end, and
+  intro's resident tables through interlude / sinus / greets into end, and
   the SID-volume + filter-mode pitfalls that come with that design.
 - [`docs/pefchain-notes.md`](./docs/pefchain-notes.md) — Spindle 3.1
   specifics: EFO header tags, transition conditions, segment-size

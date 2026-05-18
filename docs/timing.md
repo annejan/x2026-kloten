@@ -14,7 +14,7 @@ effects and music evolve.
 ## Part chain
 
 ```
-screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ greets ──15s──→ sinus ──5s──→ end (loops)
+screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ sinus ──5s──→ greets ──15s──→ end (loops)
 ```
 
 | Part | Duration | Cumulative | Transition ZP | Trigger |
@@ -22,8 +22,8 @@ screenfill ──5.6s──→ intro ──73s──→ interlude ──15s─�
 | screenfill | 5.6 s | 5.6 s | `$06` (HOLDCNT) | `06 = 00` |
 | intro | 73.3 s | 78.9 s | `$F6` (zp_outro) | `F6 = F0` |
 | interlude | 15.4 s | 94.3 s | `$F6` (zp_beat_count) | `F6 = 20` |
-| greets | 15.4 s | 109.7 s | `$F6` (zp_beat_count) | `F6 = 20` |
-| sinus | 5.0 s | 114.7 s | `$F6` (zp_timer) | `F6 = 30` |
+| sinus | 5.0 s | 99.3 s | `$F6` (zp_timer) | `F6 = 30` |
+| greets | 15.4 s | 114.7 s | `$F6` (zp_beat_count) | `F6 = 20` |
 | end | loops | — | (none) | `stay` |
 
 **One-pass runtime: ~1 min 55 s** from boot to looping credits.
@@ -90,29 +90,13 @@ characters; end-of-text = `$FF` triggers outro.
 | 0–23 | 0–11.5 s | Pad-only: V1 bass muted ($D404 = 0). Plasma + raster bars. |
 | 24 (BUILDUP_BEAT) | 11.5 s | V1 bass re-enabled. LP filter sweep starts at cutoff=$40. |
 | 24–31 | 11.5–15.4 s | Filter cutoff += $18 per beat: $40 → $58 → $70 → … → $FF. |
-| **32 (= $20)** | **15.4 s** | pefchain loads greets. |
+| **32 (= $20)** | **15.4 s** | pefchain loads sinus. |
 
 Per-frame: plasma (half rows updated), music, beat phase, raster bars.
 
 ---
 
-## Part 4 — greets (`parts/greets/`)
-
-32 beats × 24 frames = **15.36 s**.
-
-| Beat | Time | Event |
-|------|------|-------|
-| 0 | 0 s | 8 X-expanded sprites show 8-char window of greetings text. |
-| Each beat | every 0.48 s | Kick on V3 (10-frame pitch sweep). Music V1+V2 play naturally. |
-| 0–31 | 0–15.4 s | Text advances 1 char per 6 frames. DYCP sine wobble per sprite. |
-| **32 (= $20)** | **15.4 s** | pefchain loads end. |
-
-Only ~128 of 864 text characters scroll through before the
-32-beat limit triggers the transition.
-
----
-
-## Part 5 — sinus (`parts/sinus/`)
+## Part 4 — sinus (`parts/sinus/`)
 
 250 frames = **5.0 s**.
 
@@ -136,6 +120,22 @@ inherited intro chords.
 sine_tab + col_tab + bg_tab. Earlier `'P', $08, $08` caused
 pefchain to overwrite sinus's tables with its driver wait-loop;
 see `docs/pefchain-notes.md`.
+
+---
+
+## Part 5 — greets (`parts/greets/`)
+
+32 beats × 24 frames = **15.36 s**.
+
+| Beat | Time | Event |
+|------|------|-------|
+| 0 | 0 s | 8 X-expanded sprites show 8-char window of greetings text. |
+| Each beat | every 0.48 s | Kick on V3 (10-frame pitch sweep). Music V1+V2 play naturally. |
+| 0–31 | 0–15.4 s | Text advances 1 char per 6 frames. DYCP sine wobble per sprite. |
+| **32 (= $20)** | **15.4 s** | pefchain loads end. |
+
+Only ~128 of 864 text characters scroll through before the
+32-beat limit triggers the transition.
 
 ---
 

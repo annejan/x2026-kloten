@@ -39,11 +39,13 @@
 .const zp_beat_phase = $f4
 .const zp_filt_cut   = $f5
 .const zp_beat_count = $f6
-.const zp_plasma_phs = $f7
+.const zp_xphase     = $f7        // global plasma X phase (per-frame)
 .const zp_plasma_tgl = $f8
 .const zp_bar_clr_ofs= $f9
-.const zp_wave_phs   = $fa
+.const zp_wave_phs   = $fa        // per-row cell phase tracker
+.const zp_yphase     = $fb        // global plasma Y phase (slower)
 .const zp_tmp        = $fc
+.const zp_y_contrib  = $fd        // per-row precomputed Y wave value
 
 * = $8000 "Interlude"
 
@@ -75,7 +77,8 @@ setup:
         sta zp_beat_phase
         sta zp_beat_count
         sta zp_filt_cut
-        sta zp_plasma_phs
+        sta zp_xphase
+        sta zp_yphase
         sta zp_plasma_tgl
         sta zp_bar_clr_ofs
 
@@ -128,28 +131,44 @@ setup:
 
 
 //==================================================================
-// write_plasma_row — write all 40 color-RAM cells in row X.
+// write_plasma_row — true 2D plasma into row X's 40 colour-RAM cells.
 //   X = row index 0..24.
-// Text-mode color RAM ($D800-$DBFF) is 1 byte per cell (low nibble
-// only). The previous packed-2x4 version wrote 20 bytes and left
-// cols 20-39 stale, which painted the right half of the screen with
-// whatever leftover colour was there (looked white on the live demo).
+//
+// Algorithm: per cell, colour = palette[ (wave[X-phase] + wave[Y-phase]) & 0x0F ].
+// Two independent phases (`zp_xphase`, `zp_yphase`) advance at
+// different rates each frame, so the interference pattern morphs
+// rather than just scrolling. Y-contribution is constant for the
+// whole row — computed once at row start, reused for all 40 cells.
 //==================================================================
 write_plasma_row:
-        lda zp_plasma_phs
+        // Per-row Y contribution: wave[(row_offset[X] + yphase) & 0xff].
+        // row_offset has non-linear stagger so vertical bands curve.
+        lda row_offset,x
         clc
-        adc row_offset,x
+        adc zp_yphase
+        tay
+        lda wave,y
+        sta zp_y_contrib
+
+        // Per-row X phase: starts at zp_xphase, increments per cell.
+        lda zp_xphase
         sta zp_wave_phs
 
+        // Self-modify destination ($D800 + X*40).
         lda row_cr_lo,x
         sta smc+1
         lda row_cr_hi,x
         sta smc+2
 
+        // Per-cell loop: 40 colour-RAM writes.
         ldx #0
 !lp:    ldy zp_wave_phs
         lda wave,y
+        clc
+        adc zp_y_contrib          // 2D plasma sum
         and #$0f
+        tay
+        lda plasma_palette,y      // hue-stable gradient
 smc:    sta $d800,x
         inc zp_wave_phs
         inx
@@ -226,8 +245,13 @@ interrupt:
         sta zp_filt_cut
 !no_beat:
 
-        // plasma — advance phase, update half the rows
-        inc zp_plasma_phs
+        // plasma — advance both phases at different rates so the
+        // interference pattern morphs rather than just scrolls.
+        // xphase = +2 per frame (faster horizontal flow)
+        // yphase = +1 per frame (slower vertical drift)
+        inc zp_xphase
+        inc zp_xphase
+        inc zp_yphase
 
         lda zp_plasma_tgl
         and #1
@@ -415,6 +439,14 @@ wave:
         .var s2 = 7.5 + 7.5 * sin(i * 4 * PI / 256)
         .byte floor((s1 + s2) * 0.5 + 0.5)
 }
+
+// 16-entry hue-stable plasma palette: symmetric blue→cyan→white→cyan→blue.
+// Matches screenfill's ripple_palette for visual continuity. Each
+// plasma index 0..15 maps to a C64 colour; the symmetry means the
+// pattern flows back through itself rather than wrapping abruptly.
+plasma_palette:
+        .byte $00, $06, $06, $0e, $0e, $03, $03, $01
+        .byte $01, $03, $03, $0e, $0e, $06, $06, $00
 
 // Row stagger — each row's phase offset in the wave
 row_offset:

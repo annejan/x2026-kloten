@@ -383,7 +383,7 @@ In rough order of likelihood:
   end-screen background)
 
 **Completed recent work (all shipped to main):**
-- 6-part structure: screenfill → intro → interlude → greets → sinus → end
+- 6-part structure: screenfill → intro → interlude → sinus → greets → end
 - Drums in intro's `my_music_play` gated on `zp_outro != 0` so they
   enter late in intro and carry through interlude + greets
 - Story interleave in interlude (sad text on plasma → tease text at

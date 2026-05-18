@@ -20,10 +20,10 @@
         // Inherit intro's music tables at $10-$12 — we call intro's
         // my_music_play at $119e. Pefchain MUST NOT overwrite these.
         .byte 'I', $10, $12
-        // Zero-page: $f4-kick_phase, $f5-filt_cut, $f6-beat_count,
-        //            $f7-plasma_phs, $f8-plasma_tgl, $f9-bar_clr_ofs,
-        //            $fa-wave_phs, $fc-tmp
-        .byte 'Z', $f4, $fc
+        // Zero-page: $f4-beat_phase, $f5-filt_cut, $f6-beat_count,
+        //            $f7-xphase, $f8-plasma_tgl, $f9-bar_clr_ofs,
+        //            $fa-wave_phs, $fb-yphase, $fc-tmp, $fd-y_contrib
+        .byte 'Z', $f4, $fd
         // I/O safe (we leave $01 at $35)
         .byte 'S'
         .byte $00

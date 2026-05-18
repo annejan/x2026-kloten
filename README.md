@@ -141,31 +141,39 @@ trigger. The end card is the only "stay" loop.
 - Inherits intro's music pages (`'I', $10, $12` in the EFO header) so
   pefchain doesn't overwrite the resident tables.
 
-### Part 4 — `parts/greets/greets.asm` (greetings scroll)
-
-- **DYCP sprite-font scroll** — 8 X-expanded sprites show a 8-char window
-  of greetings text with a per-sprite sine wobble (Y offset from sine table).
-- **Kick drums on V3** — 10-frame pitch sweep on every beat, layered over
-  the inherited music (bass on V1, lead on V2).
-- Text advances 1 char per 6 frames, ~128 of 864 chars visible in 32 beats.
-- Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
-  pefchain advances to sinus.
-- Inherits intro's music pages (`'I', $10, $12`).
-
-### Part 5 — `parts/sinus/sinus.asm` (afterglow)
+### Part 4 — `parts/sinus/sinus.asm` (breather)
 
 - **Char-mode sine wobble** — per-scanline `$D016` fine-scroll write from a
-  200-entry sine table (range 0–7 px) for a wavy image effect.
-- **Colour cycling** — border and background colours step through a palette
-  table each frame for a subtle glow.
+  256-entry sine table (range 0–7 px, OR'd with `$08` to preserve CSEL).
+- **Repeating "DEFEEST" text** filling the whole screen via ROM uppercase
+  chargen at `$1000`. Connects back to the screenfill bloom.
+- **Colour cycling** — border and background colours step through tables
+  per scanline for a flowing wave look.
 - **LP filter close** — filter cutoff sweeps from $70→$08 over 200 frames.
   `$D418` re-asserted every frame after `my_music_play` (which would
   otherwise clobber the LP bit with a vol-only write).
 - **Volume fade-out** — SID vol $0F→$00 over the last 50 frames.
-- Frame counter at `$f6` ticks every frame. After 250 frames (~5 s)
+- **No drums** — sinus's setup zeros `$F6` (its `zp_timer`), which is also
+  the gating byte for the percussion in `my_music_play`. Ear-cleansing
+  break before the greets climax.
+- Frame counter at `$f6` reaches `$30` after 250 frames (~5 s) and
+  pefchain advances to greets.
+- Inherits intro's music pages (`'I', $10, $12`).
+- EFO claims `'P', $08, $0C` (5 pages of code + tables — earlier
+  single-page claim caused pefchain to overwrite the colour/sine tables).
+
+### Part 5 — `parts/greets/greets.asm` (greetings scroll)
+
+- **DYCP sprite-font scroll** — 8 X-expanded sprites show a 8-char window
+  of greetings text with a per-sprite sine wobble (Y offset from sine table).
+- **Kick drums on V3** — pitch-swept noise burst on every beat (driven from
+  intro's resident `my_music_play`; gated on `zp_outro != 0` which sinus
+  resets, so drums silence in sinus and return here).
+- Text advances 1 char per 6 frames, ~128 of 864 chars visible in 32 beats.
+- Greeting scroll tells the personal arc: "for years no time… then I sat
+  down with Kloot… especially Kloot for finally getting me here".
+- Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
   pefchain advances to end.
-- Current artwork: placeholder vertical-stripe test pattern (256-char set).
-  Awaiting real sinus-style image.
 - Inherits intro's music pages (`'I', $10, $12`).
 
 ### Part 6 — `parts/end/end.asm` (credit roll)

@@ -62,17 +62,16 @@ fadeout returns with carry set, pefchain loads the next part.
 ### Reusing the same byte across parts
 
 We reuse `$F6` for four different transitions (intro → interlude →
-greets → sinus → end). This is fine because **each part's setup resets
+sinus → greets → end). This is fine because **each part's setup resets
 the byte to a value that doesn't satisfy the next condition**:
 
 - intro's `zp_outro` ticks from `0` to `$F0` (transition: `f6 = f0`)
 - interlude's setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
+- sinus' setup resets `$F6 = 0`, then `irq_top` sets `$F6 = $30` once
+  zp_frame ≥ N_FRAMES (~5 s) (transition: `f6 = 30`)
 - greets' setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
-- sinus' setup resets `$F6 = 0`, then frame counter ticks past `$30`
-  and stalls; condition `f6 = 30` catches it at the right moment
-  (transition: `f6 = 30`)
 
 **If you forget to reset `$F6` in setup**, the prior part's value
 satisfies the new condition and pefchain transitions immediately —
