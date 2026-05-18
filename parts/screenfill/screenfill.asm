@@ -51,6 +51,37 @@
 // fadeout:   no-op (sec; rts) — transition already triggered by HOLDCNT.
 
 * = $c000 "ScreenFill"
+
+//==================================================================
+// prepare — runs in main context during the LEADING blank effect's
+// interrupt loop, BEFORE switchover to screenfill's setup. The blank
+// effect that pefchain inserts ahead of the first part has a setup
+// that writes $D011=$00 (DEN off), $D020=$00 (border black), and
+// $D015=$00 (sprites off) — so the screen goes black for the entire
+// load-gap (~270ms) until screenfill.setup repaints it. Restoring
+// BASIC's defaults here covers that gap: the user sees BASIC text +
+// light-blue border continue right up until the radial fill begins.
+//
+// The handbook warns against writing VIC registers in prepare because
+// it races the previous part's IRQ — but for OUR case the previous
+// "part" is the pefchain-generated blank whose IRQ ONLY calls the
+// music player; it never touches $D011/$D020/$D021/$D015. Safe.
+//==================================================================
+prepare:
+        lda #$3c                        // VIC bank 0 (BASIC default)
+        sta $dd02
+        lda #$1b                        // DEN=1, RSEL=1, YSCROLL=3 (BASIC default)
+        sta $d011
+        lda #$15                        // screen $0400, chargen $1000 ROM uppercase
+        sta VIC_MEM                     //  — restores BASIC text rendering
+        lda #$0e                        // border $0E light blue
+        sta VIC_BORDER
+        lda #$06                        // bg $06 blue
+        sta VIC_BG
+        lda #$00
+        sta $d015                       // sprites off
+        rts
+
 setup:
         // pefchain leaves $01=$35 and CIAs configured for the loader,
         // so we don't sei / write $01 / touch $dc0d / $dd0d.
@@ -71,14 +102,18 @@ setup:
         sta $d015
 
         // Bg → blue so the DEFEEST chars bloom over the BASIC text
-        // (which was blue/light-blue), but leave BORDER at BASIC's $0E
-        // (light blue). Border stays at the BASIC default through the
-        // entire radial-fill phase (~2.5 s) — the interrupt drops it
-        // to $06 once RADIUS hits 16 (ripple starts), then to $00 in
-        // the existing late-ripple fade. Avoids a jarring border-color
-        // snap immediately after RUN.
+        // (which was blue/light-blue). Border → $0E light blue to MATCH
+        // BASIC's default — Spindle's boot driver clears the border to
+        // black before handing off, so without this write the user sees
+        // a black flash between RUN and the radial fill starting.
+        // Border then holds $0E through the entire radial-fill phase
+        // (~2.5 s); the interrupt drops it to $06 once RADIUS hits 16
+        // (ripple starts), and bg + border snap to $00 together in the
+        // late-ripple fade.
         lda #$06
         sta VIC_BG
+        lda #$0e
+        sta VIC_BORDER
 
         // Colour RAM → light blue. (Ripple overwrites it during hold.)
         ldx #0

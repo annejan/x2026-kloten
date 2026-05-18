@@ -7,7 +7,7 @@
 
 .pc = $0000 "EfoHeader"
         .text "EFO2"
-        .word $0000              // prepare
+        .word prepare            // restore BASIC colors during the leading-blank load gap
         .word setup              // setup
         .word interrupt          // interrupt
         .word $0000              // main
