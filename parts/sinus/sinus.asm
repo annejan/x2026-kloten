@@ -49,10 +49,12 @@
 
 .const INTRO_MUSIC_PLAY = $119e
 
-.const zp_line   = $f8                // current scanline (0-199)
-.const zp_frame  = $f9                // frame counter (0..N_FRAMES-1)
 .const zp_timer  = $f6                // transition: set to $30 to trigger pefchain
 .const zp_tmp    = $f7                // temporary
+.const zp_line   = $fb                // current scanline (0-199)  (intro uses $fb as zp_text_ptr; safe across music_play)
+.const zp_frame  = $fc                // frame counter (0..N_FRAMES-1)
+                                      // MUST avoid $f9/$fa — intro's my_music_play clobbers
+                                      // them as zp_tmp/zp_msb on every JSR.
 
 
 * = $0800 "Sinus"

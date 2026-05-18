@@ -21,8 +21,11 @@
         .byte 'P', $08, $0C
         // Inherit intro's music tables
         .byte 'I', $10, $12
-        // Zero-page: $f6 (timer/transition), $f8-line, $f9-frame
-        .byte 'Z', $f5, $f9
+        // Zero-page: $f6-timer/transition, $f7-tmp, $fb-line, $fc-frame.
+        // We MUST avoid $f9/$fa — intro's my_music_play clobbers them every
+        // call as its own zp_tmp/zp_msb, so any counter stored there gets
+        // overwritten on each frame's JSR INTRO_MUSIC_PLAY.
+        .byte 'Z', $f6, $fc
         // I/O safe
         .byte 'S'
         .byte $00
