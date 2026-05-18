@@ -148,7 +148,14 @@ setup:
         lda #$1b
         sta VIC_CTRL1
 
-        // Raster IRQ at top of visible area
+        // Raster IRQ at top of visible area. Clear $D011 bit 7 first
+        // (high bit of raster-compare value) — previous parts may have
+        // left it set, in which case our $D012 writes of 49/50/etc.
+        // would compare to 305+/306+ (offscreen vsync), and the IRQ
+        // chain would never advance correctly.
+        lda VIC_CTRL1
+        and #%01111111                  // clear bit 7 = compare hi
+        sta VIC_CTRL1
         lda #FIRST_LINE - 1
         sta VIC_RASTER
         lda #$01
