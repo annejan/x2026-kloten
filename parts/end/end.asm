@@ -45,7 +45,7 @@
 .const zp_fade     = $fb         // fade-in counter, 0..FADE_DONE, ticks each frame; drives SID volume + text reveal
 .const zp_wrap_pending = $fc     // set non-zero in irq_top when yscroll wraps; consumed later to fire scroll_rows_up
 
-.const N_CREDIT_ROWS = 48        // KEEP IN SYNC with the .text blocks below
+.const N_CREDIT_ROWS = 63        // KEEP IN SYNC with the .text blocks below
 .const FADE_DONE     = 99        // fade-in completes after 99 frames (~2 sec @50Hz)
 .const TEXT_REVEAL   = FADE_DONE // colour RAM flips from black to the gradient at this fade tick
 .const SCROLL_TICK_MASK = $03    // tick yscroll every (mask+1) frames — $03 = every 4 frames
@@ -1056,30 +1056,36 @@ is_header:
         .byte 1             //  3     you were watching
         .byte 0             //  4     defeest
         .byte 1             //  5     x 2026
-        .byte 0,0,0         //  6..8  blank
-        .byte 1             //  9     code
-        .byte 0,0,0,0       // 10..13 names
-        .byte 0             // 14     blank
-        .byte 1             // 15     music
-        .byte 0             // 16     ai-coded
+        .byte 0             //  6     blank
+        .byte 1             //  7     a little story
+        .byte 0,0           //  8..9  of two minds / and one breadbin
+        .byte 0,0           // 10..11 blank
+        .byte 1             // 12     code
+        .byte 0,0,0,0       // 13..16 four code credits
         .byte 0             // 17     blank
-        .byte 1             // 18     graphics
-        .byte 0             // 19     defeest.nl
-        .byte 0             // 20     blank
-        .byte 1             // 21     tools
-        .byte 0,0,0,0,0     // 22..26 body
-        .byte 0             // 27     blank
-        .byte 1             // 28     documentation
-        .byte 0,0           // 29..30 body
-        .byte 0             // 31     blank
-        .byte 1             // 32     greetings
-        .byte 0,0,0         // 33..35 body
-        .byte 0             // 36     blank
-        .byte 1             // 37     thanks
-        .byte 0,0           // 38..39 body
-        .byte 0             // 40     blank
-        .byte 0             // 41     thanks for watching
-        .byte 0,0,0,0       // 42..45 blank tail
+        .byte 1             // 18     music
+        .byte 0,0,0         // 19..21 composed/by Anus/with help
+        .byte 0             // 22     blank
+        .byte 1             // 23     graphics
+        .byte 0,0           // 24..25 defeest.nl / hand pixeled with love
+        .byte 0             // 26     blank
+        .byte 1             // 27     tools
+        .byte 0,0,0,0,0     // 28..32 five tools
+        .byte 0             // 33     blank
+        .byte 1             // 34     documentation
+        .byte 0,0,0,0       // 35..38 codebase / spindle / every demo / before this
+        .byte 0             // 39     blank
+        .byte 1             // 40     greetings
+        .byte 0,0,0,0,0     // 41..45 five greet lines
+        .byte 0             // 46     blank
+        .byte 1             // 47     thanks
+        .byte 0,0           // 48..49 dutch lines
+        .byte 0             // 50     blank
+        .byte 1             // 51     and one last thought
+        .byte 0,0,0         // 52..54 forty years / breadbin / and so do we
+        .byte 0             // 55     blank
+        .byte 0,0,0         // 56..58 thank you / from anus / see you
+        .byte 0,0,0,0       // 59..62 blank tail
 
 
 //==================================================================
@@ -1103,6 +1109,9 @@ credit_text:
         row("                  defeest               ")
         row("                  x 2026                ")
         row("                                        ")
+        row("           a little story               ")
+        row("              of two minds              ")
+        row("              and one breadbin          ")
         row("                                        ")
         row("                                        ")
         row("           code                         ")
@@ -1118,6 +1127,7 @@ credit_text:
         row("                                        ")
         row("           graphics                     ")
         row("              defeest.nl                ")
+        row("              hand pixeled with love    ")
         row("                                        ")
         row("           tools                        ")
         row("              claude code               ")
@@ -1129,17 +1139,28 @@ credit_text:
         row("           documentation                ")
         row("              codebase.c64.org          ")
         row("              spindle v3 manual         ")
+        row("              every demo that came      ")
+        row("              before this one           ")
         row("                                        ")
         row("           greetings                    ")
         row("              outline 2026 crew         ")
         row("              linus akesson             ")
         row("              mads nielsen              ")
+        row("              everyone keeping the      ")
+        row("              breadbin singing          ")
         row("                                        ")
         row("           thanks                       ")
         row("              kloot voor de fouten      ")
         row("              en meer slechte ideeen    ")
         row("                                        ")
-        row("              thanks for watching       ")
+        row("           and one last thought         ")
+        row("              forty years on            ")
+        row("              the breadbin still sings  ")
+        row("              and so do we              ")
+        row("                                        ")
+        row("              thank you for watching    ")
+        row("              from anus and kloot       ")
+        row("              see you at the next party ")
         row("                                        ")
         row("                                        ")
         row("                                        ")
