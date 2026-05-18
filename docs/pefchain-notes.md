@@ -96,6 +96,7 @@ parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
 parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
+parts/coda/coda.pef                 f6 = 30
 parts/end/end.pef                   stay
 ```
 
@@ -105,9 +106,9 @@ fadeout returns with carry set, pefchain loads the next part.
 
 ### Reusing the same byte across parts
 
-We reuse `$F6` for four different transitions (intro → interlude →
-sinus → greets → end). This is fine because **each part's setup resets
-the byte to a value that doesn't satisfy the next condition**:
+We reuse `$F6` for five different transitions (intro → interlude →
+sinus → greets → coda → end). This is fine because **each part's setup
+resets the byte to a value that doesn't satisfy the next condition**:
 
 - intro's `zp_outro` ticks from `0` to `$F0` (transition: `f6 = f0`)
 - interlude's setup resets `$F6 = 0`, then beat counter ticks to `$20`
@@ -117,6 +118,10 @@ the byte to a value that doesn't satisfy the next condition**:
   N_FRAMES (~5 s). Transition: `f6 = 30`.
 - greets' setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
+- coda's setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
+  `$FC` (half-rate frame counter) ≥ N_FRAMES (~10 s). Same trigger
+  value as sinus, fine because they're not adjacent in the chain.
+  Transition: `f6 = 30`.
 
 #### Watch out: `$F9` and `$FA` are clobbered every `my_music_play`
 

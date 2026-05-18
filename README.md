@@ -50,7 +50,7 @@ shape of the process:
 
 ## What's in the demo
 
-Six parts loaded by [Spindle 3.1][spindle] via pefchain. Each one
+Seven parts loaded by [Spindle 3.1][spindle] via pefchain. Each one
 auto-advances on a timer / state condition — no space key, no manual
 trigger. The end card is the only "stay" loop.
 
@@ -176,10 +176,32 @@ trigger. The end card is the only "stay" loop.
 - Greeting scroll tells the personal arc: "for years no time… then I sat
   down with Kloot… especially Kloot for finally getting me here".
 - Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
-  pefchain advances to end.
+  pefchain advances to coda.
 - Inherits intro's music pages (`'I', $10, $12`).
 
-### Part 6 — `parts/end/end.asm` (credit roll)
+### Part 6 — `parts/coda/coda.asm` (title card)
+
+- **Title card** — "KLOOT AND THE BREADBIN" on row 11, "BY DEFEEST   FOR
+  X 2026" on row 13. Text mode, ROM uppercase chargen at `$1000`. The
+  breather where the story lands between greets' scroller and end's
+  credit roll.
+- **Slow border colour cycle** through a 256-entry calm palette (black /
+  blue / light-blue / light-grey), driven by `col_tab[zp_frame]`.
+- **Dedicated V3 kick** — coda "owns" V3 (no arp competing), so it sets
+  a real kick ADSR (`A=0, D=8, S=0, R=0`) once in setup and runs a
+  hard-restart state machine each beat: gate-off frame → fresh gate-on
+  + pitch-swept body. ~60 BPM, simpler than greets' kicks because there's
+  nothing to fight with on the voice. See [`docs/sid-drums.md`](./docs/sid-drums.md).
+- Half-rate divider on `zp_subtick` keeps `zp_frame` ticking at 25 Hz; after
+  `N_FRAMES = 250` (~10 s) the IRQ writes `$30` to `$f6` and pefchain
+  advances to end.
+- Inherits intro's music pages (`'I', $10, $12`). Drums from intro's
+  `my_music_play` are silenced (`zp_outro` gate stays zero because coda's
+  setup zeros `$f6`); only the coda's own V3 kick sounds.
+- Reuses `$0800-$0AFF` — same physical pages sinus claimed earlier in
+  the chain; sinus is long gone by then.
+
+### Part 7 — `parts/end/end.asm` (credit roll)
 
 - Custom font copied into bank 0, scrolled smoothly bottom-to-top via
   a row-major `scroll_rows_up` (full 40-byte row writes per chunk so VIC
@@ -231,6 +253,7 @@ parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
 parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
+parts/coda/coda.pef                 f6 = 30
 parts/end/end.pef                   stay
 ```
 
@@ -252,6 +275,9 @@ Each condition tells pefchain when to advance:
   hits 250. Sinus's setup resets `$f6` to 0.
 - `f6 = 20` — wait for `$f6` (= greets' beat counter) to reach 32.
   Same byte again, reset by greets' setup.
+- `f6 = 30` — wait for `$f6` (= coda's `zp_timer`) to be set to `$30`
+  by coda's IRQ once its `$fc` half-rate frame counter hits N_FRAMES
+  (~10 s). Coda's setup resets `$f6` to 0.
 - `stay`    — never advance (end runs forever).
 
 Spindle 3.1's resident loader sits at `$0200-$02FF` (+ buffer page
@@ -309,7 +335,7 @@ thing.
 ## Credits
 
 - Music: hand-written 3-voice SID jam (bass + lead + arp), drifts
-  through all six parts
+  through all seven parts
 - Logo: defeest.nl
 - Assembly: Anne Jan Brouwer with Claude (Anthropic) Opus 4.7
 - Thanks: Claude Code, opencode, and an endless supply of terrible ideas
