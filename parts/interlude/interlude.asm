@@ -268,7 +268,15 @@ interrupt:
 !go:
         ldx row_base
 !row_lp:
+        // write_plasma_row clobbers X (uses it as the per-cell counter
+        // inside the inner loop). Stash + restore so the outer loop's
+        // row index survives the call. Was a bug: only first row of
+        // each half-frame got animated.
+        txa
+        pha
         jsr write_plasma_row
+        pla
+        tax
         inx
         inx
         dec row_cnt

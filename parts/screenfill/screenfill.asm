@@ -299,11 +299,18 @@ interrupt:
         // actually BRIGHTER than blue, so any $06→$0B→$00 ramp inverts
         // perceived darkness mid-fade. COLFADE v2 also fades $06 → $00
         // directly. So bg+border just snap to black during the ripple.
+        // BG snaps to black at HOLDCNT=85, border lags a few frames
+        // (snaps at HOLDCNT=75) — the border holding blue a tiny bit
+        // after bg already darkened feels right; black border at the
+        // same moment as bg-going-black feels abrupt.
         lda HOLDCNT
         cmp #85
-        bne !nb+
+        bne !nbg+
         lda #$00
         sta VIC_BG
+!nbg:   cmp #75
+        bne !nb+
+        lda #$00
         sta VIC_BORDER
 !nb:
         // Text palette fade: every 8 frames step ripple_palette through
