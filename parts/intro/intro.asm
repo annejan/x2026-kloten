@@ -80,10 +80,28 @@
 // Drums fire only once zp_outro is non-zero (intro's outro animation
 // has armed, ~20 s into intro). Continues through interlude + greets
 // via my_music_play residency. End uses its own music_play, no drums.
-.const DRUM_LEN    = 10          // V3 drum window in frames (~200 ms thump)
-.const DRUM_FREQ_HI = $20        // starting noise pitch (mid-bass)
-.const DRUM_SWEEP   = $03        // hi-byte decrement per frame (sweep $20→sub)
+// V3 kick — punchy 808-style, voice-share with the arp.
+// Codebase64 SID-drum techniques applied:
+//   - Hard restart: 1 frame of gate=0 BEFORE gate=1 with kick ADSR,
+//     so the envelope starts from zero every beat (no level bleed).
+//   - Real AD envelope: D=8 gives a body that falls off over ~150 ms
+//     instead of the previous pinned-sustain. Sustain=0, release=0
+//     for the silence between hits.
+//   - Triangle waveform (not noise) — tonal kick. Noise at this freq
+//     range sounds like a swept crash, not a thump.
+//   - Steep pitch sweep from $20 (~480 Hz click) down to $03
+//     (~46 Hz sub-bass body), so the attack starts as a transient
+//     and lands on the boom.
+//   - At end of kick window we restore the arp's $00/$F0 envelope so
+//     the next arp note retriggers correctly.
+.const DRUM_LEN    = 12          // V3 kick body in frames (~240 ms)
+.const DRUM_FREQ_HI = $20        // starting pitch — the "click" transient
+.const DRUM_SWEEP   = $03        // hi-byte decrement per frame
 .const DRUM_FLOOR   = $03        // ~46 Hz floor (sub-bass body)
+.const KICK_AD     = $08         // attack=0 decay=8 → snappy fall-off
+.const KICK_SR     = $00         // sustain=0 release=0
+.const ARP_AD      = $00         // attack=0 decay=0  (restored after kick)
+.const ARP_SR      = $f0         // sustain=15 release=0
 
 // Outro phase thresholds (in zp_outro ticks; mirror intro pacing).
 // Outro starts when scroll_text hits $ff. Scroller stops immediately (gate
@@ -774,26 +792,39 @@ my_music_play:
         lda mu_step
         and #$03
         bne !drum_done+
-        // BEAT — arm a new kick window + reset freq shadow to start
-        // pitch so the next sweep begins from the top.
-        lda #DRUM_LEN
+        // BEAT — arm a new kick window. drum_state counts down from
+        // DRUM_LEN+1 so the FIRST tick is the hard-restart frame
+        // (gate=0), and the next DRUM_LEN frames are the kick body
+        // (gate=1, triangle, pitch sweep, kick ADSR).
+        lda #DRUM_LEN+1
         sta drum_state
         lda #DRUM_FREQ_HI
         sta drum_freq
 !drum_done:
 !done:
         // --- V3 DRUM tick (every frame, including non-step frames).
-        // Override V3 with noise + pitch-swept freq for the kick
-        // window. Envelope is at peak sustain (SR=\$F0 from arp init)
-        // so noise is LOUD. When drum_state hits 0 we stop overriding;
-        // next music_play call writes V3 ctrl=\$41 (pulse) and the arp
-        // resumes — envelope stays at peak, no audible silence.
         lda drum_state
         beq !drum_skip+
         dec drum_state
-        // Pitch sweep: drum_freq starts at DRUM_FREQ_HI on beat, ramps
-        // down by DRUM_SWEEP per frame to DRUM_FLOOR. Gives the deep
-        // "boom" thwump characteristic of an 808-style kick.
+        cmp #DRUM_LEN
+        bne !kick_body+
+        // ---- hard-restart frame ----
+        // Gate=0 with kick ADSR loaded NOW means the envelope releases
+        // through R=0 (instant) in this frame; next tick we set gate=1
+        // and the attack starts from zero (true hard restart).
+        lda #$10                  // triangle + gate OFF
+        sta $d412
+        lda #KICK_AD              // A=0 D=8 — sharp body decay
+        sta $d413
+        lda #KICK_SR              // S=0 R=0 — no tail
+        sta $d414
+        jmp !drum_skip+
+!kick_body:
+        // ---- kick body frame ----
+        // Sweep pitch down: drum_freq -= DRUM_SWEEP, clamped at FLOOR.
+        // Triangle waveform at sweeping freq + gate ON triggers the
+        // attack on the first body frame and lets the AD envelope
+        // decay naturally through the remaining frames.
         lda drum_freq
         sec
         sbc #DRUM_SWEEP
@@ -806,8 +837,19 @@ my_music_play:
         sta $d40e                 // V3 freq lo
         lda drum_freq
         sta $d40f                 // V3 freq hi (sweeping down)
-        lda #$81
-        sta $d412                 // V3: noise wave + gate on
+        lda #$11
+        sta $d412                 // V3: triangle wave + gate ON
+        // Last tick of the kick window: restore arp's ADSR so the
+        // next arp note retriggers with the right envelope. The arp
+        // code at the top of my_music_play writes V3 freq + ctrl=$41
+        // (pulse) on subsequent frames; with these ADSR values the
+        // pulse note will hold at peak sustain as before.
+        lda drum_state
+        bne !drum_skip+
+        lda #ARP_AD
+        sta $d413
+        lda #ARP_SR
+        sta $d414
 !drum_skip:
         rts
 
