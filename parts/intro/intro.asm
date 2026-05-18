@@ -108,6 +108,8 @@ setup:
         jsr copy_chargen
         jsr clear_screen
         jsr init_slide_hide
+        jsr clear_bitmap                // zero-fill $2000-$3FFF
+        jsr copy_logo                  // copy logo rows to rows 8-16
         jsr init_sprites
         jsr init_bmp_scroll
 
@@ -756,17 +758,13 @@ my_music_play:
 !done:
         rts
 
-// Multicolour bitmap data — 8000 bytes at $2000.
-.pc = BITMAP "Bitmap"
-.fill logo.getBitmapSize(), logo.getBitmap(i)
+// Compact logo bitmap rows 8-16 — extracted from defeest.kla at build
+// time. Stored at $1300 to avoid the runtime-cleared $2000-$3FFF bitmap
+// area. Copied into rows 8-16 ($2A00) by copy_logo in setup.
+.pc = $1300 "LogoRows"
+.import source "logo_rows.asm"
 
-// Bitmap-mode screen RAM ($0C00) holds 2 colour nibbles per cell —
-// uniform for our 4-colour logo. We could also do this at runtime
-// in clear_screen; doing it at compile time saves startup time.
-.pc = $0400 "BitmapScreenRAM"
-.fill 1000, $67
-
-// Page-aligned tables segment — placed past bitmap.
+// Page-aligned tables segment.
 .pc = $4000 "Tables"
 
 // Page-aligned 512-byte palette = 16 reps of the 32-entry rainbow.
@@ -803,6 +801,84 @@ fade_bg:
 .for (var i = 0; i < 17; i++) {
         .byte floor(logo.getBackgroundColor() * i / 16)
 }
+
+
+//==================================================================
+// clear_bitmap — zero-fill $2000-$3FFF (8000 bytes). The full bitmap
+// area is no longer pre-loaded from the PRG — cleared at runtime and
+// logo rows copied in from the compact logo_rows block.
+//==================================================================
+clear_bitmap:
+        lda #0
+        ldx #0
+!lp:    sta $2000,x
+        sta $2100,x
+        sta $2200,x
+        sta $2300,x
+        sta $2400,x
+        sta $2500,x
+        sta $2600,x
+        sta $2700,x
+        sta $2800,x
+        sta $2900,x
+        sta $2a00,x
+        sta $2b00,x
+        sta $2c00,x
+        sta $2d00,x
+        sta $2e00,x
+        sta $2f00,x
+        sta $3000,x
+        sta $3100,x
+        sta $3200,x
+        sta $3300,x
+        sta $3400,x
+        sta $3500,x
+        sta $3600,x
+        sta $3700,x
+        sta $3800,x
+        sta $3900,x
+        sta $3a00,x
+        sta $3b00,x
+        sta $3c00,x
+        sta $3d00,x
+        sta $3e00,x
+        sta $3f00,x
+        inx
+        bne !lp-
+        rts
+
+
+//==================================================================
+// copy_logo — copy 2880 bytes of pre-extracted logo bitmap rows
+// (rows 8-16) into the bitmap at $2A00.
+//==================================================================
+copy_logo:
+        lda #<logo_rows
+        sta src+1
+        lda #>logo_rows
+        sta src+2
+        lda #>$2A00
+        sta dst+2
+
+        ldx #11                // 11 full pages = 2816 bytes
+        ldy #0
+!copy:  src: lda $ffff,y
+        dst: sta $2A00,y
+        iny
+        bne !copy-
+        inc src+2
+        inc dst+2
+        dex
+        bne !copy-
+
+        // remaining 64 bytes
+        ldy #0
+!last:  lda logo_rows + 11 * 256,y
+        sta $2A00 + 11 * 256,y
+        iny
+        cpy #64
+        bne !last-
+        rts
 
 
 //==================================================================
