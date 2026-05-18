@@ -14,7 +14,7 @@ effects and music evolve.
 ## Part chain
 
 ```
-screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ sinus ──5s──→ greets ──15s──→ end (loops)
+screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ sinus ──5s──→ greets ──15s──→ coda ──10s──→ end (loops)
 ```
 
 | Part | Duration | Cumulative | Transition ZP | Trigger |
@@ -24,9 +24,10 @@ screenfill ──5.6s──→ intro ──73s──→ interlude ──15s─�
 | interlude | 15.4 s | 94.3 s | `$F6` (zp_beat_count) | `F6 = 20` |
 | sinus | 5.0 s | 99.3 s | `$F6` (zp_timer) | `F6 = 30` |
 | greets | 15.4 s | 114.7 s | `$F6` (zp_beat_count) | `F6 = 20` |
+| coda | 10.0 s | 124.7 s | `$F6` (zp_timer) | `F6 = 30` |
 | end | loops | — | (none) | `stay` |
 
-**One-pass runtime: ~1 min 55 s** from boot to looping credits.
+**One-pass runtime: ~2 min 5 s** from boot to looping credits.
 
 ---
 
@@ -135,14 +136,38 @@ see `docs/pefchain-notes.md`.
 | 0 | 0 s | 8 X-expanded sprites show 8-char window of greetings text. |
 | Each beat | every 0.48 s | Kick on V3 (10-frame pitch sweep). Music V1+V2 play naturally. |
 | 0–31 | 0–15.4 s | Text advances 1 char per 6 frames. DYCP sine wobble per sprite. |
-| **32 (= $20)** | **15.4 s** | pefchain loads end. |
+| **32 (= $20)** | **15.4 s** | pefchain loads coda. |
 
 Only ~128 of 864 text characters scroll through before the
 32-beat limit triggers the transition.
 
 ---
 
-## Part 6 — end (`parts/end/`)
+## Part 6 — coda (`parts/coda/`)
+
+`N_FRAMES = 250` half-rate ticks (~10.0 s at the 25 Hz subtick divider).
+
+| Frame | Time | Event |
+|-------|------|-------|
+| 0 | 0 s | Setup: text mode, ROM uppercase chargen at `$1000`, screen `$0400`. Title text painted on rows 11 and 13. V3 ADSR pre-loaded with kick shape (`AD=$08, SR=$00`). `$F6` zeroed → drums from intro's `my_music_play` silenced. |
+| 0 → 24 | 0 → 0.5 s | Lead-in: `zp_kick_count = 25` counts down before the first beat lands, so the title is up before the first thump. |
+| 25 + every 50 frames | every 1.0 s (~60 BPM) | V3 kick: gate-off (hard restart) → fresh gate-on with `$D40F = $18` → 12-frame body sweeping freq hi down to `$03` (`$D40F -= 2` per frame). |
+| 0 → 249 | 0 → 10.0 s | Border colour cycles through `col_tab` (256-entry slow sine through black / blue / light-blue / light-grey). Background stays black. |
+| **250** | **10.0 s** | IRQ writes `$F6 = $30`, border snaps to black; pefchain's `f6 = 30` condition fires, end loads. |
+
+Per-frame: `INTRO_MUSIC_PLAY` (chord pad + lead on V1/V2 keep
+drifting), then `coda_kick` overwrites V3 freq + control so the arp
+doesn't sound. `zp_subtick` toggles each IRQ; only every second IRQ
+increments `zp_frame`, halving the effective animation rate.
+
+**EFO ownership**: `'P', $08, $0A` (3 pages: code + col_tab; driver
+overflow lands at `$0B00-$0B1F` — fine because end's payload doesn't
+need `$0B`). `'I', $10, $12` inherits intro's resident music. Reuses
+the same pages sinus claimed earlier in the chain.
+
+---
+
+## Part 7 — end (`parts/end/`)
 
 Loops forever (`stay`). One credit cycle:
 

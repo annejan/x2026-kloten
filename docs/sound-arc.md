@@ -1,14 +1,15 @@
-# Sound arc — how music flows across the six parts
+# Sound arc — how music flows across the seven parts
 
 ## TL;DR
 
 Intro owns the music. Its **tables and play routine stay resident in
 RAM** for the rest of the demo (intro EFO claims `'P', $10, $12`; every
 subsequent part declares `'I', $10, $12` so pefchain doesn't overwrite
-them). Interlude, greets, sinus, and end all call into intro's
+them). Interlude, sinus, greets, and coda all call into intro's
 `my_music_play` at `$119E` from their per-frame IRQ, so the chord
-progression + lead + arp drift through the entire production with no
-discontinuity.
+progression + lead + arp drift through six of the seven parts with no
+discontinuity. End is the exception — it runs its own `end_music_init`
++ player for the credit-roll reprise.
 
 The interesting parts are the **per-part SID register management
 overlays** on top of that continuous music.
@@ -22,7 +23,8 @@ overlays** on top of that continuous music.
 | interlude   | Pad-only first 11 s (V1 muted). Last 4 s: V1 returns + LP cutoff sweeps open. Drums continue from intro. The "BUT THEN KLOOT WALKED IN" tease. |
 | sinus       | **Breakdown.** LP filter closes ($D418 re-asserted) and vol fades over the last 50 frames. Drums silent (sinus zeros `$F6 = zp_outro` — the gating byte). The eye of the storm before the drop. |
 | greets      | **Climax / drop.** Drums return (greets' setup re-arms `$F6`), full mix + lead + arp. DYCP scroller tells the personal arc on top of the loudest moment. |
-| end         | `end_music_init` re-inits SID for slow chord/lead reprise. PWM + filter sweep. No drums. The coda. |
+| coda        | **Aftermath.** Intro's drums silenced again (coda's setup zeros `$F6`), but coda *owns* V3 for the whole part — overrides the arp every IRQ with its own hard-restart kick on a ~60 BPM cadence. Chord pad + lead drift on V1/V2 under a sparser, slower thump than greets. Title card sits quietly while the music breathes out. |
+| end         | `end_music_init` re-inits SID for slow chord/lead reprise. PWM + filter sweep. No drums. The credit-roll outro. |
 
 ## Why my_music_play is special
 
@@ -85,8 +87,10 @@ on LP mode being asserted every frame.
 ## Drums in `my_music_play`
 
 Percussion lives inside intro's `my_music_play` and propagates to
-every later part that calls it (interlude / greets — sinus also
-calls it, but its setup zeros `$F6` which gates the drums off).
+every later part that calls it (interlude / greets — sinus and coda
+also call it, but their setups zero `$F6` so the resident drum gate
+stays closed there. Coda then layers its OWN V3 kick on top, owning
+the voice for the entire part).
 
 Architecture:
 
@@ -130,7 +134,10 @@ Drums fire only when `zp_outro` is non-zero. This means:
 - Interlude/greets: `$F6` repurposed as their own counters but
   always > 0 once setup runs → drums continue
 - Sinus: setup zeros `$F6` (which is `zp_timer` there), kept at 0
-  until the very last frame → **drums silent** = the comedown
+  until the very last frame → **resident drums silent** = the comedown
+- Coda: setup zeros `$F6` (also `zp_timer`) → **resident drums silent**,
+  but coda runs its own V3 kick state machine that overrides the arp
+  every frame
 - End: doesn't call `my_music_play` (uses its own routine) → no drums
 
 ### Why this gating works for "cohesive music"
@@ -183,6 +190,10 @@ The "feeling of transition" is carried by:
 - **DYCP scroller telling the full story in greets** — the climax
   with drums returning + bass + lead + arp + the personal arc on
   the loudest moment of the demo
+- **Coda's sparse hard-restart kick under the title card** — drums
+  from intro's gated player drop out again, but coda owns V3 and
+  fires its own slow ~60 BPM thump under the held chord. The room
+  settles. Title sits centered on a quiet screen for ~10 s.
 - **end's own `music_init` re-init** with PWM + filter sweep for the
   credit roll reprise — quiet, no drums, settles to the title card
 

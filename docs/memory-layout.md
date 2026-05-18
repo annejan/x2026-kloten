@@ -122,22 +122,27 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
 
 ### CPU view — per-part
 
-| Range          | screenfill | intro      | interlude | sinus     | greets    | end       |
-|----------------|------------|------------|-----------|-----------|-----------|-----------|
-| `$0200-$03FF`  | Spindle    | Spindle    | Spindle   | Spindle   | Spindle   | Spindle   |
-| `$0400-$07FF`  | screen RAM | bitmap colour | screen + plasma | screen (DEFEEST) | screen | screen + credits |
-| `$0800-$0FFF`  | —          | code + IRQs| —         | sinus code| —         | —         |
-| `$0800-…`      | —          | logo + sprite | —      | —         | —         | —         |
-| `$0C00-$0FFF`  | char_table | (free)     | —         | —         | —         | —         |
-| `$1000-$125D`  | —          | **resident music** ←inherited by all later parts | | | | end uses own |
-| `$1300-…`      | —          | compact logo_rows | —    | —         | —         | —         |
-| `$2000-$27FF`  | —          | —          | —         | charset (256×8) | sprite font | — |
-| `$2800-$3FFF`  | (free)     | intro bitmap (runtime cleared) | — | (free) | (free) | end font + code |
-| `$4000-$47FF`  | —          | rainbow palette + sine tables | — | — | — | — |
-| `$4C00-$53FF`  | —          | chargen-ROM copy (for scroll) | — | — | — | — |
-| `$5400-$5BBC`  | —          | bitmap scroller | — | —        | —         | —         |
-| `$8000-…`      | —          | —          | code      | —         | code + tables | — |
-| `$C000-$CB00`  | code + tables | — | — | — | — | — |
+| Range          | screenfill | intro      | interlude | sinus     | greets    | coda      | end       |
+|----------------|------------|------------|-----------|-----------|-----------|-----------|-----------|
+| `$0200-$03FF`  | Spindle    | Spindle    | Spindle   | Spindle   | Spindle   | Spindle   | Spindle   |
+| `$0400-$07FF`  | screen RAM | bitmap colour info | screen + plasma | screen (DEFEEST) | screen | title screen | screen + credits |
+| `$0800-$0AFF`  | —          | code + IRQs| —         | code + tables | —      | code + col_tab | — |
+| `$0B00-$0BFF`  | —          | sprite shapes | —      | sine_tab / col_tab | — | driver overflow | — |
+| `$0C00-$0CFF`  | —          | (free)     | —         | bg_tab    | —         | —         | —         |
+| `$1000-$125D`  | —          | **resident music tables + `my_music_play` — inherited by interlude / sinus / greets / coda; end uses its own player** ||||||
+| `$1300-$1FFF`  | —          | compact logo_rows | —    | —         | —         | —         | —         |
+| `$2000-$23FF`  | —          | logo bitmap (multicolour) | — | —    | sprite font | —      | —         |
+| `$2400-$3F3F`  | —          | (logo bitmap continues) | — | —     | —         | —         | end font + code |
+| `$4000-$47FF`  | —          | rainbow palette + sine + bounce tables | — | — | — | — | — |
+| `$4C00-$53FF`  | —          | chargen-ROM copy (for scroll) | — | — | — | — | — |
+| `$5400-$5BBC`  | —          | bitmap scroller + scroll text + extra sprite shape | — | — | — | — | — |
+| `$8000-…`      | —          | —          | code      | —         | code + tables | —     | —         |
+| `$C000-$CAFF`  | code + dist_table + ripple palette + char_table | — | — | — | — | — | — |
+
+Coda reuses the same `$0800-$0AFF` pages sinus claimed earlier in the
+chain — sinus is long gone by the time coda loads, so the bytes are
+free to repurpose. Greets' sprite font at `$2000-$23FF` overlaps the
+area intro used for its bitmap; again, intro is gone by then.
 
 ### Zero-page
 
@@ -158,8 +163,8 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
   rather than zero-page, because every part that calls
   `INTRO_MUSIC_PLAY` at `$119E` sees the same address. Putting it in
   intro's `'I',$10,$12`-protected pages means interlude / sinus /
-  greets can all read and write it without needing their own zp
-  declaration.
+  greets / coda can all read and write it without needing their own
+  zp declaration.
 
 - **screenfill keeps its code at `$C000`** (VIC bank 0's last 4 KB)
   because that area is otherwise unused by the demo, and importantly

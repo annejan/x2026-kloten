@@ -27,7 +27,7 @@ FOR BREADBIN CODE" then "BUT THEN KLOOT WALKED IN" when the bass
 returns; greets' DYCP scroller tells the full story; end credits
 close with "see you at Evoke".
 
-Six parts loaded by Spindle's pefchain framework:
+Seven parts loaded by Spindle's pefchain framework:
 
 | # | Dir | Role | Transition out |
 |---|-----|------|----------------|
@@ -36,7 +36,8 @@ Six parts loaded by Spindle's pefchain framework:
 | 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $20` (beat counter) |
 | 4 | `parts/sinus/`       | Comedown: sine-wobble DEFEEST + colour cycling, LP filter close, drums silent | `$F6 = $30` (set when `$FC` frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: DYCP sprite-font scroller with sine wobble + kick drums returning | `$F6 = $20` |
-| 6 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
+| 6 | `parts/coda/`        | Title card "KLOOT AND THE BREADBIN" with slow border colour cycle + dedicated V3 kick | `$F6 = $30` (frame counter hits N_FRAMES) |
+| 7 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
 `pefchain_script` file at repo root is the master sequencer.
@@ -103,15 +104,16 @@ outline-64/
 │   ├── screenfill/{screenfill.asm, screenfill_efo_header.asm}
 │   ├── intro/    {intro.asm,    intro_efo_header.asm}
 │   ├── interlude/{interlude.asm, interlude_efo_header.asm}
-│   ├── greets/   {greets.asm,   greets_efo_header.asm}
 │   ├── sinus/    {sinus.asm,    sinus_efo_header.asm}
+│   ├── greets/   {greets.asm,   greets_efo_header.asm}
+│   ├── coda/     {coda.asm,     coda_efo_header.asm}
 │   └── end/      {end.asm,      end_efo_header.asm}
 ├── tools/
 │   ├── png_to_koala.py       ← PNG → multicolour C64 bitmap
 │   ├── koala_to_logo_png.py  ← export logo rows 8-16 as paletted PNG
 │   └── logo_png_to_asm.py    ← import edited PNG back to logo_rows.asm
 ├── docs/
-│   ├── timing.md         ← frame-by-frame event timeline for all 6 parts
+│   ├── timing.md         ← frame-by-frame event timeline for all 7 parts
 │   ├── pefchain-notes.md
 │   ├── sid-drums.md
 │   └── sound-arc.md
@@ -169,14 +171,14 @@ the `.d64`.
 | `$0200-$02FF`  | Spindle 3.1 resident loader — DO NOT TOUCH        |
 | `$0300-$03FF`  | Spindle loader buffer                              |
 | `$0400-$07FF`  | Screen RAM (intro: bitmap colour-info; others: text) |
-| `$0800-$5BBC`  | intro code + bitmap + tables + chargen copy + scroll  |
-| `$0C00-$0FFF`  | screenfill char_table area (claimed during screenfill) |
-| `$1000-$125D`  | **intro's resident music** — tables + my_music_play   |
-| `$2000-$23FF`  | greets sprite font (overlays intro's unused bitmap)   |
-| `$2000-$27FF`  | sinus charset (overlays greets via blank filler)      |
+| `$0800-$5BBC`  | intro code + bitmap colour info + sprite shapes + scroller |
+| `$0800-$0CE7`  | sinus code + sine_tab + col_tab + bg_tab (during sinus) |
+| `$0800-$0B1F`  | coda code + col_tab + driver (during coda) |
+| `$1000-$125D`  | **intro's resident music** — tables + my_music_play (inherited by interlude / sinus / greets / coda) |
+| `$2000-$23FF`  | greets sprite font (overlays intro's unused bitmap area) |
 | `$3000-$444F`  | end font + code                                       |
-| `$8000-…`      | interlude / greets / sinus code + state               |
-| `$C000-$CAFF`  | screenfill code + dist_table + char_table             |
+| `$8000-…`      | interlude / greets code + state                       |
+| `$C000-$CAFF`  | screenfill code + dist_table + ripple palette + char_table |
 | `$F4-$F8`      | Spindle loader zero-page — DO NOT CLOBBER             |
 
 **Zero-page conventions:**
@@ -383,7 +385,7 @@ In rough order of likelihood:
   end-screen background)
 
 **Completed recent work (all shipped to main):**
-- 6-part structure: screenfill → intro → interlude → sinus → greets → end
+- 7-part structure: screenfill → intro → interlude → sinus → greets → coda → end
 - Drums in intro's `my_music_play` gated on `zp_outro != 0` so they
   enter late in intro and carry through interlude + greets
 - Story interleave in interlude (sad text on plasma → tease text at
