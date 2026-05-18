@@ -7,11 +7,12 @@
 // roll. Between them, the title sits centered on a quiet screen
 // for ~10 seconds while the resident chord progression drifts on.
 //
-// Visuals (deliberately minimal — no custom font, no sprites):
+// Visuals:
 //   row 11  KLOOT AND THE BREADBIN          (chargen ROM uppercase)
 //   row 13  BY DEFEEST   FOR X 2026
 //   border  slow sine colour cycle through col_tab
 //   bg      stays black
+//   top 5 rows: 16 stars twinkle via colour-RAM toggle (4 banks of 4)
 //
 // Music: jsr INTRO_MUSIC_PLAY each frame. Drums silent because
 // setup zeros $F6 (the gating byte for percussion in my_music_play)
@@ -218,12 +219,14 @@ fadeout:
 //     about to get overwritten by our kick)
 //   - kick state machine on V3 (hard-restart per beat, sweep body)
 //   - half-rate tick: zp_frame only advances every 2nd IRQ
+//   - star_field: twinkle 16 stars in top rows (4 banks of 4)
 //   - if zp_frame >= N_FRAMES, set $F6 = $30 (transition)
 //   - else border = col_tab[zp_frame] for slow sine colour cycle
 //==================================================================
 interrupt:
         jsr INTRO_MUSIC_PLAY
 
+        jsr star_field
         jsr coda_kick
 
         // half-rate divider
@@ -330,6 +333,55 @@ coda_kick:
 // zp_f6..f8 window is already crowded.
 kick_freq:
         .byte 0
+
+
+//==================================================================
+// star_field — twinkle 16 stars in the top 5 screen rows.
+//
+// Runs every frame, only updates on half-rate ticks (zp_subtick==0).
+// 16 pre-defined colour RAM positions are grouped into 4 banks of 4.
+// Each update writes all 16: bright white ($0F) for the active bank,
+// dark grey ($0E) for the others. The active bank rotates every 4
+// frames of zp_frame (~160ms per bank).
+//
+// Uses $f9 as temp (safe: my_music_play clobbers it before we run).
+//==================================================================
+star_field:
+        lda zp_subtick
+        bne !skip+
+
+        lda zp_frame
+        and #$0c                // active bank: 0,4,8,12
+        sta $f9
+
+        ldx #15
+!loop:
+        txa
+        and #$0c                // which bank this star belongs to
+        cmp $f9
+        bne !dim+
+        lda #$0f                // bright white
+        jmp !wcol+
+!dim:   lda #$0e                // dark grey (matches bg rows)
+!wcol:
+        ldy star_pos,x
+        sta COL_RAM,y
+        dex
+        bpl !loop-
+!skip:
+        rts
+
+
+//==================================================================
+// Star position table — 16 offsets into COL_RAM ($D800), rows 0-4.
+// Grouped as 4 banks of 4 for the active-bank twinkle scheme.
+// All offsets < 256 so they index via Y register.
+//==================================================================
+star_pos:
+        .byte $02, $2e, $5a, $a8         // bank 0: top spread
+        .byte $0a, $3c, $68, $7c         // bank 1: mid-top spread
+        .byte $1c, $4a, $76, $8c         // bank 2: mid spread
+        .byte $24, $9c, $b8, $c8         // bank 3: side spread
 
 
 //==================================================================
