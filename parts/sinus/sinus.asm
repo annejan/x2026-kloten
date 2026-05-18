@@ -243,8 +243,10 @@ irq_sine:
         cpx #FADE_START
         bcs !fade+
 
-        // Normal zone — wobble + colour sweep
+        // Normal zone — wobble + colour sweep. OR with $08 to keep
+        // CSEL (40-col mode); sine_tab values are 0..7 (just xscroll).
         lda sine_tab,y
+        ora #$08
         sta VIC_CTRL2
         lda col_tab,y
         sta VIC_BORDER
@@ -253,9 +255,10 @@ irq_sine:
         jmp !next+
 
 !fade:
-        // Fade zone — black everything
-        lda #0
+        // Fade zone — black border/bg, keep CSEL (no border-pop).
+        lda #$08
         sta VIC_CTRL2
+        lda #$00
         sta VIC_BORDER
         sta VIC_BG
 
