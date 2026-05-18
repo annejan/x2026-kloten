@@ -18,15 +18,16 @@ written by `Kloot/deFEEST` (the AI half of the team) and
 `Anus/deFEEST` (the human). KickAssembler 6510 source, Spindle 3.1
 linker, runs on stock PAL hardware (verified in VICE x64sc).
 
-Five parts loaded by Spindle's pefchain framework:
+Six parts loaded by Spindle's pefchain framework:
 
 | # | Dir | Role | Transition out |
 |---|-----|------|----------------|
 | 1 | `parts/screenfill/`  | Loading screen — radial DEFEEST bloom + water ripple + fade-to-black | `$06 = $00` (HOLDCNT drained) |
 | 2 | `parts/intro/`       | Logo bounce, scroller, rasterbars, 8 sprites, 3-voice SID | `$F6 = $F0` (`zp_outro` hits `T_OUTRO_DONE`) |
 | 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $20` (beat counter) |
-| 4 | `parts/greets/`      | DYCP sprite-font scroller with sine wobble | `$F6 = $20` |
-| 5 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
+| 4 | `parts/greets/`      | DYCP sprite-font scroller with sine wobble + kick drums | `$F6 = $20` |
+| 5 | `parts/sinus/`       | Afterglow: sine-wobble image + colour cycling, LP filter close | `$F6 = $30` (frame timer) |
+| 6 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
 `pefchain_script` file at repo root is the master sequencer.
@@ -94,13 +95,14 @@ outline-64/
 │   ├── intro/    {intro.asm,    intro_efo_header.asm}
 │   ├── interlude/{interlude.asm, interlude_efo_header.asm}
 │   ├── greets/   {greets.asm,   greets_efo_header.asm}
+│   ├── sinus/    {sinus.asm,    sinus_efo_header.asm}
 │   └── end/      {end.asm,      end_efo_header.asm}
 ├── tools/
 │   ├── png_to_koala.py       ← PNG → multicolour C64 bitmap
 │   ├── koala_to_logo_png.py  ← export logo rows 8-16 as paletted PNG
 │   └── logo_png_to_asm.py    ← import edited PNG back to logo_rows.asm
 ├── docs/
-│   ├── timing.md         ← frame-by-frame event timeline for all 5 parts
+│   ├── timing.md         ← frame-by-frame event timeline for all 6 parts
 │   ├── pefchain-notes.md
 │   ├── sid-drums.md
 │   └── sound-arc.md
@@ -162,8 +164,9 @@ the `.d64`.
 | `$0C00-$0FFF`  | screenfill char_table area (claimed during screenfill) |
 | `$1000-$125D`  | **intro's resident music** — tables + my_music_play   |
 | `$2000-$23FF`  | greets sprite font (overlays intro's unused bitmap)   |
+| `$2000-$27FF`  | sinus charset (overlays greets via blank filler)      |
 | `$3000-$444F`  | end font + code                                       |
-| `$8000-…`      | interlude / greets code + state                       |
+| `$8000-…`      | interlude / greets / sinus code + state               |
 | `$C000-$CAFF`  | screenfill code + dist_table + char_table             |
 | `$F4-$F8`      | Spindle loader zero-page — DO NOT CLOBBER             |
 
@@ -172,8 +175,9 @@ the `.d64`.
   bytes in this range in the EFO header's `'Z'` tag.
 - `$F6` doubles as the inter-part **transition condition** for several
   parts (intro's `zp_outro`, interlude's beat counter, greets' beat
-  counter). When a new part starts, its setup must reset `$F6` to a
-  value that won't immediately trigger the next condition.
+  counter, sinus' `zp_timer`). When a new part starts, its setup must
+  reset `$F6` to a value that won't immediately trigger the next condition.
+- `$F7` (zp_tmp), `$F8` (zp_line), `$F9` (zp_frame) used by sinus.
 - `$06` is screenfill's `HOLDCNT` — `06 = 00` in the pefchain script.
 
 ---
@@ -197,7 +201,8 @@ permanently mute the demo.
 If a part needs LP filter mode (`$D418` bit 4 = `$10`), it must
 re-write `$D418 = $1F` AFTER each call to `my_music_play`, otherwise
 the music routine's vol-only write (`$0F`) clobbers the filter bit
-every frame. See `parts/interlude/interlude.asm`.
+every frame. See `parts/interlude/interlude.asm` and
+`parts/sinus/sinus.asm`.
 
 ---
 
@@ -338,7 +343,7 @@ In rough order of likelihood:
    bytes in `parts/<x>/<x>.prg`. If bytes don't match, suspect
    self-modifying code that ran out of bounds (see the `>char_table`
    KA precedence trap).
-3. **Audio silent in interlude/greets?** Someone reintroduced the
+3. **Audio silent in interlude/greets/sinus?** Someone reintroduced the
    `vol_out` subtraction in `my_music_play`, or forgot to re-assert
    `$D418` after `INTRO_MUSIC_PLAY` in a part that needs LP filter
    mode.
@@ -354,13 +359,18 @@ In rough order of likelihood:
 
 ## Pending work
 
-- **Sinusstuff-style sines/image part** (new slot between greets and end?)
 - **Music arc polish** (build to climax, wind-down in end credits)
 - **Real graphics / artwork pass** (replace placeholder sprite font,
-  improve logo, custom font polish, end-screen background)
+  improve logo, custom font, sinus charset image, end-screen background)
 - **Interlude visual polish** (plasma speed/colours, bar bob, textures)
 - **Intro transition** — border/bg fade-in at screenfill→intro now smooth;
   verify through all emulator/hardware targets
+
+**Completed recent work:**
+- Interlude plasma + raster bars merged
+- Bitmap memory optimisation (clear_bitmap + copy_logo) merged
+- Logo PNG round-trip workflow (koala_to_logo_png.py + logo_png_to_asm.py) merged
+- Sinus part (char-mode wobble + colour cycling + filter sweep) merged
 
 See `docs/timing.md` for current frame-by-frame event timeline.
 

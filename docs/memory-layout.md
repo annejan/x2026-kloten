@@ -131,7 +131,8 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
 | `$0C00-$0FFF`  | char_table | (free)     | —         | —         | —         | —         |
 | `$1000-$125D`  | —          | **resident music** ←inherited by all later parts | | | | end uses own |
 | `$1300-…`      | —          | compact logo_rows | —    | —         | —         | —         |
-| `$2000-$3FFF`  | (free)     | runtime-cleared bitmap | — | (free)    | sprite font | end font + code |
+| `$2000-$27FF`  | —          | —          | —         | charset (256×8) | sprite font | — |
+| `$2800-$3FFF`  | (free)     | intro bitmap (runtime cleared) | — | (free) | (free) | end font + code |
 | `$4000-$47FF`  | —          | rainbow palette + sine tables | — | — | — | — |
 | `$4C00-$53FF`  | —          | chargen-ROM copy (for scroll) | — | — | — | — |
 | `$5400-$5BBC`  | —          | bitmap scroller | — | —        | —         | —         |

@@ -14,7 +14,7 @@ effects and music evolve.
 ## Part chain
 
 ```
-screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ greets ──15s──→ end (loops)
+screenfill ──5.6s──→ intro ──73s──→ interlude ──15s──→ greets ──15s──→ sinus ──5s──→ end (loops)
 ```
 
 | Part | Duration | Cumulative | Transition ZP | Trigger |
@@ -23,9 +23,10 @@ screenfill ──5.6s──→ intro ──73s──→ interlude ──15s─�
 | intro | 73.3 s | 78.9 s | `$F6` (zp_outro) | `F6 = F0` |
 | interlude | 15.4 s | 94.3 s | `$F6` (zp_beat_count) | `F6 = 20` |
 | greets | 15.4 s | 109.7 s | `$F6` (zp_beat_count) | `F6 = 20` |
+| sinus | 5.0 s | 114.7 s | `$F6` (zp_timer) | `F6 = 30` |
 | end | loops | — | (none) | `stay` |
 
-**One-pass runtime: ~1 min 50 s** from boot to looping credits.
+**One-pass runtime: ~1 min 55 s** from boot to looping credits.
 
 ---
 
@@ -111,7 +112,25 @@ Only ~128 of 864 text characters scroll through before the
 
 ---
 
-## Part 5 — end (`parts/end/`)
+## Part 5 — sinus (`parts/sinus/`)
+
+250 frames = **5.0 s**.
+
+| Frame | Time | Event |
+|-------|------|-------|
+| 0 | 0 s | Setup: char mode, charset $2000, screen $0400, border black. |
+| 0→249 | 0→5.0 s | Per-scanline `$D016` fine scroll wobble (sine table 0–7 px). Colour cycling on border/bg. |
+| 0→199 | 0→4.0 s | LP filter sweep: cutoff $70→$08 over 200 frames. Re-asserted after each `my_music_play`. |
+| 200→249 | 4.0→5.0 s | Volume fade: SID vol $0F→$00 over last 50 frames. |
+| **250 (= $30+$20+$30)** | **5.0 s** | zp_timer stalls at $30+; pefchain triggers on `f6 = 30`. |
+
+Per-frame: `my_music_play` with LP filter re-assertion, colour ramps,
+sine-table application to $D016. Current artwork is placeholder
+(vertical stripe test pattern).
+
+---
+
+## Part 6 — end (`parts/end/`)
 
 Loops forever (`stay`). One credit cycle:
 

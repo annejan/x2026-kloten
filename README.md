@@ -45,7 +45,7 @@ shape of the process:
 
 ## What's in the demo
 
-Four parts loaded by [Spindle 3.1][spindle] via pefchain. Each one
+Six parts loaded by [Spindle 3.1][spindle] via pefchain. Each one
 auto-advances on a timer / state condition — no space key, no manual
 trigger. The end card is the only "stay" loop.
 
@@ -122,18 +122,48 @@ trigger. The end card is the only "stay" loop.
   sprite cascade out (7 → 0), then `zp_outro` hits `T_OUTRO_DONE = $f0`
   and pefchain advances.
 
-### Part 2.5 — `parts/interlude/interlude.asm` (breather)
+### Part 3 — `parts/interlude/interlude.asm` (breather)
 
-- Tiny (~130 bytes at `$8000`). Black screen, no visuals — just music.
-- Calls intro's resident `my_music_play` at `$11AE` so the chord +
-  lead drift continues through this part. V1 (bass) is muted every
-  frame to give the lead some room — pad-only feel.
-- Beat counter at `$f6` ticks every 24 frames (~125 BPM). After 32
-  beats (~15 s) pefchain advances to the end credits.
+- **Text-mode plasma** over the full screen (half the screen updated per frame).
+  Uses `$D012` raster position + sine (beat-phase-modulated) to generate
+  per-row colour and character values into `$0400` / `$D800`.
+- **Six raster bars** on the bottom border using a short IRQ chain.
+- Calls intro's resident `my_music_play` so the chord + lead drift
+  continues. V1 (bass) is muted every frame for a pad-only feel.
+- Last 8 beats: V1 re-enabled, LP filter sweep ($40→$FF) as build-up.
+- Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
+  pefchain advances to greets.
 - Inherits intro's music pages (`'I', $10, $12` in the EFO header) so
   pefchain doesn't overwrite the resident tables.
 
-### Part 3 — `parts/end/end.asm` (credit roll)
+### Part 4 — `parts/greets/greets.asm` (greetings scroll)
+
+- **DYCP sprite-font scroll** — 8 X-expanded sprites show a 8-char window
+  of greetings text with a per-sprite sine wobble (Y offset from sine table).
+- **Kick drums on V3** — 10-frame pitch sweep on every beat, layered over
+  the inherited music (bass on V1, lead on V2).
+- Text advances 1 char per 6 frames, ~128 of 864 chars visible in 32 beats.
+- Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
+  pefchain advances to sinus.
+- Inherits intro's music pages (`'I', $10, $12`).
+
+### Part 5 — `parts/sinus/sinus.asm` (afterglow)
+
+- **Char-mode sine wobble** — per-scanline `$D016` fine-scroll write from a
+  200-entry sine table (range 0–7 px) for a wavy image effect.
+- **Colour cycling** — border and background colours step through a palette
+  table each frame for a subtle glow.
+- **LP filter close** — filter cutoff sweeps from $70→$08 over 200 frames.
+  `$D418` re-asserted every frame after `my_music_play` (which would
+  otherwise clobber the LP bit with a vol-only write).
+- **Volume fade-out** — SID vol $0F→$00 over the last 50 frames.
+- Frame counter at `$f6` ticks every frame. After 250 frames (~5 s)
+  pefchain advances to end.
+- Current artwork: placeholder vertical-stripe test pattern (256-char set).
+  Awaiting real sinus-style image.
+- Inherits intro's music pages (`'I', $10, $12`).
+
+### Part 6 — `parts/end/end.asm` (credit roll)
 
 - Custom font copied into bank 0, scrolled smoothly bottom-to-top via
   a row-major `scroll_rows_up` (full 40-byte row writes per chunk so VIC
@@ -183,6 +213,8 @@ at `setup` / `interrupt` / `fadeout` routines plus memory-page tags.
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
+parts/greets/greets.pef             f6 = 20
+parts/sinus/sinus.pef               f6 = 30
 parts/end/end.pef                   stay
 ```
 
@@ -198,8 +230,11 @@ Each condition tells pefchain when to advance:
 - `06 = 00` — wait for zero-page `$06` (= screenfill's HOLDCNT) to hit 0.
 - `f6 = f0` — wait for `$f6` (= intro's `zp_outro`) to reach `T_OUTRO_DONE`.
 - `f6 = 20` — wait for `$f6` (= interlude's beat counter) to reach 32.
-  The script reuses the same byte that intro wrote to, repurposed by
-  interlude's setup (which resets it to 0).
+  Same byte reused from intro, reset to 0 by interlude's setup.
+- `f6 = 20` — wait for `$f6` (= greets' beat counter) to reach 32.
+  Same byte again, reset by greets' setup.
+- `f6 = 30` — wait for `$f6` (= sinus' frame counter) to reach 48 (past
+  250-frame timer); sinus resets it in setup.
 - `stay`    — never advance (end runs forever).
 
 Spindle 3.1's resident loader sits at `$0200-$02FF` (+ buffer page
@@ -257,7 +292,7 @@ thing.
 ## Credits
 
 - Music: hand-written 3-voice SID jam (bass + lead + arp), drifts
-  through intro → interlude → end
+  through all six parts
 - Logo: defeest.nl
 - Assembly: Anne Jan Brouwer with Claude (Anthropic) Opus 4.7
 - Thanks: Claude Code, opencode, and an endless supply of terrible ideas

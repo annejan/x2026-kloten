@@ -15,11 +15,14 @@
 #   f6 = 20   wait until zp $f6 == $20 (greets: same trick — greets'
 #                                       setup resets f6 to 0, then
 #                                       ticks back up to $20 over ~15 s)
+#   f6 = 30   wait until zp $f6 == $30 (sinus: frame counter stalls at
+#                                       $30+ after ~5 s, catches $30
+#                                       on the way past)
 #   stay      never advance (end card loops forever)
 
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
-parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
+parts/sinus/sinus.pef               f6 = 30
 parts/end/end.pef                   stay

@@ -1,11 +1,11 @@
-# Sound arc — how music flows across the five parts
+# Sound arc — how music flows across the six parts
 
 ## TL;DR
 
 Intro owns the music. Its **tables and play routine stay resident in
 RAM** for the rest of the demo (intro EFO claims `'P', $10, $12`; every
 subsequent part declares `'I', $10, $12` so pefchain doesn't overwrite
-them). Interlude, greets, and end all call into intro's
+them). Interlude, greets, sinus, and end all call into intro's
 `my_music_play` at `$119E` from their per-frame IRQ, so the chord
 progression + lead + arp drift through the entire production with no
 discontinuity.
@@ -20,8 +20,9 @@ overlays** on top of that continuous music.
 | screenfill  | (silence — SID untouched, music engine isn't running yet)           |
 | intro       | Full mix: bass (V1) + lead (V2) + arp (V3). Master vol fades in.    |
 | interlude   | Pad only (lead + arp). V1 muted. Last 8 beats: V1 returns + LP sweep |
-| greets      | Full mix returns. V1 = bass, no filter. The "payoff" loudness.       |
-| end         | end_music_init re-inits SID for slow chord/lead reprise. PWM + filter sweep. |
+| greets       | Full mix returns. V1 = bass, no filter. The "payoff" loudness.       |
+| sinus        | Full mix, but LP filter closes ($D418 re-asserted) and vol fades out over last 50 frames. |
+| end          | end_music_init re-inits SID for slow chord/lead reprise. PWM + filter sweep. |
 
 ## Why my_music_play is special
 
@@ -114,6 +115,7 @@ The "feeling of transition" is carried by:
 - **V1 return + LP cutoff sweep in interlude's last 8 beats** —
   rising tension into greets
 - **Full-vol bass + no filter in greets** — the payoff
+- **LP filter closing + vol fade in sinus** — the afterglow comedown
 - **end's own music_init re-init** with PWM + filter sweep for the
   credit roll reprise
 

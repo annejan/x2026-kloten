@@ -51,6 +51,7 @@ parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
 parts/greets/greets.pef             f6 = 20
+parts/sinus/sinus.pef               f6 = 30
 parts/end/end.pef                   stay
 ```
 
@@ -60,15 +61,18 @@ fadeout returns with carry set, pefchain loads the next part.
 
 ### Reusing the same byte across parts
 
-We reuse `$F6` for three different transitions (intro → interlude →
-greets → end). This is fine because **each part's setup resets the
-byte to a value that doesn't satisfy the next condition**:
+We reuse `$F6` for four different transitions (intro → interlude →
+greets → sinus → end). This is fine because **each part's setup resets
+the byte to a value that doesn't satisfy the next condition**:
 
 - intro's `zp_outro` ticks from `0` to `$F0` (transition: `f6 = f0`)
 - interlude's setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
 - greets' setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
+- sinus' setup resets `$F6 = 0`, then frame counter ticks past `$30`
+  and stalls; condition `f6 = 30` catches it at the right moment
+  (transition: `f6 = 30`)
 
 **If you forget to reset `$F6` in setup**, the prior part's value
 satisfies the new condition and pefchain transitions immediately —
