@@ -173,28 +173,55 @@ fadeout:
 
 
 //==================================================================
-// interrupt / irq_top — fires at FIRST_LINE-1. Calls music once per
-// frame, updates filter sweep + fade state, resets scanline counter,
-// and points IRQ vector to irq_sine.
+// interrupt — single per-frame raster IRQ. No scanline chain (an
+// earlier per-line setup never advanced past one frame for reasons
+// I couldn't pin down — possibly Spindle's NMI loader stealing
+// cycles in the middle of the chain. Simpler is more reliable.)
+//
+// Per frame:
+//   - jsr music (drums silent because setup zero'd $F6)
+//   - inc zp_frame
+//   - if zp_frame >= N_FRAMES, set $F6 = $30 (transition trigger)
+//   - else update LP filter cutoff (sweep close) + volume fade
+//   - whole-screen wobble: write sine_tab[zp_frame] to $D016 once
+//   - border + bg cycle from per-frame colour tables
 //==================================================================
 interrupt:
-irq_top:
         jsr INTRO_MUSIC_PLAY
 
-        lda #0
-        sta zp_line
         inc zp_frame
 
-        // Transition timer: after N_FRAMES, set $f6 = $30
+        // Transition timer: after N_FRAMES, set $f6 = $30 and stop
+        // animating (we're about to be replaced).
         lda zp_frame
         cmp #N_FRAMES
         bcc !run+
         lda #$30
         sta zp_timer
-        jmp !post+
+        // Black screen — about to transition out.
+        lda #$00
+        sta VIC_BORDER
+        sta VIC_BG
+        lda #$08
+        sta VIC_CTRL2
+        jmp !ack+
 
 !run:
-        // LP filter closes over duration: $70 → $08
+        // Whole-screen wobble. sine_tab[zp_frame] is 0..7, OR \$08
+        // to preserve CSEL (40-col mode).
+        ldy zp_frame
+        lda sine_tab,y
+        ora #$08
+        sta VIC_CTRL2
+
+        // Border + bg cycle from per-frame tables.
+        lda col_tab,y
+        sta VIC_BORDER
+        lda bg_tab,y
+        sta VIC_BG
+
+        // LP filter close over duration: cutoff $70 → $08.
+        lda zp_frame
         eor #$ff
         lsr
         lsr
@@ -202,11 +229,10 @@ irq_top:
         adc #$08
         sta SID_FILT_CUT_HI
 
-        // Fade volume in last 50 frames: volume = $0f - (progress>>1)
+        // Vol fade in last 50 frames.
         lda zp_frame
         cmp #FADE_START
-        bcc !post+
-
+        bcc !ack+
         sec
         sbc #FADE_START
         lsr
@@ -218,69 +244,6 @@ irq_top:
         lda #0
 !vol:   ora #$10
         sta SID_VOL
-
-!post:
-        lda #<irq_sine
-        sta $fffe
-        lda #>irq_sine
-        sta $ffff
-
-        lda #FIRST_LINE
-        sta VIC_RASTER
-        lda #$ff
-        sta VIC_IRQ
-        rti
-
-
-//==================================================================
-// irq_sine — fires at each visible scanline. Writes $D016 fine
-// scroll and border/bg colour from tables.
-//==================================================================
-irq_sine:
-        ldy zp_line
-
-        ldx zp_frame
-        cpx #FADE_START
-        bcs !fade+
-
-        // Normal zone — wobble + colour sweep. OR with $08 to keep
-        // CSEL (40-col mode); sine_tab values are 0..7 (just xscroll).
-        lda sine_tab,y
-        ora #$08
-        sta VIC_CTRL2
-        lda col_tab,y
-        sta VIC_BORDER
-        lda bg_tab,y
-        sta VIC_BG
-        jmp !next+
-
-!fade:
-        // Fade zone — black border/bg, keep CSEL (no border-pop).
-        lda #$08
-        sta VIC_CTRL2
-        lda #$00
-        sta VIC_BORDER
-        sta VIC_BG
-
-!next:
-        iny
-        sty zp_line
-        cpy #N_LINES
-        beq !last+
-
-        tya
-        clc
-        adc #FIRST_LINE
-        sta VIC_RASTER
-        jmp !ack+
-
-!last:
-        lda #<irq_top
-        sta $fffe
-        lda #>irq_top
-        sta $ffff
-        lda #FIRST_LINE - 1
-        sta VIC_RASTER
 
 !ack:
         lda #$ff
