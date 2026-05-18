@@ -96,7 +96,9 @@ outline-64/
 │   ├── greets/   {greets.asm,   greets_efo_header.asm}
 │   └── end/      {end.asm,      end_efo_header.asm}
 ├── tools/
-│   └── png_to_koala.py  ← PNG → multicolour C64 bitmap
+│   ├── png_to_koala.py       ← PNG → multicolour C64 bitmap
+│   ├── koala_to_logo_png.py  ← export logo rows 8-16 as paletted PNG
+│   └── logo_png_to_asm.py    ← import edited PNG back to logo_rows.asm
 ├── docs/
 │   ├── timing.md         ← frame-by-frame event timeline for all 5 parts
 │   ├── pefchain-notes.md
@@ -104,6 +106,40 @@ outline-64/
 │   └── sound-arc.md
 └── outline-64.d64       ← build output
 ```
+
+---
+
+## Logo pixel-editing workflow
+
+The intro logo occupies bitmap character rows 8-16 (pixel rows 64-135,
+320×72 px). The bitmap data lives in `parts/intro/logo_rows.asm` (2880
+bytes); screen RAM and colour RAM are filled uniformly at runtime by
+`clear_screen`.
+
+To hand-pixel the logo:
+
+```bash
+# 1. Export current logo as paletted 320×72 PNG (Pepto C64 palette)
+python3 tools/koala_to_logo_png.py parts/intro/defeest.kla /tmp/logo.png
+
+# 2. Edit in Aseprite / GrafX2 / GIMP (keep indexed mode, use C64
+#    colour indices 0-15). Any colour outside the C64 palette will
+#    be quantised to the nearest C64 colour on re-import.
+
+# 3. Re-import (preserves original screen RAM colour assignments)
+python3 tools/logo_png_to_asm.py /tmp/logo_edited.png \
+    parts/intro/logo_rows.asm parts/intro/defeest.kla
+
+# 4. Rebuild and test
+./build.sh
+./run-mcp.sh
+```
+
+If your edit changes colours (beyond the original black/blue/yellow),
+the script prints updated screen RAM and colour RAM `.byte` arrays
+that need to replace the uniform fill in `intro.asm`'s `clear_screen`.
+
+---
 
 Each part has two `.asm` files: the code itself, and an EFO2 header
 declaring routine vectors (`setup`/`interrupt`/`fadeout`/...) + owned
