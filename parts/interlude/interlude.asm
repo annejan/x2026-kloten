@@ -186,6 +186,16 @@ interrupt:
         sta $d417
         lda zp_filt_cut
         sta $d416
+        // Story interleave: when buildup begins (bass returns + LP
+        // filter sweep opens up), reveal a second text line — the
+        // "but then Kloot walked in" tease. Idempotent write each
+        // frame; cheap and avoids needing a one-shot flag.
+        ldx #0
+!stb:   lda story_line_b,x
+        sta $0610,x                  // row 13, col 8 — centered
+        inx
+        cpx #24
+        bne !stb-
 !beat:
         inc zp_beat_phase
         lda zp_beat_phase
@@ -452,3 +462,15 @@ story_line_a:
         .byte $06, $0F, $12, $20             // FOR_
         .byte $02, $12, $05, $01, $04, $02, $09, $0E, $20  // BREADBIN_
         .byte $03, $0F, $04, $05             // CODE
+
+// Story line B — appears when bass returns at buildup beat.
+// "BUT THEN KLOOT WALKED IN" — 24 chars, centered at col 8.
+//   B=02 U=15 T=14 _=20  T=14 H=08 E=05 N=0E _=20
+//   K=0B L=0C O=0F O=0F T=14 _=20  W=17 A=01 L=0C K=0B E=05 D=04 _=20
+//   I=09 N=0E
+story_line_b:
+        .byte $02, $15, $14, $20             // BUT_
+        .byte $14, $08, $05, $0E, $20        // THEN_
+        .byte $0B, $0C, $0F, $0F, $14, $20   // KLOOT_
+        .byte $17, $01, $0C, $0B, $05, $04, $20  // WALKED_
+        .byte $09, $0E                       // IN
