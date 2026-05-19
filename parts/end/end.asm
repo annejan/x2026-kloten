@@ -1116,7 +1116,7 @@ is_header:
         .byte 0             //  6     the Breadbin
         .byte 0             //  7     blank
         .byte 0             //  8     by deFEEST
-        .byte 0             //  9     for x 2026
+        .byte 0             //  9     for X2026
         .byte 0             // 10     blank
         .byte 1             // 11     started at outline
         .byte 0,0           // 12..13 three weeks later / this happened
@@ -1172,7 +1172,7 @@ credit_text:
         row("              the Breadbin              ")
         row("                                        ")
         row("              by deFEEST                ")
-        row("              for x 2026                ")
+        row("               for X2026                ")
         row("                                        ")
         row("           started at outline           ")
         row("            three weeks later           ")

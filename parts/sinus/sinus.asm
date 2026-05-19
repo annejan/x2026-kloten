@@ -78,17 +78,26 @@ setup:
         inx
         bne !f-
 
-        // Colour RAM — light cyan everywhere. Letters appear as cyan
-        // foreground on black background. Border/bg cycle via raster
-        // IRQ for movement.
+        // Colour RAM — per-row stripe palette. Each row gets a single
+        // colour from row_palette; text on that row inherits its row's
+        // colour, giving a banded blue/cyan field for the wobble to
+        // sweep through. zp $f7/$f8 are overloaded as a 16-bit pointer
+        // here (only used in setup; the IRQ reuses $f7 as zp_tmp once
+        // it starts).
         ldx #0
-        lda #$03
-!cr:    sta COL_RAM,x
-        sta COL_RAM + $100,x
-        sta COL_RAM + $200,x
-        sta COL_RAM + $2e8,x
+!srow:
+        lda col_row_lo,x
+        sta zp_tmp
+        lda col_row_hi,x
+        sta zp_tmp + 1
+        lda row_palette,x
+        ldy #39
+!scell: sta (zp_tmp),y
+        dey
+        bpl !scell-
         inx
-        bne !cr-
+        cpx #25
+        bne !srow-
 
         // Narrative text — sinus is the demo's story moment. Six
         // fragments scattered across the screen, lowercase chargen so
@@ -128,7 +137,7 @@ setup:
         dex
         bpl !t5-
         // Row 21 col 5: dedication
-        ldx #17
+        ldx #16
 !t6:    lda text_credits,x
         sta $074D,x
         dex
@@ -303,7 +312,7 @@ bg_tab:
 // $1800 (a=$01, b=$02, ..., z=$1A; space=$20; digits=$30..$39).
 //
 // The story: years passed without breadbin code; then kloot walked
-// in; result is this demo, dedicated to X 2026.
+// in; result is this demo, dedicated to X2026.
 //==================================================================
 text_years:        // "years went by" — 13 chars
         .byte $19, $05, $01, $12, $13, $20, $17, $05, $0E, $14, $20, $02, $19
@@ -317,6 +326,32 @@ text_walked_in:    // "walked in" — 9 chars
 text_cast:         // "anus  kloot  ranzbak  cinder" — 28 chars
         .byte $01, $0E, $15, $13, $20, $20, $0B, $0C, $0F, $0F, $14, $20, $20
         .byte $12, $01, $0E, $1A, $02, $01, $0B, $20, $20, $03, $09, $0E, $04, $05, $12
-text_credits:      // "defeest for x 2026" — 18 chars
-        .byte $04, $05, $06, $05, $05, $13, $14, $20, $06, $0F, $12, $20, $18
-        .byte $20, $32, $30, $32, $36
+text_credits:      // "defeest for X2026" — 17 chars (capital X = $58 in lowercase chargen)
+        .byte $04, $05, $06, $05, $05, $13, $14, $20, $06, $0F, $12, $20
+        .byte $58, $32, $30, $32, $36
+
+
+//==================================================================
+// Per-row colour-RAM stripe tables.
+//==================================================================
+.align 16
+// Row N's colour-RAM start lo / hi byte.
+col_row_lo:
+.for (var row = 0; row < 25; row++) {
+        .byte <(COL_RAM + row * 40)
+}
+col_row_hi:
+.for (var row = 0; row < 25; row++) {
+        .byte >(COL_RAM + row * 40)
+}
+
+// Row colour palette — symmetric blue / light-blue / cyan / light-blue /
+// blue bands. Text rows pick up: 4=blue, 6=light-blue, 12=cyan, 13=cyan,
+// 19=light-blue, 21=blue. Wobble + bg cycle sweep through; the stripes
+// stay legible against most of the per-frame bg palette.
+row_palette:
+        .byte $06, $06, $06, $06, $06    // rows 0-4:   blue
+        .byte $0E, $0E, $0E, $0E, $0E    // rows 5-9:   light-blue
+        .byte $03, $03, $03, $03, $03    // rows 10-14: cyan
+        .byte $0E, $0E, $0E, $0E, $0E    // rows 15-19: light-blue
+        .byte $06, $06, $06, $06, $06    // rows 20-24: blue
