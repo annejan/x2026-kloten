@@ -1140,6 +1140,15 @@ bounce_total:
 pending_row:
         .fill 8, 0
 
+// Block-3 reverse-load (mode 2 zig-zag): a second pending buffer for
+// the odd-row scroll plus a backward-walking source pointer. zp is
+// full so text_ptr_odd lives in code RAM and is swapped into
+// zp_text_ptr (via the stack) only during the per-char load.
+pending_odd:
+        .fill 8, 0
+text_ptr_odd:
+        .word 0
+
 
 //==================================================================
 // copy_chargen — bank CHARGEN ROM in, copy MIXED-case set ($D800-$DFFF)
@@ -1363,7 +1372,11 @@ update_scroll_colors:
 //       source still reads forward because advance walks zp_text_ptr
 //       BACKWARDS from block2_end-1 down to block2_start, so the last
 //       source char is loaded first and ends up leftmost on screen.
-//   2 = ZIG-ZAG     (even rows ROL, odd rows ROR — visual split)
+//   2 = ZIG-ZAG     (even rows ROL forward via zp_text_ptr, odd rows
+//       ROR backward via text_ptr_odd). Both halves read forward —
+//       even half streams in from the right, odd half from the left.
+//       Source pointers walk independently from the two ends of block 3
+//       toward each other.
 // Mode advances at $fe sentinel bytes in scroll_text and wraps after mode 2.
 update_bmp_scroll:
         ldx #0
@@ -1425,7 +1438,17 @@ update_bmp_scroll:
 
 !row_odd:
         // Odd row: ROR chain shifts content RIGHT, new bit enters cell 0 bit 7.
+        // In mode 2 the bit comes from pending_odd (filled from
+        // text_ptr_odd's char) so the odd-row strips read forward
+        // despite scrolling rightward. Modes 0/1 use pending_row.
+        lda zp_scroll_mode
+        cmp #2
+        beq !row_odd_mode2+
         lsr pending_row,x
+        jmp !ror_chain+
+!row_odd_mode2:
+        lsr pending_odd,x
+!ror_chain:
         ror SCROLL_ROW_BMP +  0*8, x
         ror SCROLL_ROW_BMP +  1*8, x
         ror SCROLL_ROW_BMP +  2*8, x
@@ -1501,6 +1524,26 @@ update_bmp_scroll:
         bne !nowrap+
         inc zp_text_ptr+1
 !nowrap:
+        // Mode 2: ALSO decrement text_ptr_odd so the odd-row half of
+        // the zig-zag walks backward through block 3. Clamp at
+        // block3_start so we don't read the closing $fe of block 2
+        // into pending_odd once the odd pointer reaches the start.
+        lda zp_scroll_mode
+        cmp #2
+        bne !skip_odd_dec+
+        lda text_ptr_odd
+        cmp #<block3_start
+        bne !do_odd_dec+
+        lda text_ptr_odd+1
+        cmp #>block3_start
+        beq !skip_odd_dec+
+!do_odd_dec:
+        lda text_ptr_odd
+        bne !no_borrow_o+
+        dec text_ptr_odd+1
+!no_borrow_o:
+        dec text_ptr_odd
+!skip_odd_dec:
         jmp !recheck+
 !back:
         // If ptr == block2_start we've just displayed the first source
@@ -1548,22 +1591,37 @@ update_bmp_scroll:
         bcc !nm2+
         lda #0
 !nm2:   sta zp_scroll_mode
-        // Entering mode 1: jump ptr to last TEXT char of block 2 so
+        // Entering mode 1: jump zp_text_ptr to last TEXT char of block 2 so
         // the backwards advance walks toward block2_start. block2_end
         // is the first byte AFTER the closing $fe sentinel, so
         // (block2_end - 2) is the last text char and (block2_end - 1)
         // is the $fe itself. Pointing at the $fe would make recheck
         // bump straight to mode 2 — silently skipping all of block 2.
         cmp #1
-        bne !nm_done+
+        bne !nm_check2+
         lda #<(block2_end - 2)
         sta zp_text_ptr
         lda #>(block2_end - 2)
         sta zp_text_ptr+1
+        jmp !nm_done+
+!nm_check2:
+        // Entering mode 2: zp_text_ptr keeps the just-incremented
+        // forward position (= block3_start) for even rows. Initialise
+        // text_ptr_odd to the LAST text char of block 3 so the
+        // odd-row backwards walk starts there. pending_odd gets filled
+        // by !load on the next call (the existing !nm_done flow falls
+        // into !recheck → !load).
+        cmp #2
+        bne !nm_done+
+        lda #<(block3_end - 2)
+        sta text_ptr_odd
+        lda #>(block3_end - 2)
+        sta text_ptr_odd+1
 !nm_done:
         jmp !recheck-
 !load:
-        // Load pending from font of new char
+        // Load pending_row from font of new char (used by mode 0 and
+        // mode 1, and by mode 2 for even rows).
         ldy #0
         lda (zp_text_ptr),y
         sta zp_tmp
@@ -1585,6 +1643,47 @@ update_bmp_scroll:
         sta pending_row,y
         dey
         bpl !fill-
+
+        // Mode 2: ALSO load pending_odd from text_ptr_odd. zp is full,
+        // so swap text_ptr_odd in via the stack to use indirect-Y
+        // addressing, then restore zp_text_ptr. ~40 cycles added per
+        // char-boundary load when in mode 2.
+        lda zp_scroll_mode
+        cmp #2
+        bne !done+
+        lda zp_text_ptr
+        pha
+        lda zp_text_ptr+1
+        pha
+        lda text_ptr_odd
+        sta zp_text_ptr
+        lda text_ptr_odd+1
+        sta zp_text_ptr+1
+        ldy #0
+        lda (zp_text_ptr),y
+        sta zp_tmp
+        asl
+        asl
+        asl
+        sta $02
+        lda zp_tmp
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #>FONT_BASE
+        sta $03
+        ldy #7
+!fill_o:lda ($02),y
+        sta pending_odd,y
+        dey
+        bpl !fill_o-
+        pla
+        sta zp_text_ptr+1
+        pla
+        sta zp_text_ptr
 !done:
         rts
 
@@ -1626,8 +1725,16 @@ block2_start:
         .byte $fe
 block2_end:
         // ---- block 3: mode 2 (zig-zag split) ----
+        // Even rows (left scroll) read zp_text_ptr walking forward
+        // from block3_start. Odd rows (right scroll) read text_ptr_odd
+        // walking backward from (block3_end - 2). Both halves of the
+        // zig-zag read forward — the start of the block streams in
+        // from the right while the end streams in from the left, and
+        // they converge over the duration of the block.
+block3_start:
         .text "  Greetings to everyone who still codes the breadbin                    "
         .byte $ff
+block3_end:
 
 
 sprite_shape:
