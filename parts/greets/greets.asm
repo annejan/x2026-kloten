@@ -201,6 +201,20 @@ interrupt:
         // space invaders on screen.
         jsr update_sprite_ptrs
 
+        // colour cycle — rotate sprite colours each frame
+        // using warm palette for best readability on black bg
+        ldx #0
+!col:   txa
+        clc
+        adc zp_wobble_pos
+        and #7
+        tay
+        lda colour_cycle,y
+        sta SPR_COL,x
+        inx
+        cpx #8
+        bne !col-
+
         // DYCP — advance wobble phase each frame
         inc zp_wobble_pos
 
@@ -326,7 +340,19 @@ sprite_x_table:
 }
 
 sprite_cols:
-.byte $03, $04, $05, $06
+.byte $07, $08, $0a, $0c, $0e, $03, $05, $0d
+
+// Warm colour cycle table — rotates through yellow/orange/red/magenta/cyan/green
+// for good readability on black background, with sprite-to-sprite phase offset.
+colour_cycle:
+.byte $07, $08, $0a, $0c, $0e, $03, $05, $0d
+.byte $01, $07, $09, $0a, $0c, $0e, $03, $05
+.byte $01, $01, $07, $09, $0a, $0c, $0e, $03
+.byte $01, $01, $01, $07, $09, $0a, $0c, $0e
+.byte $0e, $01, $01, $01, $07, $09, $0a, $0c
+.byte $0c, $0e, $01, $01, $01, $07, $09, $0a
+.byte $0a, $0c, $0e, $01, $01, $01, $07, $09
+.byte $09, $0a, $0c, $0e, $01, $01, $01, $07
 
 sine_table:
 .for (var i = 0; i < 256; i++) {
@@ -369,6 +395,7 @@ message:
 .text "      SUCCESS   ARTLINE   RESOURCE          "
 .text "      PLUSH   FINNISH GOLD   ABYSS CONNECTION    "
 .text "      OFFENCE   POO-BRAIN   RABENAUGE          "
+.text "      HOKUTO FORCE                            "
 .text "      AND ALL THE QUIET CODERS              "
 .text "      AND ESPECIALLY KLOOT                  "
 .text "      FOR FINALLY GETTING ME HERE           "
@@ -386,27 +413,37 @@ message:
 .function glyph_data_21x24(code) {
         .var base = $0800 + code * 8
         .var result = List()
-        .for (var row = 0; row < 21; row++) {
-                .var srcRow = floor(row * 8 / 21)
+        // Each source pixel → 3×3 block (integer 3× scale).
+        // 8 rows × 3 = 24 output rows; drop 3 to fit 64-byte sprite slot
+        // (21 rows × 3 bytes = 63 + 1 pad). Rows 2, 5, 7 get 2 rows instead of 3.
+        .var outRow = 0
+        .for (var srcRow = 0; srcRow < 8; srcRow++) {
                 .var srcByte = chargen.get(base + srcRow)
-                .var b0 = 0
-                .var b1 = 0
-                .var b2 = 0
-                .for (var col = 0; col < 24; col++) {
-                        .var srcCol = floor(col * 8 / 24)
-                        .if (((srcByte >> (7 - srcCol)) & 1) != 0) {
-                                .var byteIdx = 0
-                                .if (col >= 8) { .eval byteIdx = 1 }
-                                .if (col >= 16) { .eval byteIdx = 2 }
-                                .var bitIdx = col - byteIdx * 8
-                                .if (byteIdx == 0) { .eval b0 = b0 | (1 << (7 - bitIdx)) }
-                                .if (byteIdx == 1) { .eval b1 = b1 | (1 << (7 - bitIdx)) }
-                                .if (byteIdx == 2) { .eval b2 = b2 | (1 << (7 - bitIdx)) }
+                // 3 sub-rows per source row, except rows 2/5/7 which get 2
+                .var maxSub = 3
+                .if (srcRow == 2 || srcRow == 5 || srcRow == 7) { .eval maxSub = 2 }
+                .for (var subRow = 0; subRow < maxSub; subRow++) {
+                        .var b0 = 0
+                        .var b1 = 0
+                        .var b2 = 0
+                        // Each source column → 3 output columns
+                        .for (var srcCol = 0; srcCol < 8; srcCol++) {
+                                .if (((srcByte >> (7 - srcCol)) & 1) != 0) {
+                                        .for (var dx = 0; dx < 3; dx++) {
+                                                .var col = srcCol * 3 + dx
+                                                .var byteIdx = floor(col / 8)
+                                                .var bitIdx = col - byteIdx * 8
+                                                .if (byteIdx == 0) { .eval b0 = b0 | (1 << (7 - bitIdx)) }
+                                                .if (byteIdx == 1) { .eval b1 = b1 | (1 << (7 - bitIdx)) }
+                                                .if (byteIdx == 2) { .eval b2 = b2 | (1 << (7 - bitIdx)) }
+                                        }
+                                }
                         }
+                        .eval result.add(b0)
+                        .eval result.add(b1)
+                        .eval result.add(b2)
+                        .eval outRow++
                 }
-                .eval result.add(b0)
-                .eval result.add(b1)
-                .eval result.add(b2)
         }
         .eval result.add(0)
         .return result
