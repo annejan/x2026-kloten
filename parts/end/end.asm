@@ -607,8 +607,19 @@
         .byte %00011000
         .byte %00011000
         .byte %00000000
-// $55..$5a — unused (U-Z)
-        .fill 8 * 6, 0
+// $55..$57 — unused (U-W)
+        .fill 8 * 3, 0
+// $58 'X' (needed for "X2026")
+        .byte %11000011
+        .byte %01100110
+        .byte %00111100
+        .byte %00011000
+        .byte %00111100
+        .byte %01100110
+        .byte %11000011
+        .byte %00000000
+// $59..$5a — unused (Y-Z)
+        .fill 8 * 2, 0
 // $5b 'Å' (A with ring, custom glyph)
         .byte %00011000
         .byte %00100100
