@@ -1614,7 +1614,7 @@ sine_bot:
 scroll_text:
         .text "                                        "
         // ---- block 1: mode 0 (left scroll, normal) ----
-        .text " deFEEST presents a little C64 demo for X 2026.. "
+        .text " deFEEST presents a little C64 demo for X2026.. "
         .text "Anus and Claude Opus 4.7 using codebase.c64.org                                    "
         .byte $fe
         // ---- block 2: mode 1 (right scroll) ----

@@ -78,17 +78,97 @@ setup:
         inx
         bne !f-
 
-        // Colour RAM — light cyan everywhere. Letters appear as cyan
-        // foreground on black background. Border/bg cycle via raster
-        // IRQ for movement.
+        // Colour RAM — per-row stripe palette. Each row gets a single
+        // colour from row_palette; text on that row inherits its row's
+        // colour, giving a banded blue/cyan field for the wobble to
+        // sweep through. zp $f7/$f8 are overloaded as a 16-bit pointer
+        // here (only used in setup; the IRQ reuses $f7 as zp_tmp once
+        // it starts).
         ldx #0
-        lda #$03
-!cr:    sta COL_RAM,x
-        sta COL_RAM + $100,x
-        sta COL_RAM + $200,x
-        sta COL_RAM + $2e8,x
+!srow:
+        lda col_row_lo,x
+        sta zp_tmp
+        lda col_row_hi,x
+        sta zp_tmp + 1
+        lda row_palette,x
+        ldy #39
+!scell: sta (zp_tmp),y
+        dey
+        bpl !scell-
         inx
-        bne !cr-
+        cpx #25
+        bne !srow-
+
+        // Narrative text — sinus is the demo's story moment. Ten
+        // fragments scattered across the screen, lowercase chargen so
+        // they read as thinking/remembering rather than announcing.
+        // Tells the whole arc: gap → catalyst → partnership →
+        // discovery (sid / vic / open borders) → resolution → cast
+        // + dedication. Wobble + colour stripes let it drift in and
+        // out as the bg cycles through its palette.
+        //
+        // Row 2 col 5: "years went by"
+        ldx #12
+!t1:    lda text_years,x
+        sta $0455,x
+        dex
+        bpl !t1-
+        // Row 4 col 5: "no time for breadbin code"
+        ldx #24
+!t2:    lda text_no_time,x
+        sta $04A5,x
+        dex
+        bpl !t2-
+        // Row 7 col 10: "then kloot walked in" — the catalyst, echoes
+        // the interlude plasma's "BUT THEN KLOOT WALKED IN" tease.
+        ldx #19
+!t3:    lda text_kloot_walked,x
+        sta $0522,x
+        dex
+        bpl !t3-
+        // Row 10 col 11: "patient pair coder"
+        ldx #17
+!t4:    lda text_pair,x
+        sta $059B,x
+        dex
+        bpl !t4-
+        // Row 13 col 5: "sid voices"  — the discovery beat: anus
+        // re-learns demo coding alongside kloot, one chip at a time
+        ldx #9
+!t5:    lda text_sid,x
+        sta $060D,x
+        dex
+        bpl !t5-
+        // Row 14 col 5: "vic rasters"
+        ldx #10
+!t6:    lda text_vic,x
+        sta $0635,x
+        dex
+        bpl !t6-
+        // Row 15 col 5: "open borders"
+        ldx #11
+!t7:    lda text_borders,x
+        sta $065D,x
+        dex
+        bpl !t7-
+        // Row 18 col 11: "curiosity returned" — the resolution
+        ldx #17
+!t8:    lda text_curiosity,x
+        sta $06DB,x
+        dex
+        bpl !t8-
+        // Row 21 col 5: cast
+        ldx #27
+!t9:    lda text_cast,x
+        sta $074D,x
+        dex
+        bpl !t9-
+        // Row 23 col 11: dedication
+        ldx #16
+!t10:   lda text_credits,x
+        sta $07A3,x
+        dex
+        bpl !t10-
 
         // Init SID — LP filter mode + volume
         lda #$1f
@@ -100,11 +180,13 @@ setup:
         lda #$00
         sta SID_FILT_CUT_LO
 
-        // Text mode, ROM chargen at $1000 (uppercase), no MCM.
+        // Text mode, ROM chargen at $1800 (lowercase set), no MCM.
+        // Lowercase chargen makes the narrative fragments read as
+        // thinking-out-loud rather than headline announcements.
         // YSCROLL=0 initially — vertical wobble in IRQ sets it per frame.
         lda #$18                        // DEN=1, RSEL=1, YSCROLL=0
         sta VIC_CTRL1
-        lda #$14                        // screen $0400, chargen $1000 (ROM)
+        lda #$16                        // screen $0400, chargen $1800 (lowercase ROM)
         sta VIC_MEM
         lda #$08                        // CSEL=1, no MCM, xscroll cleared
         sta VIC_CTRL2
@@ -250,3 +332,66 @@ bg_tab:
 .for (var i = 0; i < N_LINES; i++) {
         .byte floor(4.5 + 3.5 * sin(i * 3 * PI / 200 + 0.5))
 }
+
+
+//==================================================================
+// Narrative text fragments — screen codes for lowercase chargen at
+// $1800 (a=$01, b=$02, ..., z=$1A; space=$20; digits=$30..$39).
+//
+// The story: years passed without breadbin code; then kloot walked
+// in; result is this demo, dedicated to X2026.
+//==================================================================
+text_years:        // "years went by" — 13 chars
+        .byte $19, $05, $01, $12, $13, $20, $17, $05, $0E, $14, $20, $02, $19
+text_no_time:      // "no time for breadbin code" — 25 chars
+        .byte $0E, $0F, $20, $14, $09, $0D, $05, $20, $06, $0F, $12, $20
+        .byte $02, $12, $05, $01, $04, $02, $09, $0E, $20, $03, $0F, $04, $05
+text_kloot_walked: // "then kloot walked in" — 20 chars (catalyst,
+                   // echoes interlude bass-return)
+        .byte $14, $08, $05, $0E, $20, $0B, $0C, $0F, $0F, $14
+        .byte $20, $17, $01, $0C, $0B, $05, $04, $20, $09, $0E
+text_pair:         // "patient pair coder" — 18 chars
+        .byte $10, $01, $14, $09, $05, $0E, $14, $20, $10, $01, $09, $12
+        .byte $20, $03, $0F, $04, $05, $12
+text_sid:          // "sid voices" — 10 chars (discovery beat 1)
+        .byte $13, $09, $04, $20, $16, $0F, $09, $03, $05, $13
+text_vic:          // "vic rasters" — 11 chars (discovery beat 2)
+        .byte $16, $09, $03, $20, $12, $01, $13, $14, $05, $12, $13
+text_borders:      // "open borders" — 12 chars (discovery beat 3)
+        .byte $0F, $10, $05, $0E, $20, $02, $0F, $12, $04, $05, $12, $13
+text_curiosity:    // "curiosity returned" — 18 chars (resolution)
+        .byte $03, $15, $12, $09, $0F, $13, $09, $14, $19
+        .byte $20, $12, $05, $14, $15, $12, $0E, $05, $04
+text_cast:         // "anus  kloot  ranzbak  cinder" — 28 chars
+        .byte $01, $0E, $15, $13, $20, $20, $0B, $0C, $0F, $0F, $14, $20, $20
+        .byte $12, $01, $0E, $1A, $02, $01, $0B, $20, $20, $03, $09, $0E, $04, $05, $12
+text_credits:      // "defeest for X2026" — 17 chars (capital X = $58
+                   // in lowercase chargen)
+        .byte $04, $05, $06, $05, $05, $13, $14, $20, $06, $0F, $12, $20
+        .byte $58, $32, $30, $32, $36
+
+
+//==================================================================
+// Per-row colour-RAM stripe tables.
+//==================================================================
+.align 16
+// Row N's colour-RAM start lo / hi byte.
+col_row_lo:
+.for (var row = 0; row < 25; row++) {
+        .byte <(COL_RAM + row * 40)
+}
+col_row_hi:
+.for (var row = 0; row < 25; row++) {
+        .byte >(COL_RAM + row * 40)
+}
+
+// Row colour palette — symmetric blue / light-blue / cyan / light-blue /
+// blue bands. Text rows pick up: 4=blue, 6=light-blue, 12=cyan, 13=cyan,
+// 19=light-blue, 21=blue. Wobble + bg cycle sweep through; the stripes
+// stay legible against most of the per-frame bg palette.
+row_palette:
+        .byte $06, $06, $06, $06, $06    // rows 0-4:   blue
+        .byte $0E, $0E, $0E, $0E, $0E    // rows 5-9:   light-blue
+        .byte $03, $03, $03, $03, $03    // rows 10-14: cyan
+        .byte $0E, $0E, $0E, $0E, $0E    // rows 15-19: light-blue
+        .byte $06, $06, $06, $06, $06    // rows 20-24: blue

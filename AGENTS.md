@@ -14,7 +14,7 @@ If you're a human reader: same goes — this is the practical
 ## What this project is
 
 `outline-64` (working title **"Kloot and the Breadbin"**) is a
-Commodore 64 demo by `deFEEST`, releasing at **X 2026**. Work
+Commodore 64 demo by `deFEEST`, releasing at **X2026**. Work
 started at Outline 2026 — about three weeks of dev total. Written by
 `Kloot/deFEEST` (the AI half of the team, Claude) and
 `Anus/deFEEST` (the human). KickAssembler 6510 source, Spindle 3.1

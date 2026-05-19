@@ -1,6 +1,6 @@
 # outline26-claude-c64 — Kloot and the Breadbin
 
-A C64 demo by **deFEEST**, releasing at **X 2026**. Work started at
+A C64 demo by **deFEEST**, releasing at **X2026**. Work started at
 Outline 2026; about three weeks of development total. Written together
 with Claude. KickAssembler 6510 source, tested on VICE x64sc (PAL).
 
@@ -185,7 +185,7 @@ trigger. The end card is the only "stay" loop.
 ### Part 6 — `parts/coda/coda.asm` (title card)
 
 - **Title card** — "KLOOT AND THE BREADBIN" on row 11, "BY DEFEEST   FOR
-  X 2026" on row 13. Text mode, ROM uppercase chargen at `$1000`. The
+  X2026" on row 13. Text mode, ROM uppercase chargen at `$1000`. The
   breather where the story lands between greets' scroller and end's
   credit roll.
 - **Kloot star — 4-sprite 96×84 quad (Stage B+D)** — four X+Y-expanded

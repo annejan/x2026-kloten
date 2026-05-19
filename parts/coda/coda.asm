@@ -9,7 +9,7 @@
 //
 // Visuals:
 //   row 11  KLOOT AND THE BREADBIN          (chargen ROM uppercase)
-//   row 13  BY DEFEEST   FOR X 2026
+//   row 13  BY DEFEEST   FOR X2026
 //   border  slow sine colour cycle through col_tab
 //   bg      stays black
 //   top 5 rows: 16 stars twinkle via colour-RAM toggle (4 banks of 4)
@@ -293,7 +293,7 @@ setup:
         // ---- paint the title text ----
         // Row 11 starts at $0400 + 11*40 = $05B8.
         // "KLOOT AND THE BREADBIN" = 22 chars, center at col 9.
-        // Row 13 ($0608): "BY DEFEEST   FOR X 2026" = 23 chars, col 8.
+        // Row 13 ($0608): "BY DEFEEST   FOR X2026" = 22 chars, col 9.
         ldx #0
 !t1:    lda title_main,x
         sta $05B8 + 9,x
@@ -303,9 +303,9 @@ setup:
 
         ldx #0
 !t2:    lda title_sub,x
-        sta $0608 + 8,x
+        sta $0608 + 9,x
         inx
-        cpx #23
+        cpx #22
         bne !t2-
 
         // ---- colour the title rows ----
@@ -321,9 +321,9 @@ setup:
 
         ldx #0
         lda #$0f                        // light grey
-!c2:    sta $DA08 + 8,x
+!c2:    sta $DA08 + 9,x
         inx
-        cpx #23
+        cpx #22
         bne !c2-
 
         // Settle SID: drums OFF (zp_timer = $00 gates the percussion
@@ -680,15 +680,15 @@ title_main:
         .byte $14, $08, $05, $20              // THE_
         .byte $02, $12, $05, $01, $04, $02, $09, $0E    // BREADBIN
 
-// "BY DEFEEST   FOR X 2026"  (23 chars)
+// "BY DEFEEST   FOR X2026"  (22 chars)
 //   B=02 Y=19 _=20  D=04 E=05 F=06 E=05 E=05 S=13 T=14 _=20 _=20 _=20
-//   F=06 O=0F R=12 _=20  X=18 _=20  2=32 0=30 2=32 6=36
+//   F=06 O=0F R=12 _=20  X=18  2=32 0=30 2=32 6=36
 title_sub:
         .byte $02, $19, $20                                 // BY_
         .byte $04, $05, $06, $05, $05, $13, $14, $20        // DEFEEST_
         .byte $20, $20                                       // __
         .byte $06, $0F, $12, $20                            // FOR_
-        .byte $18, $20                                       // X_
+        .byte $18                                            // X
         .byte $32, $30, $32, $36                            // 2026
 
 

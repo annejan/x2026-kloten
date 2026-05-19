@@ -14,11 +14,15 @@
         .word $0000              // cleanup
         .word $0000              // callmusic
 
-        // Code + tables span $0800-$0CFF (5 pages: code at $0800-$09xx,
-        // sine_tab at $0A00, col_tab at $0B00, bg_tab at $0C00). DROPPED
-        // the $20-$27 charset claim — sinus now uses chargen ROM at
-        // $1000, no custom charset needed.
-        .byte 'P', $08, $0C
+        // Code + tables span $0800-$0DFF (6 pages):
+        //   code + setup    @ $0800-$09xx
+        //   sine_tab        @ $0A00 (.align 256)
+        //   col_tab         @ $0B00 (.align 256)
+        //   bg_tab          @ $0C00 (.align 256)
+        //   narrative text  @ $0Cxx (story fragments, ~100 bytes)
+        //   stripe palette  @ $0Dxx (col-RAM address tables + row colours)
+        //   driver          @ $0Dxx (Spindle-appended)
+        .byte 'P', $08, $0D
         // Inherit intro's music tables
         .byte 'I', $10, $12
         // Zero-page: $f6-timer/transition, $f7-tmp, $fb-line, $fc-frame.
