@@ -247,17 +247,33 @@ fadeout:
 
 //==================================================================
 // update_sprite_ptrs — set $07F8-$07FF to current 8-char window
+//
+// Pointers are REVERSED: sprite 7 (leftmost) gets the leftmost
+// character, sprite 0 (rightmost) gets the rightmost. This makes
+// overlap show the RIGHT sprite's left edge in front (since sprite
+// 0 > sprite 7 in VIC priority), so text reads cleanly left-to-right.
+//
+// Uses $fb (x temp) and $fc (ptr temp) — outside EFO's Z $f4-$fa
+// claim, safe as scratch during IRQ.
 //==================================================================
 update_sprite_ptrs:
         ldx #0
-!lp:    txa
+!lp:    stx $fb                     // save loop counter
+        txa
         clc
-        adc zp_scroll_pos
+        adc zp_scroll_pos           // A = scroll_pos + x
         tay
-        lda message,y
+        lda message,y               // char code from message
         tay
-        lda ptr_lookup,y
-        sta SPR_PTR_BASE,x
+        lda ptr_lookup,y            // sprite pointer value
+        sta $fc                     // save pointer value
+        ldx $fb                     // restore loop counter
+        txa
+        eor #7                      // reversed sprite index (7-x)
+        tay
+        lda $fc                     // get pointer value back
+        sta SPR_PTR_BASE,y          // store at reversed position
+        ldx $fb                     // restore counter
         inx
         cpx #8
         bne !lp-
@@ -301,8 +317,12 @@ ptr_lookup:
 }
 
 sprite_x_table:
+// Reversed: sprite 7 is leftmost (X=24), sprite 0 is rightmost (X=276).
+// Matches VIC's fixed priority (sprite 0 > sprite 7) — the highest-priority
+// sprite is at the rightmost position, so overlap shows each character's
+// left edge in front.
 .for (var i = 0; i < 8; i++) {
-        .byte SPR_BASE_X + i * SPR_STRIDE
+        .byte SPR_BASE_X + (7 - i) * SPR_STRIDE
 }
 
 sprite_cols:

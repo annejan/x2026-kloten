@@ -153,6 +153,17 @@ setup:
         inx
         bne !clr-
 
+        // Clear colour RAM to dark grey ($0E) — otherwise leftover
+        // colours from greets leak into the background.
+        lda #$0e
+        ldx #0
+!cclr:  sta COL_RAM + $000,x
+        sta COL_RAM + $100,x
+        sta COL_RAM + $200,x
+        sta COL_RAM + $2e8,x
+        inx
+        bne !cclr-
+
         // ---- paint the title text ----
         // Row 11 starts at $0400 + 11*40 = $05B8.
         // "KLOOT AND THE BREADBIN" = 22 chars, center at col 9.

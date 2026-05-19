@@ -67,15 +67,14 @@ setup:
         lda #$00
         sta $d015
 
-        // Fill screen RAM with alternating S ($53) / space ($20)
-        // in a single pass — 256 iterations × 4 writes each.
+        // Fill screen RAM with spaces ($20) — a clean canvas for the
+        // wobble + colour cycling to animate.
         ldx #0
-        lda #$53
+        lda #$20
 !f:     sta SCREEN,x
         sta SCREEN + $100,x
         sta SCREEN + $200,x
         sta SCREEN + $300,x
-        eor #$73                // toggle S ↔ space
         inx
         bne !f-
 
