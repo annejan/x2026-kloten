@@ -1,23 +1,17 @@
 //==================================================================
-// outline-64 — Sinus part: sine-displaced char-mode display with
-// colour cycling.
+// outline-64 — Sinus part: checker-field wobble + colour cycle.
 //
-// Narrative role: visual comedown after greets' kick climax. The
-// inherited intro chords drift through with LP filter closing, while
-// a screen of 256 characters sways under per-scanline $D016 sine
-// wobble. Colour cycling on border + bg adds movement.
+// Dual-axis sine wobble (horizontal $D016 + vertical $D011) on a
+// screen of alternating S-space characters. Colour cycling on
+// border + bg sweeps through blues/cyan. LP filter closes + volume
+// fades toward the end.
 //
 // After ~5 seconds the visual fades out and $f6 = $30 triggers the
 // pefchain transition to end.
 //
-// Music arc:
-//   Phase 1 (0-4s):  LP filter closes, at ~full wobble
-//   Phase 2 (4-5s):  fade colours + volume toward black
-//
 // Memory:
-//   $0800-$0XXX  code + tables
+//   $0800-$0CFF  code + tables
 //   $1000-$125D  intro music tables (inherited)
-//   $2000-$27FF  charset (2 KB, 256 chars × 8 bytes)
 //   $0400-$07FF  screen RAM
 //
 // Transition: after N_FRAMES sets $f6 = $30 → pefchain advances.
@@ -73,45 +67,16 @@ setup:
         lda #$00
         sta $d015
 
-        // Fill screen RAM with repeating "DEFEEST" using ROM chargen
-        // at $1000 (uppercase). Connects visually back to the screenfill
-        // bloom that opened the demo. 1024 cells written (24 extra past
-        // visible area into sprite-ptr region — harmless since sprites
-        // are disabled). Each char takes 7 cycles: D E F E E S T.
+        // Fill screen RAM with spaces ($20) — a clean canvas for the
+        // wobble + colour cycling to animate.
         ldx #0
-        ldy #0
-!p1:    lda defeest_codes,y
-        sta SCREEN,x
-        iny
-        cpy #7
-        bne !sk1+
-        ldy #0
-!sk1:   inx
-        bne !p1-
-!p2:    lda defeest_codes,y
+        lda #$20
+!f:     sta SCREEN,x
         sta SCREEN + $100,x
-        iny
-        cpy #7
-        bne !sk2+
-        ldy #0
-!sk2:   inx
-        bne !p2-
-!p3:    lda defeest_codes,y
         sta SCREEN + $200,x
-        iny
-        cpy #7
-        bne !sk3+
-        ldy #0
-!sk3:   inx
-        bne !p3-
-!p4:    lda defeest_codes,y
         sta SCREEN + $300,x
-        iny
-        cpy #7
-        bne !sk4+
-        ldy #0
-!sk4:   inx
-        bne !p4-
+        inx
+        bne !f-
 
         // Colour RAM — light cyan everywhere. Letters appear as cyan
         // foreground on black background. Border/bg cycle via raster
@@ -136,8 +101,8 @@ setup:
         sta SID_FILT_CUT_LO
 
         // Text mode, ROM chargen at $1000 (uppercase), no MCM.
-        // Letters are foreground colour (from colour RAM) on black bg.
-        lda #$1b                        // DEN=1, RSEL=1, YSCROLL=3
+        // YSCROLL=0 initially — vertical wobble in IRQ sets it per frame.
+        lda #$18                        // DEN=1, RSEL=1, YSCROLL=0
         sta VIC_CTRL1
         lda #$14                        // screen $0400, chargen $1000 (ROM)
         sta VIC_MEM
@@ -146,9 +111,6 @@ setup:
         lda #$00
         sta VIC_BORDER
         sta VIC_BG
-
-        lda #$1b
-        sta VIC_CTRL1
 
         // Raster IRQ at top of visible area. Clear $D011 bit 7 first
         // (high bit of raster-compare value) — previous parts may have
@@ -185,7 +147,8 @@ fadeout:
 //   - inc zp_frame
 //   - if zp_frame >= N_FRAMES, set $F6 = $30 (transition trigger)
 //   - else update LP filter cutoff (sweep close) + volume fade
-//   - whole-screen wobble: write sine_tab[zp_frame] to $D016 once
+//   - dual-axis wobble: horizontal ($D016) + vertical ($D011) with
+//     90° phase offset for a circular wave
 //   - border + bg cycle from per-frame colour tables
 //==================================================================
 interrupt:
@@ -209,12 +172,18 @@ interrupt:
         jmp !ack+
 
 !run:
-        // Whole-screen wobble. sine_tab[zp_frame] is 0..7, OR \$08
-        // to preserve CSEL (40-col mode).
+        // Dual-axis wobble. Horizontal ($D016 fine scroll) plus
+        // vertical ($D011 fine scroll) with a 90° phase offset
+        // for a circular wave feel.
         ldy zp_frame
         lda sine_tab,y
-        ora #$08
+        ora #$08                        // preserve CSEL (40-col mode)
         sta VIC_CTRL2
+
+        // Vertical wobble — reuse sine_tab with 90° phase shift
+        lda sine_tab + 64,y
+        ora #$18                        // DEN=1, RSEL=1
+        sta VIC_CTRL1
 
         // Border + bg cycle from per-frame tables.
         lda col_tab,y
@@ -251,13 +220,6 @@ interrupt:
         lda #$ff
         sta VIC_IRQ
         rti
-
-
-//==================================================================
-// DEFEEST screencodes (uppercase chargen at $1000): D E F E E S T.
-//==================================================================
-defeest_codes:
-        .byte $04, $05, $06, $05, $05, $13, $14
 
 
 //==================================================================

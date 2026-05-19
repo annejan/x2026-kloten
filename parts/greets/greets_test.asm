@@ -1,19 +1,11 @@
 //==================================================================
-// outline-64 — greets: DYCP-scrolling sprite font
+// greets_test.asm — standalone test harness for greets
 //
-// Displays a 8-char window of a scrolling greetings message using
-// 8 X-expanded sprites (24×21, scaled from C64 chargen). Each sprite
-// wobbles in Y via a per-sprite DYCP sine offset, giving a wave
-// across the row.
-//
-// Memory:
-//   $8000-$86FF  code + state + tables + inline font data
-//   $2000-$27FF  sprite font shapes (32 glyphs × 64 B = 2 KB),
-//                copied from inline data at setup.
-//   $07F8-$07FF  sprite pointers (screen at $0400)
-//
-// Transition out: pefchain script triggers on f6 = $20 (~15 s).
+// Build:  java -jar ../../kickass/KickAss.jar greets_test.asm
+// Run:    x64sc -autostart greets_test.prg
 //==================================================================
+
+.var chargen = LoadBinary("chargen.bin")
 
 .const VIC_CTRL1   = $d011
 .const VIC_RASTER  = $d012
@@ -38,39 +30,102 @@
 .const SPR_STRIDE  = 36
 .const SPR_Y_BASE  = 130
 
-.const BEAT_PERIOD     = 24    // frames per beat
-.const DYCP_PHASE_STEP = 32    // phase shift between sprites
-.const SCROLL_DELAY    = 6     // advance 1 char every N frames
+.const BEAT_PERIOD     = 24
+.const DYCP_PHASE_STEP = 32
+.const SCROLL_DELAY    = 6
 
 .const zp_beat_phase  = $f4
 .const zp_wobble_pos  = $f5
 .const zp_beat_count  = $f6
 .const zp_scroll_pos  = $f7
 .const zp_scroll_tick = $f8
-.const zp_kick_state  = $f9    // V3 kick state machine (0=idle)
-.const zp_kick_freq   = $fa    // shadow of V3 freq hi (SID regs are write-only)
+.const zp_kick_state  = $f9
+.const zp_kick_freq   = $fa
 
-// Brute-force loud kick. Don't try to be clever with envelope
-// retriggers — just FORCE V3 to noise + sustain=15 + gate on
-// every frame in the kick window (overriding music_play's $41
-// writes), sweep freq down per frame. At end of window: gate off
-// + restore intro's arp ADSR so the arp resumes audibly.
-//
-// State values:
-//   0          = idle (arp running on V3)
-//   1..N       = kick playing (noise at peak vol, freq sweeping)
-//   N+1        = release frame: gate off + restore arp ADSR
-.const KICK_LAST_FRAME = 10      // kick plays for 10 frames (~200ms)
-.const KICK_FREQ_HI    = $80     // starting freq hi (~1953 Hz noise pitch)
-.const KICK_SWEEP      = $10     // freq hi decrement per frame
-.const KICK_FLOOR      = $04     // floor (~61 Hz sub-bass)
+//==================================================================
+// BASIC loader: SYS 2064 ($0810)
+//==================================================================
+* = $0801 "BASIC loader"
+BasicUpstart($0810)
+
+//==================================================================
+// Boot code at $0810
+//==================================================================
+* = $0810 "Boot"
+
+        sei
+
+        // VIC bank 0 ($0000-$3FFF) — make sure CIA2 port A bits 0-1 outputs
+        lda $dd02
+        ora #$03
+        sta $dd02
+        lda $dd00
+        ora #$03                  // bits 0-1 = 11 → VIC bank 0
+        sta $dd00
+
+        // disable CIA IRQs
+        lda #$7f
+        sta $dc0d
+        sta $dd0d
+
+        // clear any pending VIC IRQ
+        lda VIC_IRQ
+        sta VIC_IRQ
+
+        // call greets setup
+        jsr setup
+
+        // set up raster IRQ at line 50
+        lda #50
+        sta VIC_RASTER
+        lda #$1b
+        sta VIC_CTRL1
+
+        lda #$01
+        sta $d01a
+
+        lda #<irq_stub
+        sta $0314
+        lda #>irq_stub
+        sta $0315
+
+        cli
+
+!loop:  jmp !loop-
 
 
+irq_stub:
+        pha
+        txa
+        pha
+        tya
+        pha
+
+        lda #$ff
+        sta VIC_IRQ
+
+        jsr interrupt
+
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
+
+
+//==================================================================
+// Music stub at $119E
+//==================================================================
+* = $119E "Music stub"
+        rts
+
+
+//==================================================================
+// Greets code at $8000
+//==================================================================
 * = $8000 "Greets"
 
-//==================================================================
-// setup
-//==================================================================
 setup:
         lda #$3c
         sta $dd02
@@ -84,7 +139,6 @@ setup:
         sta VIC_BORDER
         sta VIC_BG
 
-        // clear screen RAM
         ldx #0
         lda #$20
 !clr:   sta $0400,x
@@ -94,21 +148,17 @@ setup:
         inx
         bne !clr-
 
-        // SID master volume, mute V1
         lda #$1f
         sta $d418
         lda #$00
         sta $d404
 
-        // copy font data to sprite area
         jsr copy_font
 
-        // initial sprite pointers: first 8 chars of message
         lda #0
         sta zp_scroll_pos
         jsr update_sprite_ptrs
 
-        // X-expand all 8, no Y-expand, mono, in front
         lda #$FF
         sta SPR_XEXP
         lda #$00
@@ -116,7 +166,6 @@ setup:
         sta SPR_MC
         sta SPR_PRIO
 
-        // sprite colours:  cyan (3) / purple (4) / green (5) / blue (6)
         ldx #0
 !pcol:
         txa
@@ -128,7 +177,6 @@ setup:
         cpx #8
         bne !pcol-
 
-        // sprite X positions
         ldx #0
         ldy #0
 !ppos:  lda sprite_x_table,x
@@ -142,7 +190,7 @@ setup:
         bne !ppos-
 
         lda #$00
-        sta $d010         // hi-bit X = 0 (all < 256)
+        sta $d010
 
         lda #$ff
         sta SPR_EN
@@ -151,7 +199,7 @@ setup:
         sta zp_beat_phase
         sta zp_beat_count
         sta zp_scroll_tick
-        sta zp_kick_state         // CRITICAL: was leaking stale interlude value
+        sta zp_kick_state
         sta zp_kick_freq
 
         lda #$00
@@ -159,9 +207,6 @@ setup:
         rts
 
 
-//==================================================================
-// interrupt
-//==================================================================
 interrupt:
         pha
         txa
@@ -173,18 +218,9 @@ interrupt:
 
         jsr INTRO_MUSIC_PLAY
 
-        // Reassert master vol (my_music_play writes vol_in here every
-        // frame; without a re-write the SID would stay at $0F with no
-        // filter mode — fine for greets since we're going wide-open).
         lda #$0f
         sta $d418
 
-        // V1 (bass) plays naturally — this is the payoff. The previous
-        // mute (sta $d404) is gone, the bass returns with intro's
-        // punchy ADSR ($04 / $61) intact.
-
-        // ----- beat counter (only — drums now live in intro's
-        // my_music_play and carry through every part) -----
         inc zp_beat_phase
         lda zp_beat_phase
         cmp #BEAT_PERIOD
@@ -194,38 +230,29 @@ interrupt:
         inc zp_beat_count
 !no_beat:
 
-        // Always re-write sprite pointers every frame. The Spindle NMI
-        // loader can clobber $07F8-$07FF during background loads, and
-        // we only advance scroll_pos every N frames, so we'd lose the
-        // pointers between scroll ticks. Wasting 8 stores beats having
-        // space invaders on screen.
-        jsr update_sprite_ptrs
-
-        // DYCP — advance wobble phase each frame
         inc zp_wobble_pos
 
-        // apply DYCP Y offsets to each sprite
-        ldx #0                     // sprite index
+        ldx #0
 !dycp:
         txa
         clc
-        adc zp_wobble_pos          // phase = wobble_pos + i * PHASE_STEP
+        adc zp_wobble_pos
         tay
-        lda sine_table,y           // signed -1..+1 (subtle)
+        lda sine_table,y
         clc
         adc #SPR_Y_BASE
-        sta $d001,x                // Y register: d001, d003, ...
+        sta $d001,x
         inx
         cpx #8
         bne !dycp-
 
-        // scroll tick — advance char every SCROLL_DELAY frames
         ldx zp_scroll_tick
         inx
         cpx #SCROLL_DELAY
         bcc !no_scroll+
         ldx #0
         inc zp_scroll_pos
+        jsr update_sprite_ptrs
 !no_scroll:
         stx zp_scroll_tick
 
@@ -237,52 +264,27 @@ interrupt:
         rti
 
 
-//==================================================================
-// fadeout
-//==================================================================
 fadeout:
         sec
         rts
 
 
-//==================================================================
-// update_sprite_ptrs — set $07F8-$07FF to current 8-char window
-//
-// Pointers are REVERSED: sprite 7 (leftmost) gets the leftmost
-// character, sprite 0 (rightmost) gets the rightmost. This makes
-// overlap show the RIGHT sprite's left edge in front (since sprite
-// 0 > sprite 7 in VIC priority), so text reads cleanly left-to-right.
-//
-// Uses $fb (x temp) and $fc (ptr temp) — outside EFO's Z $f4-$fa
-// claim, safe as scratch during IRQ.
-//==================================================================
 update_sprite_ptrs:
         ldx #0
-!lp:    stx $fb                     // save loop counter
-        txa
+!lp:    txa
         clc
-        adc zp_scroll_pos           // A = scroll_pos + x
+        adc zp_scroll_pos
         tay
-        lda message,y               // char code from message
+        lda message,y
         tay
-        lda ptr_lookup,y            // sprite pointer value
-        sta $fc                     // save pointer value
-        ldx $fb                     // restore loop counter
-        txa
-        eor #7                      // reversed sprite index (7-x)
-        tay
-        lda $fc                     // get pointer value back
-        sta SPR_PTR_BASE,y          // store at reversed position
-        ldx $fb                     // restore counter
+        lda ptr_lookup,y
+        sta SPR_PTR_BASE,x
         inx
         cpx #8
         bne !lp-
         rts
 
 
-//==================================================================
-// copy_font — bulk copy inline font data → $2000 (2048 bytes)
-//==================================================================
 copy_font:
         ldx #0
 !cp:    lda font_data+$000,x
@@ -306,10 +308,6 @@ copy_font:
         rts
 
 
-//==================================================================
-// Tables
-//==================================================================
-
 ptr_lookup:
 .for (var i = 0; i < 256; i++) {
         .if (i >= $41 && i <= $5A) { .byte $80 + i - $41 }
@@ -317,12 +315,8 @@ ptr_lookup:
 }
 
 sprite_x_table:
-// Reversed: sprite 7 is leftmost (X=24), sprite 0 is rightmost (X=276).
-// Matches VIC's fixed priority (sprite 0 > sprite 7) — the highest-priority
-// sprite is at the rightmost position, so overlap shows each character's
-// left edge in front.
 .for (var i = 0; i < 8; i++) {
-        .byte SPR_BASE_X + (7 - i) * SPR_STRIDE
+        .byte SPR_BASE_X + i * SPR_STRIDE
 }
 
 sprite_cols:
@@ -330,17 +324,9 @@ sprite_cols:
 
 sine_table:
 .for (var i = 0; i < 256; i++) {
-        .byte floor(1 * sin(i * 2 * PI / 256) + 0.5)
+        .byte floor(4 * sin(i * 2 * PI / 256) + 0.5)
 }
 
-
-//==================================================================
-// scrolling message
-//==================================================================
-// Greets text — uppercase only (font is A-Z + blank).
-// The real story: never had time to code the breadbin, then AI made
-// it possible. Tongue in cheek, grateful, and shout-outs to the
-// folks whose tools / inspiration got us here.
 message:
 .text "      FOR YEARS I WANTED TO MAKE A DEMO     "
 .text "      FOR THIS LOVELY LITTLE PARTY          "
@@ -382,12 +368,6 @@ message:
 .byte $00
 
 
-//==================================================================
-// Font data — 26 letters (A-Z) + space + 5 unused slots
-// Generated from the C64 chargen ROM at build time.
-//==================================================================
-.var chargen = LoadBinary("chargen.bin")
-
 .function glyph_data_21x24(code) {
         .var base = $0800 + code * 8
         .var result = List()
@@ -418,18 +398,15 @@ message:
 }
 
 font_data:
-// A-Z
 .for (var c = $41; c <= $5A; c++) {
         .var g = glyph_data_21x24(c)
         .for (var i = 0; i < g.size(); i++) {
                 .byte g.get(i)
         }
 }
-// space (blank)
 .for (var i = 0; i < 64; i++) {
         .byte 0
 }
-// unused slots (32 - 27 = 5)
 .for (var s = 0; s < 5; s++) {
         .for (var i = 0; i < 64; i++) {
                 .byte 0

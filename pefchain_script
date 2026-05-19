@@ -9,7 +9,7 @@
 #
 #   06 = 00   wait until zp $06 == 0  (screenfill: HOLDCNT drained ~3s)
 #   f6 = f0   wait until zp $f6 == $f0 (intro: zp_outro hit T_OUTRO_DONE)
-#   f6 = 20   wait until zp $f6 == $20 (interlude: 32 beats ≈ 15 sec —
+#   f6 = 10   wait until zp $f6 == $10 (interlude: 16 beats ≈ 7.5 sec —
 #                                       same byte, repurposed by
 #                                       interlude's setup which resets it)
 #   f6 = 20   wait until zp $f6 == $20 (greets: same trick — greets'
@@ -22,7 +22,7 @@
 
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
-parts/interlude/interlude.pef       f6 = 20
+parts/interlude/interlude.pef       f6 = 10
 parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
 parts/coda/coda.pef                 f6 = 30
