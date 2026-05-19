@@ -33,7 +33,7 @@ Seven parts loaded by Spindle's pefchain framework:
 |---|-----|------|----------------|
 | 1 | `parts/screenfill/`  | Loading screen — radial DEFEEST bloom + water ripple + fade-to-black | `$06 = $00` (HOLDCNT drained) |
 | 2 | `parts/intro/`       | Logo bounce, scroller, rasterbars, 8 sprites, 3-voice SID | `$F6 = $F0` (`zp_outro` hits `T_OUTRO_DONE`) |
-| 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $20` (beat counter) |
+| 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $10` (beat counter, 16 beats ≈ 7.5 s) |
 | 4 | `parts/sinus/`       | Comedown: sine-wobble DEFEEST + colour cycling, LP filter close, drums silent | `$F6 = $30` (set when `$FC` frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: DYCP sprite-font scroller with sine wobble + kick drums returning | `$F6 = $20` |
 | 6 | `parts/coda/`        | Title card "KLOOT AND THE BREADBIN" with rotating Kloot star sprite + slow border colour cycle + dedicated V3 kick | `$F6 = $30` (frame counter hits N_FRAMES) |
@@ -109,14 +109,17 @@ outline-64/
 │   ├── coda/     {coda.asm,     coda_efo_header.asm}
 │   └── end/      {end.asm,      end_efo_header.asm}
 ├── tools/
-│   ├── png_to_koala.py       ← PNG → multicolour C64 bitmap
-│   ├── koala_to_logo_png.py  ← export logo rows 8-16 as paletted PNG
-│   └── logo_png_to_asm.py    ← import edited PNG back to logo_rows.asm
+│   ├── png_to_koala.py          ← PNG → multicolour C64 bitmap
+│   ├── koala_to_logo_png.py     ← export logo rows 8-16 as paletted PNG
+│   ├── logo_png_to_asm.py       ← import edited PNG back to logo_rows.asm
+│   └── render_kloot_star.py     ← pre-render Kloot star rotation frames (quadrants, lobes)
 ├── docs/
 │   ├── timing.md         ← frame-by-frame event timeline for all 7 parts
 │   ├── pefchain-notes.md
 │   ├── sid-drums.md
-│   └── sound-arc.md
+│   ├── sound-arc.md
+│   ├── music-theory.md
+│   └── kloot-star-expansion.md
 └── outline-64.d64       ← build output
 ```
 
@@ -176,7 +179,7 @@ the `.d64`.
 | `$0800-$0B1F`  | coda code + col_tab + driver (during coda) |
 | `$1000-$125D`  | **intro's resident music** — tables + my_music_play (inherited by interlude / sinus / greets / coda) |
 | `$2000-$23FF`  | greets sprite font (overlays intro's unused bitmap area) |
-| `$2800-$2BFF`  | coda Kloot-star sprite shapes (16 frames × 64 bytes, sprite ptrs `$A0-$AF`) |
+| `$2800-$37FF`  | coda Kloot-star quad sprite shapes (4 quadrants × 16 frames × 64 bytes; sprite ptrs `$A0-$DF` at `$2800`/`$2C00`/`$3000`/`$3400`) |
 | `$3000-$444F`  | end font + code                                       |
 | `$8000-…`      | interlude / greets code + state                       |
 | `$C000-$CAFF`  | screenfill code + dist_table + ripple palette + char_table |
@@ -405,15 +408,17 @@ See `parts/greets/greets_test.asm` for a working example.
 
 ## Pending work
 
-- **Greets** — DYCP sprite scroller currently produces flashing/illegible
-  letters. Suspect: sine Y wobble too aggressive, or sprite colour
-  assignments blend into background. Fix approach: reduce/remove wobble,
-  adjust colours, verify sprite font scaling.
-- **Interlude** — too long at 32 beats (~15s). Needs `BEAT_COUNT_MAX`
-  reduced from $20 to $10 or similar.
-- **Sinus** — boring. Single `$D016` sine wobble + colour cycling on
-  repeated "DEFEEST" text needs replacement.
-- **Coda** — placeholder. Needs real content.
+- **Greets** — DYCP sprite scroller still produces flashing/illegible
+  letters. Current fix: sprite pointer re-write every frame (Spindle NMI
+  clobbers `$07F8-$07FF`), sine wobble reduced to ±1 px, sprite priority
+  reversed (sprite 7 leftmost, sprite 0 rightmost). Still needs colour /
+  font-shape tuning.
+- **Sinus** — boring. Dual-axis wobble (`$D016`+`$D011` 90° phase offset)
+  + colour cycling + LP fade added, but single repeating "DEFEEST" text
+  still thin.
+- **Coda** — title card with 4-sprite Kloot star (Stage B+D: 96×84 quad
+  with asymmetric petals, sound-bound bob, animate-in reveal) + colour
+  RAM star-field + V3 kick. Still needs more content.
 - **Screenfill/intro** — wording/lettering polish needed.
 
 **Completed recent work (all shipped to main):**
@@ -423,11 +428,23 @@ See `parts/greets/greets_test.asm` for a working example.
 - Story interleave in interlude (sad text on plasma → tease text at
   bass return), greets DYCP scroller telling personal arc
 - Sinus rewritten from stripe placeholder to repeating DEFEEST text
-  with `$D016` wobble + colour cycling + LP fade
+  with `$D016` wobble + colour cycling + LP fade (PR #9)
 - End credits: title + Evoke closer + Anus/Kloot/Ranzbak/Cinder credits
 - Logo PNG round-trip workflow + bitmap trim (PR #3 / #4)
 - All major bugs squashed (KA `>label+N` precedence, sinus EFO
   page-claim mismatch, `$D011` bit 7 trap, sinus CSEL preservation)
+- **Interlude halved**: `BUILDUP_BEAT` 24→8, pefchain `f6=20`→`f6=10` (PR #8)
+- **Greets sprite pointer fix**: `jsr update_sprite_ptrs` every frame (PR #7)
+- **Greets wobble reduced**: sine amplitude 4→1; priority reversed (PR #7)
+- **Sinus**: space fill + dual-axis wobble + LP fade (PR #9)
+- **Coda Stage B — 4-sprite Kloot star**: 96×84 quad, 12-lobe Claude burst,
+  pre-rendered by `render_kloot_star.py --quadrant 0..3` (PR #11)
+- **Coda Stage C — breath modulation**: collective scale + position bob (PR #12)
+- **Coda Stage D — asymmetric petals, animate-in reveal**: explode-out from
+  centre, sound-bound bob, petal shape modulation per quadrant (PR #13)
+- **Coda V3 kick**: dedicated noise kick, 10-frame pitch sweep, hard restart (PR #9)
+- **End capital glyphs**: B, I, L, M, N; custom Å at screencode `$5B` (direct commit)
+- **Docs**: `docs/kloot-star-expansion.md`, `docs/music-theory.md`
 
 See `docs/timing.md` for current frame-by-frame event timeline.
 

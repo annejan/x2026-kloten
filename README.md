@@ -136,7 +136,7 @@ trigger. The end card is the only "stay" loop.
 - Calls intro's resident `my_music_play` so the chord + lead drift
   continues. V1 (bass) is muted every frame for a pad-only feel.
 - Last 8 beats: V1 re-enabled, LP filter sweep ($40→$FF) as build-up.
-- Beat counter at `$f6` ticks every 24 frames. After 32 beats (~15 s)
+- Beat counter at `$f6` ticks every 24 frames. After 16 beats (~7.5 s)
   pefchain advances to sinus.
 - Inherits intro's music pages (`'I', $10, $12` in the EFO header) so
   pefchain doesn't overwrite the resident tables.
@@ -168,7 +168,10 @@ trigger. The end card is the only "stay" loop.
 ### Part 5 — `parts/greets/greets.asm` (greetings scroll)
 
 - **DYCP sprite-font scroll** — 8 X-expanded sprites show a 8-char window
-  of greetings text with a per-sprite sine wobble (Y offset from sine table).
+  of greetings text with a per-sprite sine wobble (Y offset from sine table,
+  amplitude ±1 px). Sprite pointers re-written every frame (Spindle NMI
+  clobbers `$07F8-$07FF` between ticks). Priority reversed: sprite 7
+  leftmost, sprite 0 rightmost — VIC reads left-to-right for overlap.
 - **Kick drums on V3** — pitch-swept noise burst on every beat (driven from
   intro's resident `my_music_play`; gated on `zp_outro != 0` which sinus
   resets, so drums silence in sinus and return here).
@@ -185,16 +188,21 @@ trigger. The end card is the only "stay" loop.
   X 2026" on row 13. Text mode, ROM uppercase chargen at `$1000`. The
   breather where the story lands between greets' scroller and end's
   credit roll.
-- **Kloot star** — an orange (`$08`) 4-point sparkle sprite sits to the
-  left of "KLOOT" on row 11, signing the title like an AI co-author
-  signature. 16 pre-rendered rotation frames at `$2800-$2BFF` (sprite
-  pointers `$A0..$AF`), advanced 1 shape per `zp_frame` tick. The star's
-  4-fold symmetry makes the loop seamless — visually reads as a smooth
-  continuous rotation, full 360° in ~0.64 s. Fades in at half-rate
-  `zp_frame == 13`, synced with the first audible V3 kick. Sprite shape
-  data is built by `tools/render_kloot_star.py` and pinned at `$2800`
-  via a second mkpef data file so KA's contiguous PRG doesn't drag a
-  7 KB zero-padded chunk across greets' pages.
+- **Kloot star — 4-sprite 96×84 quad (Stage B+D)** — four X+Y-expanded
+  sprites (sprites 0-3) form a 2×2 grid, each 48×42 on screen (24×21
+  source expanded 2×). The 12-lobe Claude burst is pre-rendered by
+  `tools/render_kloot_star.py --lobes 12 --quadrant 0..3` into four
+  1024-byte files at `$2800`/`$2C00`/`$3000`/`$3400` (sprite bases
+  `$A0..$DF`). 16 rotation frames cycle seamlessly via 4-fold symmetry.
+- **Stage C — breath modulation**: collective scale + position bob
+  modulated by a 256-entry sine table, giving the star a breathing/
+  pulsing feel.
+- **Stage D — asymmetric petals, animate-in reveal**: all four sprites
+  start collapsed at screen centre and explode outward over the first
+  ~30 frames. Per-quadrant petal shape modulation creates asymmetric
+  lobes. Sound-bound bob syncs the vertical bob to the kick drum phase.
+- **Colour RAM star-field**: top 5 rows twinkle with random colours
+  on a black background.
 - **Slow border colour cycle** through a 256-entry calm palette (black /
   blue / light-blue / light-grey), driven by `col_tab[zp_frame]`.
 - **Dedicated V3 kick** — coda "owns" V3 (no arp competing), so it sets
@@ -208,15 +216,15 @@ trigger. The end card is the only "stay" loop.
 - Inherits intro's music pages (`'I', $10, $12`). Drums from intro's
   `my_music_play` are silenced (`zp_outro` gate stays zero because coda's
   setup zeros `$f6`); only the coda's own V3 kick sounds.
-- Reuses `$0800-$0AFF` (code + col_tab, same pages sinus claimed earlier)
-  and claims `$2800-$2BFF` for the star sprite shapes — all free during
-  coda's run.
+- EFO claims `'P', $08, $0A` for code + col_tab and `'P', $28, $37` for
+  all four quadrants of star sprite data (16 pages).
 
 ### Part 7 — `parts/end/end.asm` (credit roll)
 
 - Custom font copied into bank 0, scrolled smoothly bottom-to-top via
   a row-major `scroll_rows_up` (full 40-byte row writes per chunk so VIC
-  never reads mid-row torn cells).
+  never reads mid-row torn cells). Full uppercase A-Z glyphs present,
+  including custom Å at screencode `$5B` for "Linus Åkesson".
 - Per-row gradient colours; "deFEEST" header pulses through a brightness
   ramp.
 - Side rasterbars on the left and right border columns.
@@ -261,7 +269,7 @@ at `setup` / `interrupt` / `fadeout` routines plus memory-page tags.
 ```
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
-parts/interlude/interlude.pef       f6 = 20
+parts/interlude/interlude.pef       f6 = 10
 parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
 parts/coda/coda.pef                 f6 = 30
@@ -279,8 +287,8 @@ Each condition tells pefchain when to advance:
 
 - `06 = 00` — wait for zero-page `$06` (= screenfill's HOLDCNT) to hit 0.
 - `f6 = f0` — wait for `$f6` (= intro's `zp_outro`) to reach `T_OUTRO_DONE`.
-- `f6 = 20` — wait for `$f6` (= interlude's beat counter) to reach 32.
-  Same byte reused from intro, reset to 0 by interlude's setup.
+- `f6 = 10` — wait for `$f6` (= interlude's beat counter) to reach 16
+  (~7.5 s). Same byte reused from intro, reset to 0 by interlude's setup.
 - `f6 = 30` — wait for `$f6` (= sinus' transition byte) to be set to
   $30 by sinus once `$fc` (the actual frame counter, off-music-clobber)
   hits 250. Sinus's setup resets `$f6` to 0.
@@ -336,6 +344,14 @@ thing.
   bitmap (`defeest.kla`). Uses a fixed slot palette
   (black/blue/yellow/white) so every cell has the same 4 colours —
   works for logos with a small palette.
+- `tools/koala_to_logo_png.py` — export logo rows 8-16 from a Koala
+  as a paletted 320×72 PNG for hand-editing.
+- `tools/logo_png_to_asm.py` — import an edited PNG back to
+  `logo_rows.asm`, preserving original screen RAM colour assignments.
+- `tools/render_kloot_star.py` — pre-render Kloot star rotation frames.
+  Supports `--lobes N` (default 12), `--quadrant N` (0-3 for the 2×2
+  quad sprite grid), `--outer`/`--inner` for burst shape, `--curve` for
+  lobe curvature.
 - `vicemon.py` — stdlib VICE binary-monitor client (originated in the
   Umbra C64 project). Launch VICE with
   `-binarymonitor -binarymonitoraddress ip4://127.0.0.1:6502`
