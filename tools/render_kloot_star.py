@@ -211,6 +211,13 @@ def main() -> int:
                    help="-1 = full star centred (default). 0/1/2/3 = render "
                         "one tile of a logical 48×42 star, suitable for a "
                         "2×2 sprite cluster (Stage B). 0=TR, 1=TL, 2=BL, 3=BR.")
+    p.add_argument("--breath", type=float, default=0.0,
+                   help="Breath amplitude (Stage C). 0 = no modulation "
+                        "(default); positive = pixels of outer-radius "
+                        "modulation per frame. The radius traces one full "
+                        "sine cycle across the frame set, so star pulses "
+                        "in time with rotation. Try ~2.0-3.0 for a clear "
+                        "breath at outer=22.")
     args = p.parse_args()
 
     # N-fold symmetric star: unique frames span 0..(360/lobes)°.
@@ -219,7 +226,16 @@ def main() -> int:
     frames = []
     for i in range(args.frames):
         angle = i * angle_step
-        frame = render_frame(angle, args.outer, args.inner, args.curve,
+        # Stage C breath: modulate outer radius across frames so one
+        # rotation cycle = one breath cycle. cos goes 1 → −1 → 1, so
+        # outer = base − amp*(1 − cos)/2 = base at frame 0, base−amp at
+        # frame N/2, base at frame N. Looks like an inhale/exhale.
+        if args.breath > 0.0:
+            breath_phase = i * 2.0 * math.pi / args.frames
+            outer = args.outer - args.breath * 0.5 * (1.0 - math.cos(breath_phase))
+        else:
+            outer = args.outer
+        frame = render_frame(angle, outer, args.inner, args.curve,
                              args.diag, args.diag_curve, args.lobes,
                              quadrant=args.quadrant)
         frames.append(frame)
