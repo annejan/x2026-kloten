@@ -40,7 +40,7 @@
 
 .const BEAT_PERIOD     = 24    // frames per beat
 .const DYCP_PHASE_STEP = 32    // phase shift between sprites
-.const SCROLL_DELAY    = 6     // advance 1 char every N frames
+.const SCROLL_DELAY    = 12    // advance 1 char every N frames
 
 .const zp_beat_phase  = $f4
 .const zp_wobble_pos  = $f5

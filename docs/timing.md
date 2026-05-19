@@ -3,6 +3,26 @@
 All values are approximate; everything is subject to change as
 effects and music evolve.
 
+## MCP-measured timings (19 May 2026)
+
+PAL 50 fps, VICE x64sc, measured via polling `$F6` every ~3 s from
+autostart:
+
+| Time (s) | `$F6` | Part |
+|----------|-------|------|
+| 0–51 | `$00` | screenfill → intro — `$F6` is `zp_outro` in intro, stays 0 until outro starts |
+| 51–54 | `$00`→`$1A`→`$66`→`$B2` | Transition cluster — intro outro sweeps `zp_outro` 0→`$F0`, triggers interlude |
+| 54–66 | `$66`→`$B2`→`$3C` | Rapid — interlude + sinus (fast `$F6` update), then greets loads |
+| 66–87 | `$01`→`$03`→`$05`→`$08`→`$0A`→`$0C`→`$0E` | **Greets** — slow beat-counter increment (every ~0.48 s) |
+| 90 | `$00` | Transition to coda → end (`$F6` reset) |
+
+**Greets visible window: ~21 s** (beat 1→30 of 32).
+Scroll advances 1 char every 6 frames → ~8.3 chars/s.
+At 21 s ≈ 175 chars shown, roughly 20% of message visible before
+transition to coda. Bumped to SCROLL_DELAY=12 (4.2 chars/s) for
+readability — same total chars shown (~88 chars over 21 s ≈ 10
+lines of ~30).
+
 ## Frame / tick basis
 
 | Unit | Rate | Per |
