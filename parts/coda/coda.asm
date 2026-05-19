@@ -99,7 +99,6 @@
 .const KLOOT_SHAPE_BASE_TL = $b0      // $2C00 / 64 — spr 1 (TL)
 .const KLOOT_SHAPE_BASE_BL = $c0      // $3000 / 64 — spr 2 (BL)
 .const KLOOT_SHAPE_BASE_BR = $d0      // $3400 / 64 — spr 3 (BR)
-.const KLOOT_SHOW_FRAME = 13          // half-rate frame at first kick
 
 // Sprite position registers ($D000/$D001 etc.) use VIC's native raster
 // coordinate system, NOT 0-indexed display-pixel rows/cols:
@@ -120,6 +119,15 @@
 .const KLOOT_Y_TOP    = 108           // top row of quad: spr 0 (TR), spr 1 (TL)
 .const KLOOT_Y_BOT    = 150           // bottom row: spr 2 (BL), spr 3 (BR) — top at raster
                                       //   150, sprite 42 tall (Y-expanded), ends at 192
+
+// Stage D animate-in: all 4 sprites start stacked at the centre of the
+// quad and interpolate outward over KLOOT_REVEAL_FRAMES zp_frame ticks
+// (≈ 480 ms at 25 Hz). The reveal completes one zp_frame tick before
+// the first audible kick (zp_kick_count=25 → raw frame 26 ≈ zp_frame 13).
+.const KLOOT_X_CENTRE = 160           // midpoint of KLOOT_X_LEFT and KLOOT_X_RIGHT
+.const KLOOT_Y_CENTRE = 129           // midpoint of KLOOT_Y_TOP and KLOOT_Y_BOT
+.const KLOOT_REVEAL_FRAMES = 24       // 0..23 interpolating, 24+ final positions
+                                      // ≈ 960 ms at 25 Hz — slow enough to read
 
 // Coda V3 kick — coda has the unique luxury of "owning" V3 for the
 // duration of the part (zp_outro=0 keeps intro's drum gate closed,
@@ -186,47 +194,41 @@ setup:
         sta SID_V3_CTRL
         // Float kick_freq sentinel so the first body frame paints it.
         sta kick_freq
-        // First kick fires after a short lead-in so the title is up
-        // before the first thump lands.
-        lda #25                         // ~0.5 s lead-in
+        // First kick fires after a longer lead-in so the animate-in
+        // reveal (KLOOT_REVEAL_FRAMES × 2 raw frames ≈ 960 ms) has
+        // time to complete before the first thump lands.
+        lda #55                         // ~1.1 s lead-in
         sta zp_kick_count
 
-        // Sprites off (greets had 8 enabled). The Kloot-star quad
-        // (sprites 0-3) gets re-enabled in the IRQ once zp_frame
-        // reaches KLOOT_SHOW_FRAME.
-        lda #$00
-        sta $d015
-
-        // ---- Kloot star quad — 96×84 12-lobe Claude burst ----
+        // ---- Kloot star quad — 96×84 12-lobe Claude burst (Stage B+D) ----
         // Sprites 0-3 form a 2×2 grid, each X+Y-expanded (48×42 on screen).
+        // All four start COLLAPSED at the centre of the final layout
+        // (KLOOT_X_CENTRE, KLOOT_Y_CENTRE) and animate-in outward over
+        // the first KLOOT_REVEAL_FRAMES zp_frame ticks via the IRQ's
+        // position-interpolation tables (Stage D).
         lda #$0f                        // bits 0-3 = sprites 0-3
         sta $d017                       // Y expand all 4
         sta $d01d                       // X expand all 4
         sta $d01b                       // background priority: title chars in front
 
-        // X positions — left column (TL, BL) at KLOOT_X_LEFT, right at KLOOT_X_RIGHT.
-        // All X < 256, so $D010 high bits stay clear.
-        lda #KLOOT_X_RIGHT              // spr 0 TR
+        // Initial positions: all 4 sprites stacked at the centre.
+        lda #KLOOT_X_CENTRE
         sta $d000
-        lda #KLOOT_X_LEFT               // spr 1 TL
         sta $d002
-        lda #KLOOT_X_LEFT               // spr 2 BL
         sta $d004
-        lda #KLOOT_X_RIGHT              // spr 3 BR
         sta $d006
         lda $d010
         and #$f0                        // clear X-high bits for sprites 0-3
         sta $d010
-
-        // Y positions — top row (TR, TL) at KLOOT_Y_TOP, bottom at KLOOT_Y_BOT.
-        lda #KLOOT_Y_TOP                // spr 0 TR
+        lda #KLOOT_Y_CENTRE
         sta $d001
-        lda #KLOOT_Y_TOP                // spr 1 TL
         sta $d003
-        lda #KLOOT_Y_BOT                // spr 2 BL
         sta $d005
-        lda #KLOOT_Y_BOT                // spr 3 BR
         sta $d007
+
+        // Sprites enabled from frame 0 — the explode-out IS the reveal.
+        lda #$0f
+        sta $d015
 
         // All four quadrants share the Claude orange.
         lda #$08
@@ -352,8 +354,13 @@ fadeout:
 // Per frame:
 //   - jsr INTRO_MUSIC_PLAY (chord pad + lead on V1/V2, V3 arp is
 //     about to get overwritten by our kick)
+//   - SAMPLE zp_kick_state into kloot_bob_now BEFORE coda_kick runs,
+//     so the bob value peaks on the first audible kick frame (state 12)
+//     rather than one frame late.
 //   - kick state machine on V3 (hard-restart per beat, sweep body)
-//   - half-rate tick: zp_frame only advances every 2nd IRQ
+//   - half-rate tick: zp_frame advances every 2nd IRQ, drives shape +
+//     animate-in base positions
+//   - 50 Hz: write sprite (X, Y+bob) for all 4 quadrants
 //   - star_field: twinkle 16 stars in top rows (4 banks of 4)
 //   - if zp_frame >= N_FRAMES, set $F6 = $30 (transition)
 //   - else border = col_tab[zp_frame] for slow sine colour cycle
@@ -361,26 +368,33 @@ fadeout:
 interrupt:
         jsr INTRO_MUSIC_PLAY
 
+        // Stage D sound-bound bob: sample the kick state BEFORE
+        // coda_kick decrements it. State 12 = first audible kick frame
+        // (gate-on, peak dip); state 0 = idle (no dip).
+        ldx zp_kick_state
+        lda bob_table,x
+        sta kloot_bob_now
+
         jsr star_field
         jsr coda_kick
 
-        // half-rate divider
+        // half-rate divider — drives shape advance + animate-in lookup
         lda zp_subtick
         eor #1
         sta zp_subtick
         bne !skip_inc+
         inc zp_frame
-        // Advance the Kloot star shape on each zp_frame tick (= every
-        // 2nd raw frame = 25 Hz). 16 unique shapes cover 0°..90°; the
-        // star's 4-fold symmetry makes the loop seamless.
+        // Advance the Kloot star shape on each zp_frame tick (25 Hz).
+        // 16 unique shapes cover 0..30° (12-fold symmetric, or 0..360°
+        // if --asymmetry was used at render time); the loop is seamless.
         inc kloot_shape
         lda kloot_shape
         and #$0f
         sta kloot_shape
         // Write all 4 sprite pointers (TR, TL, BL, BR) from this single
         // counter — each quadrant uses a different base address but
-        // advances through its 16-frame rotation in lockstep. ORA works
-        // here because every base has bits 0-3 clear (see constants above).
+        // advances in lockstep. ORA works because every base has bits
+        // 0-3 clear.
         ora #KLOOT_SHAPE_BASE_TR        // $A0 | shape  → $A0..$AF
         sta $07f8
         lda kloot_shape
@@ -392,7 +406,46 @@ interrupt:
         lda kloot_shape
         ora #KLOOT_SHAPE_BASE_BR        // $D0 | shape  → $D0..$DF
         sta $07fb
+
+        // Stage D animate-in: pick the interpolated base positions for
+        // this zp_frame. Tables hold 13 entries (0..12); zp_frame is
+        // clamped to 12 so post-reveal frames all use the final layout.
+        ldx zp_frame
+        cpx #KLOOT_REVEAL_FRAMES
+        bcc !pos_ok+
+        ldx #KLOOT_REVEAL_FRAMES
+!pos_ok:
+        lda kloot_x_left_table,x
+        sta kloot_x_left_base
+        lda kloot_x_right_table,x
+        sta kloot_x_right_base
+        lda kloot_y_top_table,x
+        sta kloot_y_top_base
+        lda kloot_y_bot_table,x
+        sta kloot_y_bot_base
 !skip_inc:
+
+        // Write sprite positions every IRQ (50 Hz) so the Y-bob has
+        // 20 ms granularity even though the animate-in base values
+        // only update at 25 Hz.
+        lda kloot_x_right_base
+        sta $d000                       // spr 0 TR X
+        sta $d006                       // spr 3 BR X
+        lda kloot_x_left_base
+        sta $d002                       // spr 1 TL X
+        sta $d004                       // spr 2 BL X
+
+        // Y = base + bob (same bob offset on all 4 sprites).
+        lda kloot_y_top_base
+        clc
+        adc kloot_bob_now
+        sta $d001                       // spr 0 TR Y
+        sta $d003                       // spr 1 TL Y
+        lda kloot_y_bot_base
+        clc
+        adc kloot_bob_now
+        sta $d005                       // spr 2 BL Y
+        sta $d007                       // spr 3 BR Y
 
         lda zp_frame
         cmp #N_FRAMES
@@ -408,15 +461,6 @@ interrupt:
         ldy zp_frame
         lda col_tab,y
         sta VIC_BORDER
-        // Reveal the Kloot star quad at the first kick. Idempotent OR —
-        // fine to re-write $0F every frame thereafter.
-        lda zp_frame
-        cmp #KLOOT_SHOW_FRAME
-        bcc !no_show+
-        lda $d015
-        ora #$0f                        // enable sprites 0-3
-        sta $d015
-!no_show:
 
 !ack:
         lda #$ff
@@ -506,6 +550,69 @@ kick_freq:
 // visually. Lives in code RAM for the same reason as kick_freq.
 kloot_shape:
         .byte 0
+
+
+//==================================================================
+// Stage D scratch + tables for animate-in and sound-bound bob.
+//
+// kloot_bob_now      — bob_table[zp_kick_state] sampled BEFORE
+//                      coda_kick advances the state. Added to every
+//                      sprite Y this IRQ.
+// kloot_*_base       — base position picked from the animate-in
+//                      tables on each zp_frame tick (25 Hz).
+//                      Sprite registers get (base + bob) every IRQ.
+//==================================================================
+kloot_bob_now:        .byte 0
+kloot_x_left_base:    .byte 0
+kloot_x_right_base:   .byte 0
+kloot_y_top_base:     .byte 0
+kloot_y_bot_base:     .byte 0
+
+// Animate-in position tables — linear interpolation from
+// KLOOT_*_CENTRE at index 0 to the final KLOOT_X_LEFT / RIGHT /
+// Y_TOP / BOT at index KLOOT_REVEAL_FRAMES. KA's integer division
+// gives slightly stepped progressions which read as smoother than
+// the table's 12 unique values would suggest at 25 Hz.
+.const KLOOT_DX = KLOOT_X_RIGHT - KLOOT_X_CENTRE    // = 24
+.const KLOOT_DY = KLOOT_Y_BOT   - KLOOT_Y_CENTRE    // = 21
+
+kloot_x_left_table:
+.for (var i = 0; i <= KLOOT_REVEAL_FRAMES; i++) {
+        .byte KLOOT_X_CENTRE - i * KLOOT_DX / KLOOT_REVEAL_FRAMES
+}
+kloot_x_right_table:
+.for (var i = 0; i <= KLOOT_REVEAL_FRAMES; i++) {
+        .byte KLOOT_X_CENTRE + i * KLOOT_DX / KLOOT_REVEAL_FRAMES
+}
+kloot_y_top_table:
+.for (var i = 0; i <= KLOOT_REVEAL_FRAMES; i++) {
+        .byte KLOOT_Y_CENTRE - i * KLOOT_DY / KLOOT_REVEAL_FRAMES
+}
+kloot_y_bot_table:
+.for (var i = 0; i <= KLOOT_REVEAL_FRAMES; i++) {
+        .byte KLOOT_Y_CENTRE + i * KLOOT_DY / KLOOT_REVEAL_FRAMES
+}
+
+// Sound-bound bob: indexed by zp_kick_state (0..KICK_LEN=12). The
+// state value SAMPLED before coda_kick runs means index 12 = first
+// audible kick frame (peak dip), index 0 = idle (no dip). Sprite Y
+// values get this added so the star "drops" on each kick and
+// recovers over the body window. Max dip is 12 px — about 14% of
+// the 84-px tall sprite quad, clearly visible.
+bob_table:
+        .byte 0     // state 0 — idle, no dip
+        .byte 0     // state 1 — last body frame, settled
+        .byte 1     // state 2
+        .byte 2     // state 3
+        .byte 3     // state 4
+        .byte 4     // state 5
+        .byte 5     // state 6
+        .byte 7     // state 7
+        .byte 8     // state 8
+        .byte 9     // state 9
+        .byte 10    // state 10
+        .byte 11    // state 11
+        .byte 12    // state 12 — first audible kick frame, peak dip
 
 
 //==================================================================

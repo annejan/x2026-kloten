@@ -39,7 +39,8 @@ BYTES_PER_FRAME = 64  # 24*21/8 = 63 + 1 trailing pad byte
 
 def star_radius(theta: float, r_outer: float, r_inner: float, curve: float,
                 r_diag: float = 0.0, diag_curve: float = 4.0,
-                lobes: int = 4) -> float:
+                lobes: int = 4,
+                petal_lengths: list[float] | None = None) -> float:
     """Polar radius for a Claude-style sparkle.
 
     Two superimposed N-fold petal functions:
@@ -49,19 +50,40 @@ def star_radius(theta: float, r_outer: float, r_inner: float, curve: float,
     the sharpness/size of the diagonal bumps. `lobes` sets the petal count
     (real Claude logo is 12; default 4 keeps the original 4-point look).
 
+    `petal_lengths` (Stage D) is an optional list of `lobes` per-petal
+    radius multipliers. If supplied, the big-petal peak at petal `k` is
+    `r_outer * petal_lengths[k]` instead of a uniform `r_outer`. Use a
+    seeded random walk to break the clean radial symmetry while keeping
+    the petals readable.
+
     A cos(N*θ) wave has 2N peaks of |·|, so we use freq = lobes/2 to get
     exactly `lobes` peaks per full revolution.
     """
     freq = lobes / 2.0
     big = abs(math.cos(freq * theta)) ** curve
     diag = abs(math.sin(freq * theta)) ** diag_curve
-    return r_inner + (r_outer - r_inner) * big + r_diag * diag
+
+    if petal_lengths is not None:
+        # Identify which lobe `theta` is closest to (0..lobes-1) and use
+        # that petal's length multiplier. The boundaries between petals
+        # fall in the cos zero-crossings, where `big` is ~0, so the
+        # discontinuity between adjacent petal multipliers doesn't show.
+        sector = math.pi / lobes  # half the angular width of one petal
+        # Wrap theta into [0, 2π) then find the nearest petal centre.
+        theta_wrapped = theta % (2.0 * math.pi)
+        petal_idx = int((theta_wrapped + sector) // (2.0 * sector)) % lobes
+        r_peak = r_outer * petal_lengths[petal_idx]
+    else:
+        r_peak = r_outer
+
+    return r_inner + (r_peak - r_inner) * big + r_diag * diag
 
 
 def render_frame(angle_deg: float, r_outer: float, r_inner: float,
                  curve: float, r_diag: float = 0.0, diag_curve: float = 4.0,
                  lobes: int = 4, antialias_samples: int = 4,
-                 quadrant: int = -1) -> bytes:
+                 quadrant: int = -1,
+                 petal_lengths: list[float] | None = None) -> bytes:
     """Render a single rotated star into 24×21 1bpp = 63 bytes + 1 pad.
 
     `quadrant` = -1 (default): full star centred on the 24×21 sprite.
@@ -118,7 +140,8 @@ def render_frame(angle_deg: float, r_outer: float, r_inner: float,
                     r = math.hypot(dx, dy)
                     theta = math.atan2(dy, dx) - rot
                     if r <= star_radius(theta, r_outer, r_inner, curve,
-                                        r_diag, diag_curve, lobes):
+                                        r_diag, diag_curve, lobes,
+                                        petal_lengths):
                         covered += 1
             total = antialias_samples * antialias_samples
             if covered * 2 >= total:  # ≥ 50% coverage → pixel ON
@@ -218,11 +241,41 @@ def main() -> int:
                         "sine cycle across the frame set, so star pulses "
                         "in time with rotation. Try ~2.0-3.0 for a clear "
                         "breath at outer=22.")
+    p.add_argument("--asymmetry", type=float, default=0.0,
+                   help="Per-petal length jitter (Stage D). 0 = uniform "
+                        "petals (default); 0.4 = each petal's length "
+                        "multiplier is in [0.8, 1.2]. Combined with "
+                        "--seed for reproducible asymmetric layouts.")
+    p.add_argument("--seed", type=int, default=0,
+                   help="RNG seed for per-petal length jitter (--asymmetry). "
+                        "Same seed → same star layout across re-runs.")
     args = p.parse_args()
 
-    # N-fold symmetric star: unique frames span 0..(360/lobes)°.
-    # 4 lobes → 90°/frame_set; 12 lobes → 30°/frame_set.
-    angle_step = (360.0 / args.lobes) / args.frames
+    # Stage D asymmetry: pre-compute per-petal length multipliers if
+    # --asymmetry > 0. Uniform petals (None) keeps the original radial
+    # symmetry. With asymmetry, each petal gets a multiplier in
+    # [1 − amp/2, 1 + amp/2]; the breath modulation still applies
+    # globally on top of these per-petal values.
+    if args.asymmetry > 0.0:
+        import random as _random
+        rng = _random.Random(args.seed)
+        petal_lengths = [
+            1.0 + (rng.random() - 0.5) * args.asymmetry
+            for _ in range(args.lobes)
+        ]
+    else:
+        petal_lengths = None
+
+    # With asymmetric petals, the star no longer has N-fold rotational
+    # symmetry — each rotation angle is visually distinct. Unique frames
+    # then span 0..360°. With uniform petals, the cos(N·θ/2) function
+    # gives N-fold symmetry and we only need 0..(360/N)°.
+    if petal_lengths is not None:
+        angle_step = 360.0 / args.frames
+    else:
+        # N-fold symmetric: 4 lobes → 90°/frame_set; 12 lobes → 30°/frame_set.
+        angle_step = (360.0 / args.lobes) / args.frames
+
     frames = []
     for i in range(args.frames):
         angle = i * angle_step
@@ -237,7 +290,8 @@ def main() -> int:
             outer = args.outer
         frame = render_frame(angle, outer, args.inner, args.curve,
                              args.diag, args.diag_curve, args.lobes,
-                             quadrant=args.quadrant)
+                             quadrant=args.quadrant,
+                             petal_lengths=petal_lengths)
         frames.append(frame)
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
