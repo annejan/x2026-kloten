@@ -51,36 +51,75 @@
 .const N_FRAMES   = 250               // ~10 s at the half-rate divider
                                       // (250 ticks @ 25 Hz)
 
-// Kloot star sprite — 16 rotation frames of a 12-lobe Claude-logo-style
-// sparkle, pre-rendered at $2800-$2BFF by tools/render_kloot_star.py
-// (--lobes 12 --inner 2.5 --curve 2.0 --outer 11.0). Sprite pointer
-// values $A0..$AF. X+Y double-expanded so the 24×21 source renders as
-// 48×42 on screen — bigger, chunkier, reads as the actual Claude
-// 12-petal burst rather than a tiny 4-point sparkle (see
-// docs/kloot-star-expansion.md "Stage A").
+// Kloot star — Stage B: 4-sprite 2×2 quad, each X+Y-expanded, forming a
+// 96×84 12-lobe Claude-style burst behind the title text.
+//
+// Each quadrant is a separate 24×21 sprite frame, pre-rendered by
+// tools/render_kloot_star.py --quadrant 0..3 with shape params
+// (--lobes 12 --inner 2.5 --curve 2.0 --outer 22.0). The --outer
+// doubles from Stage A's 11 because the logical star is now 48×42
+// (each tile shows one quarter, so the polar function sees a star
+// centred just outside the sprite at radius up to 22).
+//
+//   tile layout (in screen coords)        sprite slot
+//   +---------+---------+                 +-----+-----+
+//   | TL  q=1 | TR  q=0 |  ←  spr 1, 0  → | spr1| spr0|
+//   +---------+---------+                 +-----+-----+
+//   | BL  q=2 | BR  q=3 |  ←  spr 2, 3  → | spr2| spr3|
+//   +---------+---------+                 +-----+-----+
+//
+// Memory layout (VIC bank 0; all sprite shape data must live in
+// $0000-$0FFF or $2000-$3FFF — VIC sees the chargen ROM at $1000-$1FFF
+// in bank 0, so sprite bytes placed there are read as glyph data and
+// the sprites render as garbled text. Sprite bases are also chosen as
+// multiples of $10 (bits 0-3 clear) so the per-IRQ "ORA #base /
+// sta $07f8.." pointer cycling produces all 16 unique frames in
+// lockstep:
+//   $2800-$2BFF  spr 0 (TR), 16 frames, ptr values $A0..$AF
+//   $2C00-$2FFF  spr 1 (TL), 16 frames, ptr values $B0..$BF
+//   $3000-$33FF  spr 2 (BL), 16 frames, ptr values $C0..$CF
+//   $3400-$37FF  spr 3 (BR), 16 frames, ptr values $D0..$DF
+//
+// The $30-$37 range overlaps with end's `'P', $30, $44` claim, so
+// pefchain has to defer ~2 KB of end's payload (the $3000-$37FF half)
+// to a post-coda load chunk. That's a ~0.5 s visible delay at the
+// coda → end transition — acceptable for a 96×84 star.
+//
+// Composition: the quad is horizontally centred on screen (col 160) so
+// the title text "KLOOT AND THE BREADBIN" (which spans cols 72-248)
+// runs through the middle of the star. $D01B = $0F sets sprites 0-3
+// to BACKGROUND priority — the title chars sit on top of the star.
 //
 // The star fades in at half-rate frame 13 (= ~26 raw frames, aligned
 // with the first audible kick from coda_kick) and rotates one shape
 // per zp_frame tick (40 ms per shape). 16 unique shapes span 0..30°
 // of true rotation; 12-fold symmetry makes the loop seamless. Visual
-// full-rotation period: ~0.64 s — same as before, just bigger.
-.const KLOOT_SHAPE_BASE = $a0         // $2800 / 64
+// full-rotation period: ~0.64 s.
+.const KLOOT_SHAPE_BASE_TR = $a0      // $2800 / 64 — spr 0 (TR)
+.const KLOOT_SHAPE_BASE_TL = $b0      // $2C00 / 64 — spr 1 (TL)
+.const KLOOT_SHAPE_BASE_BL = $c0      // $3000 / 64 — spr 2 (BL)
+.const KLOOT_SHAPE_BASE_BR = $d0      // $3400 / 64 — spr 3 (BR)
 .const KLOOT_SHOW_FRAME = 13          // half-rate frame at first kick
 
-// Sprite 0 position registers ($D000/$D001) use VIC's native raster
+// Sprite position registers ($D000/$D001 etc.) use VIC's native raster
 // coordinate system, NOT 0-indexed display-pixel rows/cols:
 //   - Sprite X = 24 puts the sprite's LEFT edge at display column 0
-//     (start of the visible 320-px area). So sprite X = 24 + N puts
-//     the left edge at display col N.
+//     (start of the visible 320-px area). Sprite X = 24 + N puts the
+//     left edge at display col N.
 //   - Sprite Y is the raster line where the TOP of the sprite appears.
 //     With $D011 = $1B (25-row mode, RSEL=1), display row N starts at
-//     raster 51 + N*8. So text row 11 (start of title) = raster 139.
-.const KLOOT_X          = 40          // sprite left at display col 16, right at col 64
-                                      //   (display col 64 = 8-px gap before "K" at col 72)
-.const KLOOT_Y          = 129         // sprite spans rasters 129-170 = display-pixel rows
-                                      //   78-119; title block (rows 11-13) is at pixel rows
-                                      //   88-111 → 42-tall sprite vert-centres on the
-                                      //   title block with ~9-px halo above and below
+//     raster 51 + N*8.
+//
+// 96×84 quad centred at display col 160 / raster 150:
+//   star spans cols 112-208, rasters 108-192 (display rows 7-17)
+//   title rows 11-13 (rasters 139-162) fall inside the lower-middle band
+.const KLOOT_X_LEFT   = 136           // left column of quad: spr 1 (TL), spr 2 (BL)
+                                      //   sprite X = 136 → left edge at display col 112
+.const KLOOT_X_RIGHT  = 184           // right column: spr 0 (TR), spr 3 (BR)
+                                      //   sprite X = 184 → left edge at display col 160
+.const KLOOT_Y_TOP    = 108           // top row of quad: spr 0 (TR), spr 1 (TL)
+.const KLOOT_Y_BOT    = 150           // bottom row: spr 2 (BL), spr 3 (BR) — top at raster
+                                      //   150, sprite 42 tall (Y-expanded), ends at 192
 
 // Coda V3 kick — coda has the unique luxury of "owning" V3 for the
 // duration of the part (zp_outro=0 keeps intro's drum gate closed,
@@ -152,28 +191,61 @@ setup:
         lda #25                         // ~0.5 s lead-in
         sta zp_kick_count
 
-        // Sprites off (greets had 8 enabled). Sprite 0 (Kloot star)
-        // gets re-enabled in the IRQ once zp_frame reaches KLOOT_SHOW_FRAME.
+        // Sprites off (greets had 8 enabled). The Kloot-star quad
+        // (sprites 0-3) gets re-enabled in the IRQ once zp_frame
+        // reaches KLOOT_SHOW_FRAME.
         lda #$00
         sta $d015
 
-        // ---- Sprite 0: Kloot star — 12-lobe Claude-style burst ----
-        // X+Y double-expanded so the 24×21 source becomes 48×42 on screen.
-        lda #$01
-        sta $d017                       // Y expand (bit 0 = sprite 0)
-        sta $d01d                       // X expand (bit 0 = sprite 0)
+        // ---- Kloot star quad — 96×84 12-lobe Claude burst ----
+        // Sprites 0-3 form a 2×2 grid, each X+Y-expanded (48×42 on screen).
+        lda #$0f                        // bits 0-3 = sprites 0-3
+        sta $d017                       // Y expand all 4
+        sta $d01d                       // X expand all 4
+        sta $d01b                       // background priority: title chars in front
 
-        lda #KLOOT_X
+        // X positions — left column (TL, BL) at KLOOT_X_LEFT, right at KLOOT_X_RIGHT.
+        // All X < 256, so $D010 high bits stay clear.
+        lda #KLOOT_X_RIGHT              // spr 0 TR
         sta $d000
+        lda #KLOOT_X_LEFT               // spr 1 TL
+        sta $d002
+        lda #KLOOT_X_LEFT               // spr 2 BL
+        sta $d004
+        lda #KLOOT_X_RIGHT              // spr 3 BR
+        sta $d006
         lda $d010
-        and #$fe                        // X high bit clear (X < 256)
+        and #$f0                        // clear X-high bits for sprites 0-3
         sta $d010
-        lda #KLOOT_Y
+
+        // Y positions — top row (TR, TL) at KLOOT_Y_TOP, bottom at KLOOT_Y_BOT.
+        lda #KLOOT_Y_TOP                // spr 0 TR
         sta $d001
-        lda #$08                        // Claude orange
-        sta $d027
-        lda #KLOOT_SHAPE_BASE
-        sta $07f8                       // sprite 0 shape pointer → frame 0
+        lda #KLOOT_Y_TOP                // spr 1 TL
+        sta $d003
+        lda #KLOOT_Y_BOT                // spr 2 BL
+        sta $d005
+        lda #KLOOT_Y_BOT                // spr 3 BR
+        sta $d007
+
+        // All four quadrants share the Claude orange.
+        lda #$08
+        sta $d027                       // spr 0
+        sta $d028                       // spr 1
+        sta $d029                       // spr 2
+        sta $d02a                       // spr 3
+
+        // Sprite shape pointers — each quadrant lives at a different base
+        // address but all advance through their 16-frame rotation in lockstep.
+        lda #KLOOT_SHAPE_BASE_TR        // $A0 → $2800 (TR)
+        sta $07f8
+        lda #KLOOT_SHAPE_BASE_TL        // $4C → $1300 (TL)
+        sta $07f9
+        lda #KLOOT_SHAPE_BASE_BL        // $5C → $1700 (BL)
+        sta $07fa
+        lda #KLOOT_SHAPE_BASE_BR        // $6C → $1B00 (BR)
+        sta $07fb
+
         lda #$00
         sta kloot_shape                 // counter 0..15 (incremented before write)
 
@@ -305,8 +377,21 @@ interrupt:
         lda kloot_shape
         and #$0f
         sta kloot_shape
-        ora #KLOOT_SHAPE_BASE
+        // Write all 4 sprite pointers (TR, TL, BL, BR) from this single
+        // counter — each quadrant uses a different base address but
+        // advances through its 16-frame rotation in lockstep. ORA works
+        // here because every base has bits 0-3 clear (see constants above).
+        ora #KLOOT_SHAPE_BASE_TR        // $A0 | shape  → $A0..$AF
         sta $07f8
+        lda kloot_shape
+        ora #KLOOT_SHAPE_BASE_TL        // $B0 | shape  → $B0..$BF
+        sta $07f9
+        lda kloot_shape
+        ora #KLOOT_SHAPE_BASE_BL        // $C0 | shape  → $C0..$CF
+        sta $07fa
+        lda kloot_shape
+        ora #KLOOT_SHAPE_BASE_BR        // $D0 | shape  → $D0..$DF
+        sta $07fb
 !skip_inc:
 
         lda zp_frame
@@ -316,20 +401,20 @@ interrupt:
         sta zp_timer
         lda #$00
         sta VIC_BORDER                  // settle to black before transition
-        sta $d015                       // turn the star off before handing to end
+        sta $d015                       // turn all 4 star sprites off
         jmp !ack+
 
 !run:
         ldy zp_frame
         lda col_tab,y
         sta VIC_BORDER
-        // Reveal the Kloot star at the first kick (zp_frame == KLOOT_SHOW_FRAME).
-        // Idempotent OR — fine to re-write $01 every frame thereafter.
+        // Reveal the Kloot star quad at the first kick. Idempotent OR —
+        // fine to re-write $0F every frame thereafter.
         lda zp_frame
         cmp #KLOOT_SHOW_FRAME
         bcc !no_show+
         lda $d015
-        ora #$01
+        ora #$0f                        // enable sprites 0-3
         sta $d015
 !no_show:
 

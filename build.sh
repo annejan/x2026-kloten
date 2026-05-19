@@ -56,11 +56,16 @@ build_part parts/intro      intro
 build_part parts/interlude  interlude
 build_part parts/greets     greets
 build_part parts/sinus      sinus
-# Coda's Kloot star sprite shapes ride as a separate data file pinned at
-# $2800 so the main KA PRG doesn't have to span the $0C00-$27FF gap as
-# zero-padding — that gap would otherwise be background-loaded by pefchain
-# during greets and collide with greets' $20-$27 sprite font.
-build_part parts/coda       coda  kloot_star.bin,2800
+# Coda's Kloot star quad — Stage B: 4 separate sprite-shape binaries pinned
+# at $0C00 / $1400 / $1800 / $1C00 so the KA PRG stays compact at $0800-$0AFF
+# and pefchain can stream each chunk into RAM independently. The four bases
+# are multiples of $400 (i.e. ptr-aligned) so coda.asm can use ORA-based
+# pointer cycling.
+build_part parts/coda       coda \
+    kloot_star_tr.bin,2800 \
+    kloot_star_tl.bin,2c00 \
+    kloot_star_bl.bin,3000 \
+    kloot_star_br.bin,3400
 build_part parts/end        end
 
 echo ">>> linking with pefchain"

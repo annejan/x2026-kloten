@@ -60,16 +60,45 @@ def star_radius(theta: float, r_outer: float, r_inner: float, curve: float,
 
 def render_frame(angle_deg: float, r_outer: float, r_inner: float,
                  curve: float, r_diag: float = 0.0, diag_curve: float = 4.0,
-                 lobes: int = 4, antialias_samples: int = 4) -> bytes:
+                 lobes: int = 4, antialias_samples: int = 4,
+                 quadrant: int = -1) -> bytes:
     """Render a single rotated star into 24×21 1bpp = 63 bytes + 1 pad.
 
-    Origin at sprite centre (11.5, 10.5). Pixel is ON if its centre lies
-    inside the star's polar boundary at the rotated angle. Light box-
-    filter supersampling is used to anti-alias the boundary, then
-    thresholded back to 1bpp at 50% coverage.
+    `quadrant` = -1 (default): full star centred on the 24×21 sprite.
+    `quadrant` = 0/1/2/3 (Stage B): renders ONE quadrant of a logical
+    48×42 star. The four tiles can be arranged in a 2×2 grid on screen
+    to form a sharp double-size star. Quadrant numbering matches sprite
+    position when placed in the 2×2 grid:
+
+        +---------+---------+
+        | spr 1   | spr 0   |
+        | TL  q=1 | TR  q=0 |
+        +---------+---------+
+        | spr 2   | spr 3   |
+        | BL  q=2 | BR  q=3 |
+        +---------+---------+
+
+    For quadrant Q, the full-star centre is placed just OUTSIDE the
+    sprite in the opposite corner — so all sprite pixels fall in the
+    correct quadrant of the full star.
+
+    Pixel is ON if its centre lies inside the star's polar boundary at
+    the rotated angle. Light box-filter supersampling is used to anti-
+    alias the boundary, then thresholded back to 1bpp at 50% coverage.
     """
-    cx = (SPRITE_W - 1) / 2.0
-    cy = (SPRITE_H - 1) / 2.0
+    if quadrant < 0:
+        cx = (SPRITE_W - 1) / 2.0
+        cy = (SPRITE_H - 1) / 2.0
+    elif quadrant == 0:    # top-right of star → centre at left-bottom of sprite
+        cx, cy = -0.5, SPRITE_H - 0.5
+    elif quadrant == 1:    # top-left of star → centre at right-bottom of sprite
+        cx, cy = SPRITE_W - 0.5, SPRITE_H - 0.5
+    elif quadrant == 2:    # bottom-left of star → centre at right-top of sprite
+        cx, cy = SPRITE_W - 0.5, -0.5
+    elif quadrant == 3:    # bottom-right of star → centre at left-top of sprite
+        cx, cy = -0.5, -0.5
+    else:
+        raise ValueError(f"quadrant must be -1..3, got {quadrant}")
     rot = math.radians(angle_deg)
 
     out = bytearray(BYTES_PER_FRAME)
@@ -178,6 +207,10 @@ def main() -> int:
     p.add_argument("--lobes", type=int, default=4,
                    help="Number of star points (real Claude logo = 12; "
                         "default: %(default)s)")
+    p.add_argument("--quadrant", type=int, default=-1, choices=[-1, 0, 1, 2, 3],
+                   help="-1 = full star centred (default). 0/1/2/3 = render "
+                        "one tile of a logical 48×42 star, suitable for a "
+                        "2×2 sprite cluster (Stage B). 0=TR, 1=TL, 2=BL, 3=BR.")
     args = p.parse_args()
 
     # N-fold symmetric star: unique frames span 0..(360/lobes)°.
@@ -187,7 +220,8 @@ def main() -> int:
     for i in range(args.frames):
         angle = i * angle_step
         frame = render_frame(angle, args.outer, args.inner, args.curve,
-                             args.diag, args.diag_curve, args.lobes)
+                             args.diag, args.diag_curve, args.lobes,
+                             quadrant=args.quadrant)
         frames.append(frame)
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
