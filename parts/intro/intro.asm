@@ -1237,7 +1237,13 @@ copy_logo:
 move_sprites:
         lda #0
         sta zp_msb
-        ldx #7
+        // Iterate x=0..7 so top sprites (0,1,2 at Y=14, displaying from
+        // line $0E) get their new Y written BEFORE the raster reaches
+        // their display line. Old order (x=7..0) wrote top sprites last
+        // → race with raster $0E → some frames missed the Y compare and
+        // the top sprite blinked. zp_msb's OR accumulation is order-
+        // independent so reversing the loop is otherwise safe.
+        ldx #0
 !loop:
         // X position low byte
         lda zp_frame
@@ -1286,8 +1292,9 @@ move_sprites:
         iny                     // SPR_Y is SPR_X+1
         lda zp_tmp
         sta SPR_X,y             // SPR_X[2N+1] = SPR_Y[N]
-        dex
-        bpl !loop-
+        inx
+        cpx #8
+        bne !loop-
 
         lda zp_msb
         sta SPR_MSB
