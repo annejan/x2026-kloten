@@ -230,15 +230,12 @@ setup:
         lda #$0f
         sta $d015
 
-        // Kloot star quad colours — warm gradient across quadrants
-        // for a more dimensional look: yellow→orange→amber→gold.
-        lda #$07                        // yellow
+        // Kloot star — all four quadrants brown ($09).
+        // The star has always been brown; keep it recognisable.
+        lda #$09
         sta $d027                       // spr 0 (top-right)
-        lda #$08                        // orange
         sta $d028                       // spr 1 (top-left)
-        lda #$0a                        // light red
         sta $d029                       // spr 2 (bottom-left)
-        lda #$0a                        // light red
         sta $d02a                       // spr 3 (bottom-right)
 
         // Sprite shape pointers — each quadrant lives at a different base
@@ -284,12 +281,23 @@ setup:
         bne !clr-
 
         // Write visible characters at each star position
-        // (screen RAM at star offsets is $20 = space → invisible
-        // even with colour RAM set). Use $2A = asterisk.
-        ldx #15
-!star:  lda #$2a
-        ldy star_pos,x
-        sta SCREEN,y
+        // (screen RAM at star positions is $20 = space → invisible).
+        // Use $2A = asterisk. star_pos has 16-bit COL_RAM addresses;
+        // screen address = COL_RAM_addr - $D400.
+        ldx #31
+!star:  txa
+        asl                     // index × 2 for word table
+        tay
+        sec
+        lda star_pos,y          // lo byte
+        sbc #$00
+        sta $fb
+        lda star_pos+1,y        // hi byte
+        sbc #$d4
+        sta $fc
+        lda #$2a               // asterisk
+        ldy #0
+        sta ($fb),y             // write to SCREEN address
         dex
         bpl !star-
 
@@ -672,36 +680,52 @@ bob_table:
 
 
 //==================================================================
-// star_field — twinkle 16 stars in the top 5 screen rows.
+// star_field — twinkle 32 stars across the full screen.
 //
 // Runs every frame, only updates on half-rate ticks (zp_subtick==0).
-// 16 pre-defined colour RAM positions are grouped into 4 banks of 4.
-// Each update writes all 16: bright white ($0F) for the active bank,
-// dark grey ($0E) for the others. The active bank rotates every 4
-// frames of zp_frame (~160ms per bank).
+// 32 pre-defined COL_RAM addresses (full 16-bit) grouped into 8 banks
+// of 4 stars each. Active bank rotates every 2 zp_frame ticks
+// (~80ms per bank, full cycle ~640ms).
 //
-// Uses $f9 as temp (safe: my_music_play clobbers it before we run).
+// Each star is a PETSCII asterisk ($2A) at the screen RAM position
+// (set during setup). This routine toggles the colour RAM between
+// bright white ($0F) for the active bank and dark grey ($0E) for
+// the others.
+//
+// Uses $f9 (bank), $fb/$fc (zp pointer for indirect write).
 //==================================================================
 star_field:
         lda zp_subtick
         bne !skip+
 
         lda zp_frame
-        and #$0c                // active bank: 0,4,8,12
+        lsr
+        and #7                  // active bank 0..7, cycles every 2 frames
         sta $f9
 
-        ldx #15
+        ldx #31
 !loop:
         txa
-        and #$0c                // which bank this star belongs to
+        lsr
+        lsr                     // divide by 4 → bank 0..7
+        and #7
         cmp $f9
         bne !dim+
         lda #$0f                // bright white
         jmp !wcol+
-!dim:   lda #$0e                // dark grey (matches bg rows)
+!dim:   lda #$0e                // dark grey
 !wcol:
-        ldy star_pos,x
-        sta COL_RAM,y
+        pha                     // save colour value
+        txa
+        asl                     // index × 2 for word table
+        tay
+        lda star_pos,y          // lo byte
+        sta $fb
+        lda star_pos+1,y        // hi byte
+        sta $fc
+        pla                     // restore colour value
+        ldy #0
+        sta ($fb),y             // write colour at COL_RAM address
         dex
         bpl !loop-
 !skip:
@@ -709,15 +733,63 @@ star_field:
 
 
 //==================================================================
-// Star position table — 16 offsets into COL_RAM ($D800), rows 0-4.
-// Grouped as 4 banks of 4 for the active-bank twinkle scheme.
-// All offsets < 256 so they index via Y register.
+// Star position table — 32 × 16-bit COL_RAM ($D800) addresses
+// spread across rows 0-10 and 14-20 (skipping title rows 11-13).
+// Grouped as 8 banks of 4 stars each.
+//
+// Positions (row, col):
+//   Bank 0: (0,4) (2,15) (5,30)  (8,8)
+//   Bank 1: (1,35) (3,3)  (6,20)  (9,12)
+//   Bank 2: (0,18) (4,38) (7,5)   (10,25)
+//   Bank 3: (2,28) (5,8)  (8,35)  (14,2)
+//   Bank 4: (1,10) (4,22) (7,38)  (15,30)
+//   Bank 5: (3,15) (6,2)  (9,28)  (16,8)
+//   Bank 6: (0,28) (5,15) (8,20)  (18,35)
+//   Bank 7: (2,6)  (4,35) (7,15)  (20,12)
 //==================================================================
+.align 2
 star_pos:
-        .byte $02, $2e, $5a, $a8         // bank 0: top spread
-        .byte $0a, $3c, $68, $7c         // bank 1: mid-top spread
-        .byte $1c, $4a, $76, $8c         // bank 2: mid spread
-        .byte $24, $9c, $b8, $c8         // bank 3: side spread
+        // Bank 0
+        .word $D804
+        .word $D85F
+        .word $D8E6
+        .word $D948
+        // Bank 1
+        .word $D84B
+        .word $D87B
+        .word $D904
+        .word $D974
+        // Bank 2
+        .word $D812
+        .word $D8C6
+        .word $D91D
+        .word $D9A9
+        // Bank 3
+        .word $D86C
+        .word $D8D0
+        .word $D963
+        .word $DA32
+        // Bank 4
+        .word $D832
+        .word $D8B6
+        .word $D93E
+        .word $DA76
+        // Bank 5
+        .word $D887
+        .word $D8F2
+        .word $D984
+        .word $DA88
+        // Bank 6
+        .word $D81C
+        .word $D8D7
+        .word $D954
+        .word $DAF3
+        // Bank 7
+        .word $D856
+        .word $D8C3
+        .word $D927
+        .word $DB2C
+
 
 
 //==================================================================
