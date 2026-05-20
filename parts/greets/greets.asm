@@ -47,24 +47,12 @@
 .const zp_beat_count  = $f6
 .const zp_scroll_pos  = $f7
 .const zp_scroll_tick = $f8
-.const zp_kick_state  = $f9    // V3 kick state machine (0=idle)
-.const zp_kick_freq   = $fa    // shadow of V3 freq hi (SID regs are write-only)
 .const zp_beat_kick   = $f3    // beat-sync Y kick (decays 0→0)
 
-// Brute-force loud kick. Don't try to be clever with envelope
-// retriggers — just FORCE V3 to noise + sustain=15 + gate on
-// every frame in the kick window (overriding music_play's $41
-// writes), sweep freq down per frame. At end of window: gate off
-// + restore intro's arp ADSR so the arp resumes audibly.
-//
-// State values:
-//   0          = idle (arp running on V3)
-//   1..N       = kick playing (noise at peak vol, freq sweeping)
-//   N+1        = release frame: gate off + restore arp ADSR
-.const KICK_LAST_FRAME = 10      // kick plays for 10 frames (~200ms)
-.const KICK_FREQ_HI    = $80     // starting freq hi (~1953 Hz noise pitch)
-.const KICK_SWEEP      = $10     // freq hi decrement per frame
-.const KICK_FLOOR      = $04     // floor (~61 Hz sub-bass)
+// (Dead greets kick code removed — drums now ride on intro's
+// resident `my_music_play` via the K-S-K-S kit + V1 bass-bleed.
+// Constants/state used to live here for greets' own kick machine;
+// the EFO header still keeps $f9-$fa in the Z claim as scratch.)
 
 
 * = $8000 "Greets"
@@ -156,8 +144,6 @@ setup:
         sta zp_beat_phase
         sta zp_beat_count
         sta zp_scroll_tick
-        sta zp_kick_state         // CRITICAL: was leaking stale interlude value
-        sta zp_kick_freq
         sta zp_beat_kick
 
         lda #$00
@@ -258,45 +244,76 @@ interrupt:
         sta zp_beat_kick
 !aft_flash:
 
-        // apply DYCP Y offsets to each sprite (amplitude ±3)
-        ldx #0                     // sprite index
+        // ----- DYCP — per-sprite Y wave -----
+        // For sprite N (0..7):
+        //   phase = wobble_pos + N * 32     ; 32 = DYCP_PHASE_STEP, 45°/sprite
+        //   Y     = SPR_Y_BASE + sine_table[phase] + zp_beat_kick
+        //   write to $D001 + N*2            ; sprite N Y register
+        //
+        // The earlier version had two bugs that combined into a mess:
+        //   - `sta $d001,x` with x = 0..7 hit $D001..$D008, so Y values
+        //     scattered across both sprite X and Y registers
+        //   - phase calc was `txa / clc / adc wobble_pos` = N + wobble,
+        //     a 1-byte step (≈1.4°), so all 8 sprites bobbed in sync
+        // Phase shift is now 5×ASL = ×32 (full 45° spacing); offset
+        // into VIC sprite-Y registers is `txa / asl / ora #$01 / tay`
+        // = N*2+1 (the Y register of sprite N).
+        ldx #7
 !dycp:
+        // phase (5 ASLs = ×32)
         txa
+        asl
+        asl
+        asl
+        asl
+        asl
         clc
-        adc zp_wobble_pos          // phase = wobble_pos + i * PHASE_STEP
+        adc zp_wobble_pos
         tay
-        lda sine_table,y           // signed -3..+3 (visible wave)
+        lda sine_table,y           // signed -3..+3
         clc
         adc #SPR_Y_BASE
-        // add beat kick
-        pha
-        lda zp_beat_kick
-        sta $fb
-        pla
         clc
-        adc $fb
-        sta $d001,x                // Y register: d001, d003, ...
-        inx
-        cpx #8
-        bne !dycp-
+        adc zp_beat_kick
+        pha
+        // Y reg offset = N*2 + 1 — destroys A, hence the pha above
+        txa
+        asl                       // even (bit 0 = 0)
+        tay
+        iny                       // +1 = sprite-N Y register offset
+        pla
+        sta $d000,y                // → $D001 / $D003 / ... / $D00F
+        dex
+        bpl !dycp-
 
-        // horizontal bob — sine offset to X positions, 90° out of phase
-        // with Y wobble for a subtle circular motion. Uses sine_table_x
-        // (amplitude ±2), phase-shifted by +64 (90° of 256-entry table).
-        ldx #0
-!dxcp:  txa
+        // ----- DXCP — per-sprite X bob, 90° out of phase with Y -----
+        // X = sprite_x_table[N] + sine_table_x[phase + 64]   (amplitude ±2)
+        // write to $D000 + N*2 (the X register of sprite N).
+        ldx #7
+!dxcp:
+        txa
+        asl
+        asl
+        asl
+        asl
+        asl                       // ×32
         clc
         adc zp_wobble_pos
         clc
-        adc #64                    // +64 = 90° phase shift
+        adc #64                    // +64 = 90° phase shift vs DYCP
         tay
         lda sine_table_x,y         // signed -2..+2
         clc
         adc sprite_x_table,x
-        sta $d000,x
-        inx
-        cpx #8
-        bne !dxcp-
+        pha
+        // X reg offset = N*2 (preserves carry but we don't need it)
+        txa
+        asl
+        tay
+        pla
+        sta $d000,y                // → $D000 / $D002 / ... / $D00E
+        dex
+        bpl !dxcp-
         // $d010 stays $01 (only sprite 0 needs hi-bit for X=292)
 
         // scroll tick — advance char every SCROLL_DELAY frames
