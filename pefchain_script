@@ -12,9 +12,11 @@
 #   f6 = 0a   wait until zp $f6 == $0a (interlude: 10 beats ≈ 4.0 sec —
 #                                       same byte, repurposed by
 #                                       interlude's setup which resets it)
-#   f6 = 20   wait until zp $f6 == $20 (greets: same trick — greets'
+#   f6 = a0   wait until zp $f6 == $a0 (greets: same trick — greets'
 #                                       setup resets f6 to 0, then
-#                                       ticks back up to $20 over ~15 s)
+#                                       ticks back up to $a0 over ~77 s
+#                                       — with a settle hold on the
+#                                       last 7 s landing on "  KLOOT ")
 #   f6 = 30   wait until zp $f6 == $30 (sinus: frame counter stalls at
 #                                       $30+ after ~5 s, catches $30
 #                                       on the way past)
@@ -24,6 +26,6 @@ parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 0a
 parts/sinus/sinus.pef               f6 = 30
-parts/greets/greets.pef             f6 = 20
+parts/greets/greets.pef             f6 = a0
 parts/coda/coda.pef                 f6 = 30
 parts/end/end.pef                   stay
