@@ -86,15 +86,18 @@
 // $00/$F0 (peak sustain, no decay) so the kick rides at full volume
 // and the post-kick arp pulse just swaps waveform without retrigger.
 //
-// Waveform choice: SAWTOOTH ($21) for the body — sawtooth has the
-// richest harmonic content of the SID's basic waveforms (every
-// harmonic at 1/n amplitude) so it reads as the hardest-edge tone.
-// Triangle (only odd harmonics, 1/n²) sounded too "flutey" against
-// V1/V2's pulse leads — the kick blended in instead of cutting
-// through. Pulse would work too but shares timbre with V3's own arp.
+// Body waveform: TRIANGLE ($11). The earlier sawtooth attempt had
+// too much top-end energy — read as "head punch", not "belly punch".
+// Triangle (odd harmonics only, 1/n² rolloff) keeps the energy down
+// in the bass/low-mid where the kick belongs; V1's bass-bleed layer
+// supplies the sub-thump underneath, V3 is just the body shape.
 //
-// DRUM_LEN = 4: 1 noise frame for the snap, 3 sawtooth frames for the
-// pitch drop body. ~80 ms per kick, ~17% of the 24-frame beat.
+// Noise transient pitch dropped from $80 (~2 kHz, hi-hatty click) to
+// $20 (~500 Hz, low-mid rumble) — still gives an attack texture, but
+// in the belly band instead of the head band.
+//
+// DRUM_LEN = 4: 1 low-noise frame + 3 triangle frames pitching down.
+// ~80 ms per kick, ~17% of the 24-frame beat.
 .const DRUM_LEN = 4
 
 // Outro phase thresholds (in zp_outro ticks; mirror intro pacing).
@@ -848,7 +851,7 @@ drum_state:
 // V3 kick voice table — see DRUM_LEN comment block at the top of intro
 // for the design rationale.
 //
-//   ctrl:     $81 = noise + gate, $21 = sawtooth + gate. Gate stays
+//   ctrl:     $81 = noise + gate, $11 = triangle + gate. Gate stays
 //             on through the whole kick (and stays on for the
 //             post-kick arp $41 write too) — no envelope retrigger.
 //   freq-hi:  high byte of V3 freq ($d40f); freq-lo is forced to $00 each
@@ -856,16 +859,16 @@ drum_state:
 //             $80 ≈ 2 kHz, $40 ≈ 1 kHz, $20 ≈ 500 Hz, $10 ≈ 250 Hz,
 //             $08 ≈ 125 Hz, $04 ≈ 62 Hz, $02 ≈ 31 Hz (sub-bass).
 //
-// 1 frame noise click ($80 hi pitch) for the bright snap, then 3
-// frames of sawtooth pitching down hard ($20 → $08 → $03) for the
-// body — sawtooth's all-harmonics buzz cuts through V1 bass and V2
-// lead better than a flutey triangle.
+// 1 low-noise transient ($20 hi ≈ 500 Hz, sounds like a thump rather
+// than a click) + 3 triangle frames sweeping $10 → $05 → $03 — body
+// stays in the 50–250 Hz "belly" band the whole time. V1's bass-bleed
+// at N_C1 (~33 Hz) sits underneath.
 drum_table:
         // ctrl  fhi        phase  notes
-        .byte $81, $80   //  0 — noise click, ~2 kHz — the SNAP
-        .byte $21, $20   //  1 — sawtooth body, ~500 Hz — fast pitch slam down
-        .byte $21, $08   //  2 — drop (~125 Hz)
-        .byte $21, $03   //  3 — sub-bass tail (~50 Hz) — the BOOM
+        .byte $81, $20   //  0 — low noise (~500 Hz) — the THUMP attack
+        .byte $11, $10   //  1 — triangle body (~250 Hz)
+        .byte $11, $05   //  2 — drop (~80 Hz)
+        .byte $11, $03   //  3 — settle into belly (~50 Hz)
 
 // Compact logo bitmap rows 8-16 — extracted from defeest.kla at build
 // time. Stored at $1300 to avoid the runtime-cleared $2000-$3FFF bitmap
