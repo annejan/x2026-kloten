@@ -27,14 +27,35 @@
 .const VIC_IRQ    = $d019
 .const VIC_BORDER = $d020
 .const VIC_BG     = $d021
+.const SPR_X      = $d000
+.const SPR_MSB    = $d010
+.const SPR_PRIO   = $d01b
+.const SPR_XEXP   = $d01d
+.const SPR_YEXP   = $d017
+.const SPR_MC     = $d01c
+.const SPR_COL    = $d027
+.const SPR_PTRS   = $07f8
 .const IRQ_VEC    = $fffe
 
 .const INTRO_MUSIC_PLAY = $119e
 
-.const BEAT_PERIOD   = 24
-.const BUILDUP_BEAT  = 8
+.const BEAT_PERIOD   = 20         // frames per beat — was 24, tightened
+.const BUILDUP_BEAT  = 4          // pad ends, bass+filter+bars in — was 8
+.const TRANSITION_BEAT = 10       // pefchain advances at zp_beat_count == this — was 16
 .const FILT_CUT_LO   = $40
-.const FILT_CUT_STEP = $18
+.const FILT_CUT_STEP = $20        // steeper sweep so the shorter buildup still tops out
+
+// Sprite-letter line B — "AI WROTE" drops in on the buildup, bounces
+// briefly, then flies up before the transition. 8 sprites, 1 char each,
+// hires, no expand. Shape pointers $80..$87 → $2000..$21C0.
+.const SPR_TARGET_Y    = 154      // raster row 13 top — letters sit above the "now AI WROTE the code" reveal
+.const SPR_SPAWN_Y     = 0        // off-screen above; falls into place
+.const PHASE_OFF       = 0
+.const PHASE_FLY_IN    = 1
+.const PHASE_BOUNCE    = 2
+.const PHASE_FLY_OUT   = 3
+.const FLY_IN_LEN      = 32       // frames between first letter dropping and last letter settling
+.const FLY_OUT_LEN     = 20
 
 .const zp_beat_phase = $f4
 .const zp_filt_cut   = $f5
@@ -81,6 +102,8 @@ setup:
         sta zp_yphase
         sta zp_plasma_tgl
         sta zp_bar_clr_ofs
+        sta sp_phase
+        sta sp_frame
 
         // Fill screen with solid block ($A0 reverse-space in screencode_mixed)
         // so the per-cell colour-RAM plasma is actually visible. Plain
@@ -95,19 +118,13 @@ setup:
         inx
         bne !clr-
 
-        // ----- story overlay (interleaves with the sad pad music) -----
-        // Centered two-line message in rows 11 + 13. The plasma keeps
-        // running in cells around the letters (they're filled with $A0
-        // solid block); the letter cells show their glyph shape in the
-        // plasma colour. Reads as colour-tinted text floating over the
-        // colour wash.
-        //
-        // Row 11 ($0400 + 11*40 = $05B8): "FOR YEARS NO TIME FOR BREADBIN CODE"
-        // Row 13 ($0400 + 13*40 = $0608): blank for now (a second line
-        //   could ramp in during the build-up beats — future polish)
+        // ----- story line A — stays in colour-RAM cells, gets read out
+        //       by the plasma flow at row 11 (centered 35 chars).
+        // Line B is now the AI WROTE sprite-letter drop (init_sprites
+        // below); we don't render any cell-based text for row 13.
         ldx #0
 !st1:   lda story_line_a,x
-        sta $05B8 + 2,x           // 35 chars centered in 40-col row
+        sta $05B8 + 2,x
         inx
         cpx #35
         bne !st1-
@@ -124,9 +141,65 @@ setup:
         lda #0
         sta zp_plasma_tgl
 
+        jsr init_sprites
+
         // vsync IRQ
         lda #$ff
         sta VIC_RASTER
+        rts
+
+
+//==================================================================
+// init_sprites — sprite-letter line B setup. 8 hires sprites point at
+// pre-rendered chargen glyphs in $2000..$21C0; X positions span 152..208
+// to centre the 8-char phrase under row 11; Y position is patched per
+// frame by update_sprites depending on the global animation phase.
+//==================================================================
+init_sprites:
+        // block pointers $80..$87 → $2000..$21C0
+        ldx #0
+!ptr:   txa
+        clc
+        adc #$80
+        sta SPR_PTRS,x
+        inx
+        cpx #8
+        bne !ptr-
+
+        // X positions (low byte; all sprites have MSB clear since 208<256)
+        ldx #0
+        ldy #0
+!xp:    lda spr_x_table,x
+        sta SPR_X,y
+        lda #SPR_SPAWN_Y          // park off-screen above
+        sta SPR_X+1,y
+        inx
+        iny
+        iny
+        cpx #8
+        bne !xp-
+        lda #$00
+        sta SPR_MSB
+
+        // hires, no expand, in front of plasma
+        lda #$00
+        sta SPR_XEXP
+        sta SPR_YEXP
+        sta SPR_MC
+        sta SPR_PRIO
+
+        // sprite colours — alternating white / light-cyan keeps the
+        // letters legible against any plasma colour underneath.
+        ldx #0
+!col:   lda spr_color_table,x
+        sta SPR_COL,x
+        inx
+        cpx #8
+        bne !col-
+
+        // sprites off until the buildup beat fires update_sprites' fly-in
+        lda #$00
+        sta SPR_EN
         rts
 
 
@@ -205,16 +278,8 @@ interrupt:
         sta $d417
         lda zp_filt_cut
         sta $d416
-        // Story interleave: when buildup begins (bass returns + LP
-        // filter sweep opens up), reveal a second text line — the
-        // "but then Kloot walked in" tease. Idempotent write each
-        // frame; cheap and avoids needing a one-shot flag.
-        ldx #0
-!stb:   lda story_line_b,x
-        sta $0610,x                  // row 13, col 8 — centered
-        inx
-        cpx #24
-        bne !stb-
+        // Line B reveal is now the sprite-letter drop — see
+        // update_sprites for the fly-in / bounce / fly-out state machine.
 !beat:
         inc zp_beat_phase
         lda zp_beat_phase
@@ -244,6 +309,8 @@ interrupt:
 !sat:   lda #$ff
         sta zp_filt_cut
 !no_beat:
+
+        jsr update_sprites
 
         // plasma — advance both phases at different rates so the
         // interference pattern morphs rather than just scrolls.
@@ -284,7 +351,22 @@ interrupt:
 
         inc zp_plasma_tgl
 
-        // chain to first bar IRQ
+        // Bars only render during the buildup phase — pad phase stays
+        // calm (just plasma + line A in the dark border). The bars
+        // arriving WITH the filter sweep + bass makes them a payoff
+        // signal, not constant decoration.
+        lda zp_beat_count
+        cmp #BUILDUP_BEAT
+        bcs !bars_on+
+        // Pad phase: skip bars, re-trigger this IRQ next frame.
+        lda #$ff
+        sta VIC_RASTER
+        lda #<interrupt
+        sta IRQ_VEC
+        lda #>interrupt
+        sta IRQ_VEC + 1
+        jmp !done+
+!bars_on:
         lda #$1b
         sta VIC_CTRL1
         lda bar_rasters
@@ -293,13 +375,184 @@ interrupt:
         sta IRQ_VEC
         lda #>bar_chain_0
         sta IRQ_VEC + 1
-
+!done:
         pla
         tay
         pla
         tax
         pla
         rti
+
+
+//==================================================================
+// update_sprites — sprite-letter line B animation state machine.
+//
+//   PHASE_OFF  → all sprites disabled (pad phase, beat < BUILDUP_BEAT).
+//                Enters PHASE_FLY_IN the first frame of buildup.
+//   PHASE_FLY_IN → letters drop from Y=0 to Y=SPR_TARGET_Y individually.
+//                   Each sprite has a 2-frame stagger via spawn_delay,
+//                   and uses fly_in_y[clamped (sp_frame - spawn_delay)]
+//                   which encodes the gravity drop + 1 over-shoot bounce
+//                   ramp before settling. Total ~32 frames for all 8 to
+//                   settle = ~640 ms at 50 Hz.
+//   PHASE_BOUNCE → at-target, per-sprite Y wobble derived from
+//                   bounce_sine[(sp_frame + phase[i]) & $ff] — gentle
+//                   ±2 px breathing.
+//   PHASE_FLY_OUT → letters fly up out of frame, FLY_OUT_LEN frames
+//                   total. Triggered when zp_beat_count hits
+//                   TRANSITION_BEAT - 1.
+//==================================================================
+update_sprites:
+        lda sp_phase
+        beq sp_off
+        cmp #PHASE_FLY_IN
+        beq sp_in
+        cmp #PHASE_BOUNCE
+        beq sp_bounce
+        // else PHASE_FLY_OUT
+        jmp sp_out
+
+sp_off:
+        // Wait for buildup to arm the drop.
+        lda zp_beat_count
+        cmp #BUILDUP_BEAT
+        bcc !rts+
+        lda #PHASE_FLY_IN
+        sta sp_phase
+        lda #0
+        sta sp_frame
+        // X positions + arm all 8 sprites; they'll Y-update in sp_in.
+        ldx #0
+!xp:    txa
+        asl
+        tay
+        lda spr_x_table,x
+        sta SPR_X,y
+        inx
+        cpx #8
+        bne !xp-
+        lda #$ff
+        sta SPR_EN
+!rts:   rts
+
+sp_in:
+        // Per sprite: idx = sp_frame - spawn_delay[s]. Clamp to
+        // [0, FLY_IN_LEN-1] and look up fly_in_y[idx].
+        ldx #0
+!loop:  lda sp_frame
+        sec
+        sbc spawn_delay,x
+        bcs !ok+                  // sp_frame < spawn_delay → not spawned yet
+        lda #SPR_SPAWN_Y
+        jmp !setY+
+!ok:    cmp #FLY_IN_LEN
+        bcc !inrange+
+        lda #SPR_TARGET_Y         // past the table — already settled
+        jmp !setY+
+!inrange:
+        tay
+        lda fly_in_y,y
+!setY:  pha
+        txa
+        asl
+        tay
+        iny
+        pla
+        sta SPR_X,y               // SPR_X[2N+1] = SPR_Y[N]
+        inx
+        cpx #8
+        bne !loop-
+
+        inc sp_frame
+        lda sp_frame
+        cmp #(FLY_IN_LEN + 16)    // last letter (spawn_delay max = 14) + table tail
+        bcc !rts+
+        lda #PHASE_BOUNCE
+        sta sp_phase
+        lda #0
+        sta sp_frame
+!rts:   // also check: are we close to transition? then go straight to FLY_OUT.
+        lda zp_beat_count
+        cmp #(TRANSITION_BEAT - 1)
+        bcc !nope+
+        lda #PHASE_FLY_OUT
+        sta sp_phase
+        lda #0
+        sta sp_frame
+!nope:  rts
+
+sp_bounce:
+        // Per sprite: Y = SPR_TARGET_Y + bounce_sine[(sp_frame + spawn_delay[s]) & $ff]
+        ldx #0
+!loop:  lda sp_frame
+        clc
+        adc spawn_delay,x
+        tay
+        lda bounce_sine,y
+        clc
+        adc #SPR_TARGET_Y
+        pha
+        txa
+        asl
+        tay
+        iny
+        pla
+        sta SPR_X,y
+        inx
+        cpx #8
+        bne !loop-
+
+        inc sp_frame
+        // Hold here until transition is one beat away.
+        lda zp_beat_count
+        cmp #(TRANSITION_BEAT - 1)
+        bcc !rts+
+        lda #PHASE_FLY_OUT
+        sta sp_phase
+        lda #0
+        sta sp_frame
+!rts:   rts
+
+sp_out:
+        // Letters fly UP (Y decreases) — accelerating exit.
+        // Y = SPR_TARGET_Y - fly_out_dy[(sp_frame + spawn_delay[s]) clamped]
+        ldx #0
+!loop:  lda sp_frame
+        clc
+        adc spawn_delay,x
+        cmp #FLY_OUT_LEN
+        bcc !inrange+
+        lda #FLY_OUT_LEN - 1
+!inrange: tay
+        lda fly_out_dy,y          // accelerating dy table
+        // Y = SPR_TARGET_Y - dy; if Y wraps (negative), park at SPR_SPAWN_Y
+        sta zp_tmp
+        lda #SPR_TARGET_Y
+        sec
+        sbc zp_tmp
+        bcs !inframe+
+        lda #SPR_SPAWN_Y
+!inframe: pha
+        txa
+        asl
+        tay
+        iny
+        pla
+        sta SPR_X,y
+        inx
+        cpx #8
+        bne !loop-
+
+        inc sp_frame
+        lda sp_frame
+        cmp #FLY_OUT_LEN
+        bcc !rts+
+        // done — disable sprites, back to OFF
+        lda #PHASE_OFF
+        sta sp_phase
+        lda #$00
+        sta SPR_EN
+!rts:   rts
 
 
 //==================================================================
@@ -503,14 +756,105 @@ story_line_a:
         .byte $02, $12, $05, $01, $04, $02, $09, $0E, $20  // BREADBIN_
         .byte $03, $0F, $04, $05             // CODE
 
-// Story line B — appears when bass returns at buildup beat.
-// "BUT THEN KLOOT WALKED IN" — 24 chars, centered at col 8.
-//   B=02 U=15 T=14 _=20  T=14 H=08 E=05 N=0E _=20
-//   K=0B L=0C O=0F O=0F T=14 _=20  W=17 A=01 L=0C K=0B E=05 D=04 _=20
-//   I=09 N=0E
-story_line_b:
-        .byte $02, $15, $14, $20             // BUT_
-        .byte $14, $08, $05, $0E, $20        // THEN_
-        .byte $0B, $0C, $0F, $0F, $14, $20   // KLOOT_
-        .byte $17, $01, $0C, $0B, $05, $04, $20  // WALKED_
-        .byte $09, $0E                       // IN
+//==================================================================
+// Sprite-letter state + tables
+//==================================================================
+
+// Phase state — PHASE_OFF / FLY_IN / BOUNCE / FLY_OUT.
+sp_phase: .byte 0
+sp_frame: .byte 0
+
+// Horizontal positions for the 8 sprite-letters of "AI WROTE". With
+// 8-px spacing the phrase reads "AI" then a 1-letter gap then "WROTE"
+// (the gap is the SPACE glyph rendered as blanks in sprite #2).
+//
+// Sprite N at SPR_X = 152 + N*8 → covers screen cols 16..23 (= centred
+// under the row-11 line A text). All values <256 so SPR_MSB stays 0.
+spr_x_table:
+        .byte 152, 160, 168, 176, 184, 192, 200, 208
+
+// Sprite colours — alternating bright pair stays legible over any
+// plasma colour the row-13 area happens to be flowing through.
+spr_color_table:
+        .byte $01, $0d, $01, $0d, $01, $0d, $01, $0d  // white / light-green
+
+// Per-letter spawn-delay (frames after fly-in start that this letter
+// begins dropping). Even spacing reads as a "ripple" of letters
+// arriving. 0,2,4,...,14 = 8 letters × 2-frame stagger.
+spawn_delay:
+        .byte 0, 2, 4, 6, 8, 10, 12, 14
+
+// Fly-in Y table — per-letter idx into this drives Y position during
+// PHASE_FLY_IN. 0..15: accelerating drop from Y=0 down to SPR_TARGET_Y;
+// 16..23: ~12-px overshoot bounce up then back; 24..31: settled.
+.align 32
+fly_in_y:
+.for (var i = 0; i < 32; i++) {
+        .var y = 0
+        .if (i < 16) {
+                .var t = i / 15.0
+                .eval y = floor(SPR_TARGET_Y * t * t)
+        } else .if (i < 24) {
+                .var bp = (i - 16) / 8.0
+                .eval y = floor(SPR_TARGET_Y - 12.0 * sin(bp * PI))
+        } else {
+                .eval y = SPR_TARGET_Y
+        }
+        .byte y
+}
+
+// Bounce sine — ±3 px wobble around SPR_TARGET_Y during PHASE_BOUNCE.
+// Stored as signed 8-bit (negative = $FD..$FF). ADC #SPR_TARGET_Y picks
+// up the correct Y mod 256.
+.align 256
+bounce_sine:
+.for (var i = 0; i < 256; i++) {
+        .byte round(3 * sin(i * 2 * PI / 256)) & $ff
+}
+
+// Fly-out dy — increasing per frame; Y = SPR_TARGET_Y - fly_out_dy[i]
+// pushes letters UP off-screen with accelerating velocity.
+fly_out_dy:
+.for (var i = 0; i < 20; i++) {
+        .var t = i / 19.0
+        .byte floor(SPR_TARGET_Y * t * t)
+}
+
+
+//==================================================================
+// Sprite shape data — 8 sprites × 64 bytes at $2000..$21FF.
+// Block pointers $80..$87 in screen RAM at $07F8..$07FF select these.
+// Each glyph is the C64 Set A uppercase chargen byte stamped into the
+// middle of the top 8 rows of a 21-row sprite (8-px-wide letter, 8-px
+// margin left + 8-px margin right within the 24-px-wide sprite).
+//==================================================================
+
+* = $2000 "SpriteShapes"
+.var chargen = LoadBinary("../greets/chargen.bin")
+.var phrase_chars = List().add($01, $09, $20, $17, $12, $0F, $14, $05)
+                                          //   A    I    _    W    R    O    T    E
+
+.function letter_sprite(code) {
+        .var r = List()
+        .var base = code * 8
+        .for (var row = 0; row < 21; row++) {
+                .if (row < 8) {
+                        .eval r.add(0)
+                        .eval r.add(chargen.get(base + row))
+                        .eval r.add(0)
+                } else {
+                        .eval r.add(0)
+                        .eval r.add(0)
+                        .eval r.add(0)
+                }
+        }
+        .eval r.add(0)
+        .return r
+}
+
+.for (var i = 0; i < 8; i++) {
+        .var s = letter_sprite(phrase_chars.get(i))
+        .for (var b = 0; b < 64; b++) {
+                .byte s.get(b)
+        }
+}

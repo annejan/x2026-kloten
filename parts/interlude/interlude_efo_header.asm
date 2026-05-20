@@ -17,6 +17,10 @@
 
         // Memory: code + tables at $80-$84 (5 pages: plasma wave, raster bars, etc.)
         .byte 'P', $80, $84
+        // Sprite shape data at $2000-$21FF (8 sprite-letters × 64 bytes
+        // for the AI WROTE drop). Must live in VIC bank 0 so VIC sees
+        // it via the $80..$87 sprite block pointers.
+        .byte 'P', $20, $21
         // Inherit intro's music tables at $10-$12 — we call intro's
         // my_music_play at $119e. Pefchain MUST NOT overwrite these.
         .byte 'I', $10, $12
