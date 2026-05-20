@@ -276,4 +276,15 @@ needed.
 ### EFO
 Widened from `'P', $08, $A` to `'P', $08, $0B` to cover the new
 256-byte sin_tab page.
+
+### Priority swap
+The VIC always renders higher sprite numbers on top. To alternate
+depth, a `swap_flag` toggles which star owns sprites 0-3 vs 4-7.
+The toggle triggers when bit 6 of the phase difference
+(`star2_phase - star1_phase`) transitions — this happens every
+~64 frames at the point of maximum separation on the orbits (stars
+~90° apart, clearly separated). The swap is invisible because the
+stars are far apart; by the next crossing, the depth order has
+reversed. Sprite colours follow the star identity, not the hardware
+slot, so brown always belongs to star 1 and cyan to star 2.
 `

@@ -328,6 +328,17 @@ setup:
         lda #192                        // star 2 starts near opposite side
         sta star2_orbit_phase
 
+        // Initialise priority-swap state.
+        lda #$00
+        sta swap_flag
+        // Pre-compute the initial phase-difference bit 6 so the first
+        // frame's comparison works correctly.
+        lda star2_orbit_phase
+        sec
+        sbc star1_orbit_phase
+        and #$40
+        sta last_safe_bit
+
         // VIC: text mode, ROM chargen $1000 (uppercase), screen $0400.
         lda #$1b                        // DEN=1, RSEL=1, YSCROLL=3
         sta VIC_CTRL1
@@ -451,7 +462,10 @@ interrupt:
         lda zp_subtick
         eor #1
         sta zp_subtick
-        bne !skip_inc+
+        bne !over+
+        jmp !half_rate+
+!over:  jmp !skip_inc+
+!half_rate:
         inc zp_frame
         // Advance the Kloot star shape. 24 frames total (8 zoom + 16
         // rotation). Wrap 24 → 8 so the zoom plays once, the rotation
@@ -472,28 +486,63 @@ interrupt:
         lda #KLOOT_FRAMES_ZOOM
         sta kloot_shape_2
 !no_wrap2:
-        // ---- Write star 1 sprite pointers (sprites 0-3) ----
-        // Per-quadrant base ADD'd to shape counter — bases stride 24
-        // ($18) so each lands in its quadrant's 24-frame block.
+        // ---- Write sprite pointers — conditional on swap_flag ----
+        // swap_flag=0: star 1 (brown) → sprites 0-3, star 2 (cyan) → 4-7
+        // swap_flag=1: star 2 (cyan)  → sprites 0-3, star 1 (brown) → 4-7
+        lda swap_flag
+        beq !normal_ptr+
+        // Swapped: spr 0-3 = star2, spr 4-7 = star1
+        lda kloot_shape_2
+        clc
+        adc #KLOOT_SHAPE_BASE_TR
+        sta $07f8
+        lda kloot_shape_2
+        clc
+        adc #KLOOT_SHAPE_BASE_TL
+        sta $07f9
+        lda kloot_shape_2
+        clc
+        adc #KLOOT_SHAPE_BASE_BL
+        sta $07fa
+        lda kloot_shape_2
+        clc
+        adc #KLOOT_SHAPE_BASE_BR
+        sta $07fb
         lda kloot_shape_1
         clc
-        adc #KLOOT_SHAPE_BASE_TR        // $80..$97 → $2000-$25FF (TR)
+        adc #KLOOT_SHAPE_BASE_TR
+        sta $07fc
+        lda kloot_shape_1
+        clc
+        adc #KLOOT_SHAPE_BASE_TL
+        sta $07fd
+        lda kloot_shape_1
+        clc
+        adc #KLOOT_SHAPE_BASE_BL
+        sta $07fe
+        lda kloot_shape_1
+        clc
+        adc #KLOOT_SHAPE_BASE_BR
+        sta $07ff
+        jmp !done_ptr+
+!normal_ptr:
+        // Normal order: star1 → sprites 0-3, star2 → sprites 4-7
+        lda kloot_shape_1
+        clc
+        adc #KLOOT_SHAPE_BASE_TR
         sta $07f8
         lda kloot_shape_1
         clc
-        adc #KLOOT_SHAPE_BASE_TL        // $98..$AF → $2600-$2BFF (TL)
+        adc #KLOOT_SHAPE_BASE_TL
         sta $07f9
         lda kloot_shape_1
         clc
-        adc #KLOOT_SHAPE_BASE_BL        // $B0..$C7 → $2C00-$31FF (BL)
+        adc #KLOOT_SHAPE_BASE_BL
         sta $07fa
         lda kloot_shape_1
         clc
-        adc #KLOOT_SHAPE_BASE_BR        // $C8..$DF → $3200-$37FF (BR)
+        adc #KLOOT_SHAPE_BASE_BR
         sta $07fb
-
-        // ---- Write star 2 sprite pointers (sprites 4-7) ----
-        // Same bases, different shape counter — lobe angles drift.
         lda kloot_shape_2
         clc
         adc #KLOOT_SHAPE_BASE_TR
@@ -510,6 +559,7 @@ interrupt:
         clc
         adc #KLOOT_SHAPE_BASE_BR
         sta $07ff
+!done_ptr:
 !skip_inc:
 
         // ---- Orbital motion (50 Hz) — both stars drift on sine paths ----
@@ -551,6 +601,75 @@ interrupt:
         clc
         adc #KLOOT_Y_CENTRE
         sta star2_cy
+
+        // ---- Priority-swap detection — phase-difference bit 6 ----
+        // Star 1 advances at speed 1, star 2 at speed 2, so the
+        // difference grows by 1 each frame. Bit 6 of the difference
+        // toggles every 64 frames, at which point the stars are ~90°
+        // apart on their orbits (= max separation). That's the safe
+        // window to swap sprite-slot assignments — no blink at crossing.
+        lda star2_orbit_phase
+        sec
+        sbc star1_orbit_phase
+        and #$40                       // isolate bit 6
+        sta $f9                        // stash current bit ($f9 safe after my_music_play)
+        eor last_safe_bit
+        beq !safe_same+
+        // Bit 6 transitioned — toggle swap_flag and swap sprite colours.
+        lda $f9
+        sta last_safe_bit
+        lda swap_flag
+        eor #1
+        sta swap_flag
+        // Swap colour registers between sprite groups so the brown/cyan
+        // identity follows the star, not the hardware sprite slot.
+        bne !cyan_front+
+        // Star 1 (brown) → sprites 0-3, star 2 (cyan) → sprites 4-7
+        lda #$09
+        sta $d027
+        sta $d028
+        sta $d029
+        sta $d02a
+        lda #$0e
+        sta $d02b
+        sta $d02c
+        sta $d02d
+        sta $d02e
+        jmp !safe_done+
+!cyan_front:
+        // Star 2 (cyan) → sprites 0-3, star 1 (brown) → sprites 4-7
+        lda #$0e
+        sta $d027
+        sta $d028
+        sta $d029
+        sta $d02a
+        lda #$09
+        sta $d02b
+        sta $d02c
+        sta $d02d
+        sta $d02e
+        jmp !safe_done+
+!safe_same:
+        // No transition — just store current bit for next frame.
+        lda $f9
+        sta last_safe_bit
+!safe_done:
+
+        // ---- Exchange orbital centres if swap_flag active ----
+        // When swapped, star 1's computed centre gets written to the
+        // sprites-4-7 registers and vice versa — the VIC priority rule
+        // (higher number = in front) now shows the other star on top.
+        lda swap_flag
+        beq !no_exchange+
+        lda star1_cx
+        ldx star2_cx
+        sta star2_cx
+        stx star1_cx
+        lda star1_cy
+        ldx star2_cy
+        sta star2_cy
+        stx star1_cy
+!no_exchange:
 
         // ---- Write star 1 sprite positions (50 Hz) ----
         // X = star1_cx ± KLOOT_DX, Y = star1_cy ± KLOOT_DY
@@ -711,11 +830,17 @@ star1_orbit_phase:  .byte 0
 star2_orbit_phase:  .byte 0
 
 // Orbital centre (X, Y) — computed every frame from sin_tab lookup.
-// The quad sprites offset from this centre by ±KLOOT_DX / ±KLOOT_DY.
 star1_cx:  .byte 0
 star1_cy:  .byte 0
 star2_cx:  .byte 0
 star2_cy:  .byte 0
+
+// Priority swap — toggled when phase-difference bit 6 transitions
+// (stars at max separation). Which sprite group gets "front" = brown
+// vs "back" = cyan alternates so each crossing shows a different star
+// in front.
+swap_flag:     .byte 0          // 0=star1 on sprites 0-3, 1=star2 on sprites 0-3
+last_safe_bit: .byte $ff        // previous bit 6 of phase diff ($ff = uninitialized)
 
 
 // (Stage E pre-rendered zoom: all the animate-in interpolation tables,
