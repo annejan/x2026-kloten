@@ -88,8 +88,9 @@
 //
 // Composition: the quad is horizontally centred on screen (col 160) so
 // the title text "KLOTEN MET DE BROODTROMMEL" (which spans cols 56-264)
-// runs through the middle of the star. $D01B = $0F sets sprites 0-3
-// to BACKGROUND priority — the title chars sit on top of the star.
+// runs through the middle of the star. $D01B alternates between $FF
+// (sprites behind title) and $00 (sprites in front) every ~1.3 s,
+// so the stars appear to orbit through the text plane in 3D.
 //
 // Stage E — PRE-RENDERED zoom. Each quadrant's binary now holds 24
 // frames concatenated: 8 zoom (small → full, with rotation built in)
@@ -234,7 +235,8 @@ setup:
         lda #$0f                        // bits 0-3 = sprites 0-3
         sta $d017                       // Y expand all 4
         sta $d01d                       // X expand all 4
-        sta $d01b                       // background priority: title chars in front
+        sta $d01b                       // initial: sprites behind text
+                                        // (toggled by priority-swap later)
 
         // Final positions written ONCE — never touched again.
         lda #KLOOT_X_RIGHT
@@ -291,7 +293,7 @@ setup:
         sta $d01d                       // X expand
         lda $d01b
         ora #$f0
-        sta $d01b                       // bg priority: title in front
+        sta $d01b                       // bg priority: tracks swap_flag
 
         // Sprite positions — same quad layout as star 1.
         lda #KLOOT_X_RIGHT
@@ -644,8 +646,12 @@ interrupt:
         sta swap_flag
         // Swap colour registers between sprite groups so the brown/cyan
         // identity follows the star, not the hardware sprite slot.
+        // Also toggle $D01B so the star group in front of the text
+        // alternates — treats the title text like a physical plane
+        // that stars orbit in front of or behind.
         bne !cyan_front+
         // Star 1 (brown) → sprites 0-3, star 2 (cyan) → sprites 4-7
+        // All sprites behind text ($D01B = $FF) — slow pass behind.
         lda #$09
         sta $d027
         sta $d028
@@ -656,9 +662,12 @@ interrupt:
         sta $d02c
         sta $d02d
         sta $d02e
+        lda #$ff
+        sta $d01b
         jmp !safe_done+
 !cyan_front:
         // Star 2 (cyan) → sprites 0-3, star 1 (brown) → sprites 4-7
+        // All sprites in front of text ($D01B = $00) — emerge forward.
         lda #$0e
         sta $d027
         sta $d028
@@ -669,6 +678,8 @@ interrupt:
         sta $d02c
         sta $d02d
         sta $d02e
+        lda #$00
+        sta $d01b
         jmp !safe_done+
 !safe_same:
         // No transition — just store current bit for next frame.
