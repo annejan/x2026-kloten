@@ -405,17 +405,17 @@ setup:
         asl                            // *2 for .word offset
         tay
         lda star_pos,y                 // COL_RAM address low
-        sta star_patch_scr              // patch into STA operand
+        sta star_patch_scr + 1         // → patch into STA's OPERAND-LO
         lda star_pos + 1,y             // COL_RAM address high
-        sta star_patch_scr + 1
+        sta star_patch_scr + 2         // → patch into STA's OPERAND-HI
         // Convert COL_RAM -> SCREEN:  SCREEN = COL_RAM - ($D800 - $0400)
         sec
-        lda star_patch_scr
-        sbc #$00
-        sta star_patch_scr
         lda star_patch_scr + 1
-        sbc #$d4
+        sbc #$00
         sta star_patch_scr + 1
+        lda star_patch_scr + 2
+        sbc #$d4
+        sta star_patch_scr + 2
         lda #$2a                       // asterisk char
 star_patch_scr:
         sta $0400                      // operand patched per star
@@ -950,9 +950,9 @@ star_field:
         asl                     // *2 for .word offset
         tay
         lda star_pos,y          // low byte
-        sta star_patch_col
+        sta star_patch_col + 1  // → STA's OPERAND-LO (was +0 = opcode byte!)
         lda star_pos + 1,y      // high byte
-        sta star_patch_col + 1
+        sta star_patch_col + 2  // → STA's OPERAND-HI (was +1 = operand-lo)
         lda $fa                 // restore colour
 star_patch_col:
         sta $d800               // operand patched per star
