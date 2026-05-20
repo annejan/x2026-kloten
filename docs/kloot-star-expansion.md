@@ -234,3 +234,46 @@ p.add_argument("--lobes", type=int, default=4,
 freq = args.lobes / 2.0
 big = abs(math.cos(freq * theta)) ** curve
 ```
+
+---
+
+## Stage F — Twin stars crossing (sine-based orbit)
+
+### What changed
+Two independent 4-sprite Kloot stars cross each other. Star 1 (sprites
+0-3) keeps the original brown ($09); star 2 (sprites 4-7) is cyan
+($0E). Both share the same pre-rendered 24-frame zoom+rotation shape
+data at `$2000-$37FF` but advance through it at independent rates via
+separate `kloot_shape_1` / `kloot_shape_2` counters, so lobe angles
+drift apart visually.
+
+### Orbital motion
+A 256-byte sine table at `$0B00` (page-aligned) supplies both X and Y
+offsets. Each frame, two independent phase counters advance:
+
+```
+star1_phase += ORBIT_SPEED_1   (= 1 → ~5 s/cycle)
+star2_phase += ORBIT_SPEED_2   (= 2 → ~2.5 s/cycle)
+```
+
+The sin_tab lookup gives the orbital centre offset; cosine is derived
+by offseting +64 into the table (quarter cycle):
+
+```
+starN_cx = sin_tab[phase] + KLOOT_X_CENTRE
+starN_cy = sin_tab[phase + 64] + KLOOT_Y_CENTRE
+```
+
+Each star's 4 sprites are then positioned at `starN_cx ± KLOOT_DX`
+for X and `starN_cy ± KLOOT_DY` for Y, where `KLOOT_DX=24`,
+`KLOOT_DY=21` are the fixed quad half-dimensions.
+
+### Priority
+VIC's natural rule (higher sprite number = in front) means star 2
+always renders on top when they cross. No manual priority changes
+needed.
+
+### EFO
+Widened from `'P', $08, $A` to `'P', $08, $0B` to cover the new
+256-byte sin_tab page.
+`

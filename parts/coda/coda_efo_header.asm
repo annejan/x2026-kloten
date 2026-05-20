@@ -14,10 +14,10 @@
         .word $0000              // cleanup
         .word $0000              // callmusic
 
-        // Code + col_tab fit in 3 pages: code at $0800-$09xx, col_tab
-        // at $0A00 (256 bytes). Reuses the area sinus claimed earlier
-        // — by the time coda loads, sinus is long gone.
-        .byte 'P', $08, $0A
+        // Code + col_tab + sin_tab: code at $0800-$09xx, col_tab at
+        // $0A00 (256 bytes), sin_tab at $0B00 (256 bytes). sin_tab
+        // drives the twin-star orbital motion.
+        .byte 'P', $08, $0B
         // Kloot star quad sprite shapes (Stage E — pre-rendered zoom):
         // 4 quadrants × 24 frames × 64 B = 6 KB contiguous at
         // $2000-$37FF. Each 24-frame sequence = 8 zoom (small→full
