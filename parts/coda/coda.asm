@@ -395,24 +395,15 @@ setup:
         bne !cclr-
 
         // ---- paint star chars (asterisks) at star_pos positions ----
-        // 32 stars scattered full-screen (avoiding title rows 11+13 and
-        // the kloot quad centre at rows 7-17 cols 14-25). Positions
-        // stored as 16-bit COL_RAM addresses; screen RAM address =
-        // col_ram − $D400.  Use $FB/$FC as a ZP indirect pointer.
-        ldx #31
-!star:  txa
-        asl                              // ×2 for word table
-        tay
-        sec
-        lda star_pos,y                   // col_ram lo
-        sbc #$00                         // (carry stays for hi-byte sbc)
-        sta $fb
-        lda star_pos+1,y                 // col_ram hi
-        sbc #$d4                         // → screen RAM addr
-        sta $fc
-        lda #$2a                         // asterisk
-        ldy #0
-        sta ($fb),y
+        // star_field below only animates COLOUR RAM at these offsets;
+        // without visible chars at those screen positions the colour
+        // writes have no pixels to colour and the stars are invisible.
+        // Asterisk ($2A) on the lunchbox-party background reads like
+        // little sparkles around the title — fits the celebration.
+        ldx #15
+!star:  ldy star_pos,x
+        lda #$2a
+        sta SCREEN,y
         dex
         bpl !star-
 
@@ -911,47 +902,36 @@ last_safe_bit: .byte $ff        // previous bit 6 of phase diff ($ff = uninitial
 
 
 //==================================================================
-// star_field — twinkle 32 stars scattered across the full screen.
+// star_field — twinkle 16 stars in the top 5 screen rows.
 //
 // Runs every frame, only updates on half-rate ticks (zp_subtick==0).
-// 32 16-bit COL_RAM addresses grouped into 8 banks of 4 (low 5 bits
-// of star index map to bank via bits 2-4). One bank cycles "bright"
-// per zp_frame tick — at 25 Hz with 8 banks, full twinkle cycle =
-// ~320 ms. Bright = $01 white, dim = $0E light blue.
+// 16 pre-defined colour RAM positions are grouped into 4 banks of 4.
+// Each update writes all 16: bright white ($0F) for the active bank,
+// dark grey ($0E) for the others. The active bank rotates every 4
+// frames of zp_frame (~160ms per bank).
 //
-// $FB/$FC are the ZP indirect pointer (safe: my_music_play clobbers
-// them every JSR, we run after that call). $F9 holds the active-bank
-// value (matches what's safely scratch after music_play).
+// Uses $f9 as temp (safe: my_music_play clobbers it before we run).
 //==================================================================
 star_field:
         lda zp_subtick
         bne !skip+
 
         lda zp_frame
-        and #$1c                // active bank: 0, 4, 8, ..., 28 (bits 2-4)
+        and #$0c                // active bank: 0,4,8,12
         sta $f9
 
-        ldx #31
+        ldx #15
 !loop:
         txa
-        and #$1c                // this star's bank
+        and #$0c                // which bank this star belongs to
         cmp $f9
         bne !dim+
-        lda #$01                // bright white
+        lda #$0f                // bright white
         jmp !wcol+
-!dim:   lda #$0e                // dim light blue
+!dim:   lda #$0e                // dark grey (matches bg rows)
 !wcol:
-        pha                     // save colour
-        txa
-        asl                     // index × 2 for word table
-        tay
-        lda star_pos,y          // col_ram lo
-        sta $fb
-        lda star_pos+1,y        // col_ram hi
-        sta $fc
-        pla                     // restore colour
-        ldy #0
-        sta ($fb),y
+        ldy star_pos,x
+        sta COL_RAM,y
         dex
         bpl !loop-
 !skip:
@@ -959,17 +939,15 @@ star_field:
 
 
 //==================================================================
-// Star position table — 32 × 16-bit COL_RAM ($D8xx-$DBxx) addresses.
-// Generated with `tools/render_kloot_star.py`-adjacent seed-64 random
-// pick avoiding title rows (11+13) and the kloot quad centre (rows
-// 7-17, cols 14-25). Bank assignment = bits 2-4 of star index, so
-// 8 banks of 4 stars each twinkle in rotation.
+// Star position table — 16 offsets into COL_RAM ($D800), rows 0-4.
+// Grouped as 4 banks of 4 for the active-bank twinkle scheme.
+// All offsets < 256 so they index via Y register.
 //==================================================================
 star_pos:
-        .word $D805, $D811, $D819, $D841, $D851, $D855, $D86B, $D87F
-        .word $D896, $D8B2, $D8CB, $D8CE, $D8D0, $D913, $DA00, $DA01
-        .word $DA36, $DA5A, $DA8B, $DAE1, $DB14, $DB2F, $DB41, $DB43
-        .word $DB58, $DB73, $DB7B, $DB87, $DB8D, $DB9E, $DBCA, $DBD8
+        .byte $02, $2e, $5a, $a8         // bank 0: top spread
+        .byte $0a, $3c, $68, $7c         // bank 1: mid-top spread
+        .byte $1c, $4a, $76, $8c         // bank 2: mid spread
+        .byte $24, $9c, $b8, $c8         // bank 3: side spread
 
 
 //==================================================================
