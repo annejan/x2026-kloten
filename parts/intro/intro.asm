@@ -81,18 +81,21 @@
 // has armed, ~20 s into intro). Continues through interlude + greets
 // via my_music_play residency. End uses its own music_play, no drums.
 // V3 kick is table-driven (Geir Tjelta / Jeroen Tel "Macro Player"
-// pattern + Prince-of-Persia SFX routine). 5 per-frame command rows,
-// each writing ctrl ($d412) + freq-hi ($d40f) — ADSR is NOT touched
-// here. We deliberately keep V3's envelope pinned at the arp's
-// $00/$F0 (peak sustain, no decay) so:
-//   1. the kick plays at FULL volume — punch comes from waveform
-//      contrast (noise → triangle) and sharp pitch sweep, not envelope.
-//   2. arp recovery on the next frame is free — gate stays on through
-//      the whole window so V3 just swaps waveform back to pulse
-//      without any retrigger / attack ramp.
-// Short DRUM_LEN keeps the V3 hijack to ~100 ms / 5 frames per kick =
-// ~20% of the 24-frame beat (vs 33%+ with the prior 8-10 frame kick).
-.const DRUM_LEN = 5
+// pattern + Prince-of-Persia SFX routine). Per-frame command rows
+// write ctrl ($d412) + freq-hi ($d40f) — ADSR stays at the arp's
+// $00/$F0 (peak sustain, no decay) so the kick rides at full volume
+// and the post-kick arp pulse just swaps waveform without retrigger.
+//
+// Waveform choice: SAWTOOTH ($21) for the body — sawtooth has the
+// richest harmonic content of the SID's basic waveforms (every
+// harmonic at 1/n amplitude) so it reads as the hardest-edge tone.
+// Triangle (only odd harmonics, 1/n²) sounded too "flutey" against
+// V1/V2's pulse leads — the kick blended in instead of cutting
+// through. Pulse would work too but shares timbre with V3's own arp.
+//
+// DRUM_LEN = 4: 1 noise frame for the snap, 3 sawtooth frames for the
+// pitch drop body. ~80 ms per kick, ~17% of the 24-frame beat.
+.const DRUM_LEN = 4
 
 // Outro phase thresholds (in zp_outro ticks; mirror intro pacing).
 // Outro starts when scroll_text hits $ff. Scroller stops immediately (gate
@@ -824,7 +827,7 @@ drum_state:
 // V3 kick voice table — see DRUM_LEN comment block at the top of intro
 // for the design rationale.
 //
-//   ctrl:     $81 = noise + gate, $11 = triangle + gate. Gate is held
+//   ctrl:     $81 = noise + gate, $21 = sawtooth + gate. Gate stays
 //             on through the whole kick (and stays on for the
 //             post-kick arp $41 write too) — no envelope retrigger.
 //   freq-hi:  high byte of V3 freq ($d40f); freq-lo is forced to $00 each
@@ -832,18 +835,16 @@ drum_state:
 //             $80 ≈ 2 kHz, $40 ≈ 1 kHz, $20 ≈ 500 Hz, $10 ≈ 250 Hz,
 //             $08 ≈ 125 Hz, $04 ≈ 62 Hz, $02 ≈ 31 Hz (sub-bass).
 //
-// The 2-frame noise transient ($80 → $30 hi) gives the bright click.
-// The 3-frame triangle body sweeps $18 → $08 → $03 hi for the boom.
-// At frame 5 drum_state hits 0 and arp's $41 (pulse+gate, same gate
-// already on) takes over the next frame at peak envelope — no audible
-// seam, no arp re-attack ramp.
+// 1 frame noise click ($80 hi pitch) for the bright snap, then 3
+// frames of sawtooth pitching down hard ($20 → $08 → $03) for the
+// body — sawtooth's all-harmonics buzz cuts through V1 bass and V2
+// lead better than a flutey triangle.
 drum_table:
         // ctrl  fhi        phase  notes
-        .byte $81, $80   //  0 — noise click, hi pitch (~2 kHz) — the SNAP
-        .byte $81, $30   //  1 — noise mid (~600 Hz) — transient body
-        .byte $11, $18   //  2 — triangle body starts (~300 Hz)
-        .byte $11, $08   //  3 — drop into bass (~125 Hz)
-        .byte $11, $03   //  4 — sub-bass tail (~50 Hz) — the BOOM
+        .byte $81, $80   //  0 — noise click, ~2 kHz — the SNAP
+        .byte $21, $20   //  1 — sawtooth body, ~500 Hz — fast pitch slam down
+        .byte $21, $08   //  2 — drop (~125 Hz)
+        .byte $21, $03   //  3 — sub-bass tail (~50 Hz) — the BOOM
 
 // Compact logo bitmap rows 8-16 — extracted from defeest.kla at build
 // time. Stored at $1300 to avoid the runtime-cleared $2000-$3FFF bitmap
