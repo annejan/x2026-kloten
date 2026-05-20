@@ -476,24 +476,41 @@ irq_bars:
         cmp #T_OUTRO_BARS
         bcs !barsoff+
 
-        // Self-modify the lda's lo byte so the palette shifts per
-        // frame. bar_palette is page-aligned and 512 bytes long (16
-        // reps of the 32-entry palette), so any low-byte offset 0..$ff
-        // plus y of $40..$cf always lands within the table.
+        // Self-modify the bar_palette lo bytes so the palette shifts
+        // per frame. bar_palette is page-aligned and 512 bytes long
+        // (16 reps of the 32-entry palette), so any low-byte offset
+        // 0..$ff plus y of $40..$cf always lands within the table.
+        // Two `ldx bar_palette,y` instructions in the new tight loop —
+        // both need the same patched low byte.
         lda zp_frame
         lsr                     // /2 for slower colour drift
         sta bar_lda+1
+        sta bar_lda2+1
 
-        // 21-cy tight loop writing BOTH $d021 (bg) and $d020 (border).
-        // Border writes extend bars into the left/right side stripes.
-        // 21 cy fits within the 23-cy badline CPU budget.
-!loop:  ldy VIC_RASTER          // 4
+        // Raster-locked loop with PRELOADED palette value. The key
+        // trick is that the line-transition `sta VIC_BG` only takes 4 cy
+        // (just the store — no lda before it), so even under worst-case
+        // sprite DMA (3 mid + 2 bot sprites = ~11 cy stolen near line
+        // transition), the bg write lands at cy ~15-20 of the new line
+        // — comfortably before the visible bitmap window starts at cy 24.
+        // Old loop's `ldy VIC_RASTER / lda bar_palette,y / sta` chain
+        // had 12 cy between line transition and the write, which
+        // overflowed cy 24 on heavy-sprite frames and bled the prior
+        // line's colour into the left edge as a vertical spike.
+        ldy #BAR_TOP
 bar_lda:
-        lda bar_palette,y       // 4 (5 if page-cross — rare)
-        sta VIC_BG              // 4
-        sta VIC_BORDER          // 4
+        ldx bar_palette,y       // preload first palette value
+!loop:
+        cpy VIC_RASTER          // 4 — poll for raster == y
+        bne !loop-              // 3 — branch back until match
+        // match: raster just rolled to line y; we're ~cy 5-9 in.
+        stx VIC_BG              // 4 → cy ~9-13 — bg done before visible area
+        stx VIC_BORDER          // 4 → cy ~13-17 — border catches up
+        iny                     // 2
+bar_lda2:
+        ldx bar_palette,y       // 4 (5 page-cross) — preload NEXT
         cpy #BAR_BOT            // 2
-        bcc !loop-              // 3
+        bcc !loop-              // 3 — keep going until past BAR_BOT
 
         lda #$00
         sta VIC_BG              // restore bg to black
