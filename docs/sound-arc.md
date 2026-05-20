@@ -30,7 +30,7 @@ overlays** on top of that continuous music.
 | sinus       | **Breakdown.** LP filter closes — and now actually closes audibly because V1 + V2 are routed through it ($D417 = $23, res $2). Cutoff ramps $70 → $08 over the duration; vol fades over the last 50 frames. Drums silent (sinus zeros `$F6 = zp_outro` — the gating byte). The eye of the storm before the drop. |
 | greets      | **Climax / drop.** Drums return (greets' setup re-arms `$F6`), full mix + lead + arp. V2 (lead) routed through LP filter ($D417 = $42, res $4) with a slow cutoff "wah" — `zp_wobble_pos` OR'd with $40 ramps $40..$FF over 5 s breathing the melody. DYCP scroller tells the personal arc on top of the loudest moment. |
 | coda        | **The trophy.** Intro's drums silenced again (coda's setup zeros `$F6`), but coda *owns* V3 for the whole part — overrides the arp every IRQ with its own hard-restart kick on a ~60 BPM cadence. Chord pad + lead drift on V1/V2 under a sparser, slower thump than greets. Twin Kloot stars orbit on sine paths behind the title; brown + cyan; star-field asterisks twinkle around them. Music breathes out. |
-| end         | `end_music_init` re-inits SID for slow chord/lead reprise. PWM + filter sweep. No drums. The credit-roll outro. |
+| end         | `end_music_init` re-inits SID for slow chord/lead reprise. PWM + filter sweep, now reading audibly darker / more flanger-y after PR #31's coda EFO claim widened (see "End-credits darkening" below). No drums. The credit-roll outro. |
 
 ## Why my_music_play is special
 
@@ -278,3 +278,44 @@ The "feeling of transition" is carried by:
 If you're tweaking the score, work WITHIN this rhythm rather than
 adding hard cuts. Volume drops anywhere on the resident path leak
 into every later part.
+
+## End-credits darkening (post 2026-05-21, PR #31)
+
+Before PR #31 (coda parallax starfield), the end credits read as
+*clear, calm, perfect* — V3 PWM (pulse hi 4..11) and LP filter
+cutoff sweep ($20..$58, 90° out of phase) doing the "gentle phaser
+tone on the arp" that end.asm:983-985 documents intentionally.
+
+After PR #31 lands, the **same end.asm code** plays noticeably
+darker / more flanger-y — the gentle phaser turns into something
+closer to a chorus or detuned-doubling effect. A/B comparison
+(`/tmp/outline-64-main.d64` vs `/tmp/outline-64-parallax.d64`,
+2026-05-21) confirms the difference is real and reproducible.
+
+**Root cause is not in end.asm itself.** `end_music_init` does a
+full SID-register clear at lines 911-915 before any play, so no
+voice state can leak in from coda. The change must come from
+upstream pefchain load order or RAM contents the player reads
+indirectly. The two things PR #31 changed that could plausibly
+ripple this far:
+
+- **Coda's `'P'` tag widened from $08-$0B to $08-$0F**, honestly
+  claiming the 8 pages it actually uses (the old narrower claim was
+  a latent bug — pefchain had been silently overwriting $0C-$0E
+  during coda). Pefchain's load schedule for end's payload very
+  likely shifts as a result, which can change which page-fragments
+  of end's data are streamed in vs already-resident when end's
+  setup runs.
+- **Coda's IRQ now writes screen RAM every half-rate tick** (parallax
+  star erase + redraw) instead of only colour RAM (the old static
+  twinkle). This in itself shouldn't reach end's audio path, but
+  the combined IRQ-cycle-budget shift may affect Spindle's
+  background-load progress at the coda → end handoff.
+
+**We're keeping the darker version.** It pairs better with the
+busier parallax visual — moving stars + dark phaser reads more
+like a proper credit roll than the previous "static + clear" pairing.
+If a future polish pass wants the old gentle phaser back, the
+levers are end_music_play:983-1005: shrink the V3 pulse-hi nibble
+range from 4..11 → 6..9 and/or narrow the filter cutoff sweep
+from $20..$58 → $30..$48.
