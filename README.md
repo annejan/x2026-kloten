@@ -1,8 +1,9 @@
-# outline26-claude-c64 — Kloot and the Breadbin
+# Kloten met de broodtrommel
 
 A C64 demo by **deFEEST**, releasing at **X2026**. Work started at
-Outline 2026; about three weeks of development total. Written together
-with Claude. KickAssembler 6510 source, tested on VICE x64sc (PAL).
+Outline 2026; about three weeks of development total. Written by
+Augurk/deFEEST, Kloot/deFEEST, TL-Buis/deFEEST,
+Anus/deFEEST, Ranzbak/deFEEST, Cinder/deFEEST. KickAssembler 6510 source, tested on VICE x64sc (PAL).
 
 The arc: a human (`Anus/deFEEST`) hadn't had time to code the
 breadbin in years. Sat down one evening with `Kloot` (a Claude AI
@@ -58,8 +59,8 @@ trigger. The end card is the only "stay" loop.
 
 ### Part 1 — `parts/screenfill/screenfill.asm` (loading screen)
 
-- **Animated radial DEFEEST bloom.** Setup precomputes a 1024-byte
-  `char_table` (each cell's final DEFEEST character, picked by a rotating
+- **Animated radial deFEEST bloom.** Setup precomputes a 1024-byte
+  `char_table` (each cell's final deFEEST character, picked by a rotating
   bit-mask walk over upper/lower case). Interrupt then reveals the text
   ring-by-ring: every 6 frames, all cells whose `dist_table` value
   equals the current `RADIUS` get copied from `char_table` into screen
@@ -145,7 +146,7 @@ trigger. The end card is the only "stay" loop.
 
 - **Char-mode sine wobble** — per-scanline `$D016` fine-scroll write from a
   256-entry sine table (range 0–7 px, OR'd with `$08` to preserve CSEL).
-- **Repeating "DEFEEST" text** filling the whole screen via ROM uppercase
+- **Repeating "deFEEST" text** filling the whole screen via ROM uppercase
   chargen at `$1000`. Connects back to the screenfill bloom.
 - **Colour cycling** — border and background colours step through tables
   per scanline for a flowing wave look.
@@ -361,8 +362,8 @@ thing.
 
 ## Credits
 
-- Music: hand-written 3-voice SID jam (bass + lead + arp), drifts
+- Music: Co-composed 3-voice SID jam (bass + lead + arp), drifts
   through all seven parts
 - Logo: defeest.nl
 - Assembly: Anne Jan Brouwer with Claude (Anthropic) Opus 4.7
-- Thanks: Claude Code, opencode, and an endless supply of terrible ideas
+- Thanks: Claude Code, codebase.c64.org, and an endless supply of terrible ideas
