@@ -319,3 +319,34 @@ If a future polish pass wants the old gentle phaser back, the
 levers are end_music_play:983-1005: shrink the V3 pulse-hi nibble
 range from 4..11 → 6..9 and/or narrow the filter cutoff sweep
 from $20..$58 → $30..$48.
+
+### Future polish — modulate between clean and dark
+
+User reaction 2026-05-21: *"we might want to modulate between the
+oh-so-dark-and-weird and the clean we had"* → *"that would be
+perfect music wise"* → *"a slow sine thing but very nice and clean
+slowly starting"*. The win-condition for end-credits sound is not
+"pick one mood" but **start clean, slowly breathe between clean
+and dark** so the credit roll has a tonal arc instead of a fixed
+colour.
+
+Sketch implementation (not yet built):
+
+- Add a slow LFO phase counter in end's zp range (`zp_mood_phase`),
+  incremented once per frame. A full cycle should take ~20 s.
+- Use it to index a precomputed 256-byte half-cosine table (or a
+  full sine offset so that phase 0 sits at the clean end), giving
+  a 0..255 `depth` byte every frame. **Critical:** initialise
+  `zp_mood_phase` to 0 in `end_setup`, and shape the table so that
+  depth=0 at phase=0. The credits then start fully clean and only
+  drift into the dark mood after several seconds.
+- Scale both swings against that depth:
+  - V3 PWM range: lerp `pulse_hi_swing` between 6..9 (clean) and
+    4..11 (dark) using the depth byte.
+  - Filter cutoff range: lerp the sweep amplitude between
+    $30..$48 (clean) and $20..$58 (dark) using the same depth.
+- Optionally phase-offset the two LFOs by 90° so PWM and cutoff
+  don't peak together — adds shimmer.
+
+Reach for this when polishing the end credits ahead of X2026.
+Until then the static "post-PR-#31 dark" is the shipping mood.
