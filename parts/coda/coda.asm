@@ -126,8 +126,8 @@
 // the first audible kick (zp_kick_count=25 → raw frame 26 ≈ zp_frame 13).
 .const KLOOT_X_CENTRE = 160           // midpoint of KLOOT_X_LEFT and KLOOT_X_RIGHT
 .const KLOOT_Y_CENTRE = 129           // midpoint of KLOOT_Y_TOP and KLOOT_Y_BOT
-.const KLOOT_REVEAL_FRAMES = 24       // 0..23 interpolating, 24+ final positions
-                                      // ≈ 960 ms at 25 Hz — slow enough to read
+.const KLOOT_REVEAL_FRAMES = 50       // 0..49 interpolating, 50+ final positions
+                                      // ≈ 2 s at 25 Hz — slow reveal, fully readable
 
 // Coda V3 kick — coda has the unique luxury of "owning" V3 for the
 // duration of the part (zp_outro=0 keeps intro's drum gate closed,
@@ -194,10 +194,10 @@ setup:
         sta SID_V3_CTRL
         // Float kick_freq sentinel so the first body frame paints it.
         sta kick_freq
-        // First kick fires after a longer lead-in so the animate-in
-        // reveal (KLOOT_REVEAL_FRAMES × 2 raw frames ≈ 960 ms) has
-        // time to complete before the first thump lands.
-        lda #55                         // ~1.1 s lead-in
+        // First kick fires after the animate-in reveal completes
+        // (KLOOT_REVEAL_FRAMES × 2 raw frames ≈ 2 s) so the slow
+        // zoom-in lands fully before the first thump.
+        lda #110                        // ~2.2 s lead-in
         sta zp_kick_count
 
         // ---- Kloot star quad — 96×84 12-lobe Claude burst (Stage B+D) ----
@@ -368,12 +368,17 @@ fadeout:
 interrupt:
         jsr INTRO_MUSIC_PLAY
 
-        // Stage D sound-bound bob: sample the kick state BEFORE
-        // coda_kick decrements it. State 12 = first audible kick frame
-        // (gate-on, peak dip); state 0 = idle (no dip).
-        ldx zp_kick_state
-        lda bob_table,x
-        sta kloot_bob_now
+        // Figure-8 (lemniscate / sideways ∞) motion for the Kloot quad.
+        // Lissajous 2:1 — X traces TWO cycles per ONE Y cycle, which is
+        // the canonical lazy-∞ trace. Tables are 256 entries indexed
+        // by zp_frame; with N_FRAMES=250 we get ~2 full figure-8 loops
+        // across the coda. Amplitudes: ±20 px X, ±10 px Y — comfortable
+        // around the centred quad without colliding with the title text.
+        ldx zp_frame
+        lda fig8_x_table,x
+        sta kloot_fig8_x
+        lda fig8_y_table,x
+        sta kloot_fig8_y
 
         jsr star_field
         jsr coda_kick
@@ -425,25 +430,31 @@ interrupt:
         sta kloot_y_bot_base
 !skip_inc:
 
-        // Write sprite positions every IRQ (50 Hz) so the Y-bob has
-        // 20 ms granularity even though the animate-in base values
-        // only update at 25 Hz.
+        // Write sprite positions every IRQ (50 Hz). All 4 sprites share
+        // the same (fig8_x, fig8_y) offset added on top of the per-
+        // quadrant base position, so the whole quad floats as one unit
+        // tracing the figure-8 path. Each base (x_left / x_right /
+        // y_top / y_bot) is updated at 25 Hz by the animate-in section
+        // above; the 50 Hz figure-8 add gives 20 ms position granularity.
         lda kloot_x_right_base
+        clc
+        adc kloot_fig8_x
         sta $d000                       // spr 0 TR X
         sta $d006                       // spr 3 BR X
         lda kloot_x_left_base
+        clc
+        adc kloot_fig8_x
         sta $d002                       // spr 1 TL X
         sta $d004                       // spr 2 BL X
 
-        // Y = base + bob (same bob offset on all 4 sprites).
         lda kloot_y_top_base
         clc
-        adc kloot_bob_now
+        adc kloot_fig8_y
         sta $d001                       // spr 0 TR Y
         sta $d003                       // spr 1 TL Y
         lda kloot_y_bot_base
         clc
-        adc kloot_bob_now
+        adc kloot_fig8_y
         sta $d005                       // spr 2 BL Y
         sta $d007                       // spr 3 BR Y
 
@@ -553,16 +564,18 @@ kloot_shape:
 
 
 //==================================================================
-// Stage D scratch + tables for animate-in and sound-bound bob.
+// Stage D scratch + tables for animate-in and figure-8 motion.
 //
-// kloot_bob_now      — bob_table[zp_kick_state] sampled BEFORE
-//                      coda_kick advances the state. Added to every
-//                      sprite Y this IRQ.
+// kloot_fig8_x/y     — fig8_x_table[zp_frame] / fig8_y_table[zp_frame]
+//                      sampled at the top of each IRQ. Added to every
+//                      sprite X / Y this IRQ — quad floats as one unit
+//                      along the lazy ∞ path.
 // kloot_*_base       — base position picked from the animate-in
 //                      tables on each zp_frame tick (25 Hz).
-//                      Sprite registers get (base + bob) every IRQ.
+//                      Sprite registers get (base + fig8) every IRQ.
 //==================================================================
-kloot_bob_now:        .byte 0
+kloot_fig8_x:         .byte 0
+kloot_fig8_y:         .byte 0
 kloot_x_left_base:    .byte 0
 kloot_x_right_base:   .byte 0
 kloot_y_top_base:     .byte 0
@@ -593,26 +606,29 @@ kloot_y_bot_table:
         .byte KLOOT_Y_CENTRE + i * KLOOT_DY / KLOOT_REVEAL_FRAMES
 }
 
-// Sound-bound bob: indexed by zp_kick_state (0..KICK_LEN=12). The
-// state value SAMPLED before coda_kick runs means index 12 = first
-// audible kick frame (peak dip), index 0 = idle (no dip). Sprite Y
-// values get this added so the star "drops" on each kick and
-// recovers over the body window. Max dip is 12 px — about 14% of
-// the 84-px tall sprite quad, clearly visible.
-bob_table:
-        .byte 0     // state 0 — idle, no dip
-        .byte 0     // state 1 — last body frame, settled
-        .byte 1     // state 2
-        .byte 2     // state 3
-        .byte 3     // state 4
-        .byte 4     // state 5
-        .byte 5     // state 6
-        .byte 7     // state 7
-        .byte 8     // state 8
-        .byte 9     // state 9
-        .byte 10    // state 10
-        .byte 11    // state 11
-        .byte 12    // state 12 — first audible kick frame, peak dip
+// Figure-8 motion tables — Lissajous 2:1 (lazy ∞ on its side).
+// Stored as signed 8-bit (negative values in 2's complement) so they
+// can be added directly with `clc / adc` to a base position and the
+// math works mod 256.
+//
+//   X: sin(2t)  amplitude 20 px  →  2 cycles per 256 zp_frame ticks
+//                                   × 2 lissajous factor = 4 cycles
+//   Y: sin(t)   amplitude 10 px  →  1 cycle per 256 zp_frame ticks
+//                                   × 2 lissajous factor = 2 cycles
+//
+// With N_FRAMES = 250, the coda completes ~2 full figure-8 cycles
+// across its window. After the reveal animate-in (50 frames) the
+// quad is "free" and traces the ∞ shape continuously.
+.align 256
+fig8_x_table:
+.for (var i = 0; i < 256; i++) {
+        .byte round(20 * sin(i * 4 * 2 * PI / 256)) & $ff
+}
+.align 256
+fig8_y_table:
+.for (var i = 0; i < 256; i++) {
+        .byte round(10 * sin(i * 2 * 2 * PI / 256)) & $ff
+}
 
 
 //==================================================================
