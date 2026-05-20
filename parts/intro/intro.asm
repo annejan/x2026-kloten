@@ -476,24 +476,45 @@ irq_bars:
         cmp #T_OUTRO_BARS
         bcs !barsoff+
 
-        // Self-modify the lda's lo byte so the palette shifts per
-        // frame. bar_palette is page-aligned and 512 bytes long (16
-        // reps of the 32-entry palette), so any low-byte offset 0..$ff
-        // plus y of $40..$cf always lands within the table.
+        // Self-modify the bar_palette lo bytes so the palette shifts
+        // per frame. bar_palette is page-aligned and 512 bytes long
+        // (16 reps of the 32-entry palette), so any low-byte offset
+        // 0..$ff plus y of $40..$cf always lands within the table.
+        // Two `ldx bar_palette,y` instructions in this loop — initial
+        // preload + per-iteration preload-next — both need the patch.
         lda zp_frame
         lsr                     // /2 for slower colour drift
         sta bar_lda+1
+        sta bar_lda2+1
 
-        // 21-cy tight loop writing BOTH $d021 (bg) and $d020 (border).
-        // Border writes extend bars into the left/right side stripes.
-        // 21 cy fits within the 23-cy badline CPU budget.
-!loop:  ldy VIC_RASTER          // 4
+        // RASTER-LOCKED bar loop. Each line of the bars zone:
+        //   1. wait `cpy VIC_RASTER` until raster == Y
+        //   2. immediately stx $d021 / stx $d020 (X holds preloaded
+        //      palette[Y], so the store happens 4-8 cy after polling
+        //      exit, before sprite-DMA cy 0-15 windows are fully done)
+        //   3. iny; preload palette[Y+1] into X for next iter
+        //
+        // Init Y to (current raster + 1) so we wait for the NEXT line
+        // transition before the first write — avoids the "we're already
+        // past Y, polling hangs a whole frame" trap that broke the
+        // first attempt. Cost: one bar line at the top skipped (no
+        // bg/border colour written for line Y_init, stays the
+        // last-frame's value — basically black since bars zone starts
+        // clean). 1 line out of 108 = invisible.
+        ldy VIC_RASTER
+        iny                     // start at next line transition
 bar_lda:
-        lda bar_palette,y       // 4 (5 if page-cross — rare)
-        sta VIC_BG              // 4
-        sta VIC_BORDER          // 4
+        ldx bar_palette,y       // preload palette for that line
+!loop:
+!w:     cpy VIC_RASTER          // 4 — wait for raster == y
+        bne !w-                 // 3 → poll exit ~cy 5-10 of line y
+        stx VIC_BG              // 4 → bg write at cy ~9-14 of line y
+        stx VIC_BORDER          // 4 → border at cy ~13-18
+        iny                     // 2
+bar_lda2:
+        ldx bar_palette,y       // 4 (5 page-cross) — preload next
         cpy #BAR_BOT            // 2
-        bcc !loop-              // 3
+        bcc !loop-              // 3 — until past BAR_BOT
 
         lda #$00
         sta VIC_BG              // restore bg to black
@@ -899,21 +920,16 @@ drum_table:
 // Self-modified lda base + y(<$d0) always stays inside the table.
 bar_palette:
 .for (var rep = 0; rep < 16; rep++) {
-        // 4 cylinder-shaded bands, 8 lines each. Each cylinder fades
-        // dark → mid → bright → mid → dark → next-cylinder-dark, with
-        // no black gaps between — adjacent palette entries are colour
-        // neighbours, so the visible "vertical spike" from sprite-DMA
-        // cycle theft on a bar line (bg write lands at cy 24+ instead
-        // of cy 16ish, prior raster's colour leaks into the left edge)
-        // is between similar colours instead of black ↔ bright.
-        // Blue cylinder → red
-        .byte $06, $0e, $0e, $01, $0e, $06, $06, $02
-        // Red cylinder → green
-        .byte $02, $0a, $0a, $01, $0a, $02, $02, $05
-        // Green cylinder → orange
-        .byte $05, $0d, $0d, $01, $0d, $05, $05, $08
-        // Orange cylinder → blue (wraps to first byte of next rep)
-        .byte $08, $07, $07, $01, $07, $08, $08, $06
+        // 4 cylinder-shaded bands, 8 lines each. Each band:
+        // dark → mid → bright → mid → dark + 2 black gap → next.
+        // Blue cylinder
+        .byte $00, $06, $0e, $01, $0e, $06, $00, $00
+        // Red cylinder
+        .byte $00, $02, $0a, $01, $0a, $02, $00, $00
+        // Green cylinder
+        .byte $00, $05, $0d, $01, $0d, $05, $00, $00
+        // Yellow/orange cylinder
+        .byte $00, $08, $07, $01, $07, $08, $00, $00
 }
 
 // 256-byte rainbow palette for the scroller bg. Cycles through 16
