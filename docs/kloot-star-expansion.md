@@ -195,3 +195,107 @@ p.add_argument("--lobes", type=int, default=4,
 freq = args.lobes / 2.0
 big = abs(math.cos(freq * theta)) ** curve
 ```
+
+---
+
+## Stage E — Twin stars crossing
+
+### Goal
+Two 96×84 Kloot stars that cross through each other, lobes
+colliding, creating an interference pattern. Not two isolated
+stars — they move through the same space.
+
+### Current state
+- Star 1 = sprites 0-3 at `$2800-$37FF`, 96×84 quad, centre-pinned,
+  single rotation counter `kloot_shape_1`.
+- Sprites 4-7 unused in coda (`$D015` only enables bits 0-3).
+
+### How it works
+
+It's just 2 clumps of 4 sprites moving through each other. Each
+clump shares the same shape data at `$2800-$37FF` — no extra
+sprite data needed. Two independent rotation counters, two
+pairs of X/Y centre values.
+
+```
+Star 1: sprites 0-3 at (x1, y1) with rotation kloot_shape_1
+Star 2: sprites 4-7 at (x2, y2) with rotation kloot_shape_2
+
+When they overlap: VIC's natural rule (higher sprite # = in front)
+means star 2 (sprites 4-7) always renders on top of star 1. Looks
+like depth as they pass.
+```
+
+### Motion — sine-based orbit
+
+Each star follows a circular path using a pre-computed 256-byte
+sine table at `$0B00` (page-aligned). Two independent phase
+counters advance at different rates (`ORBIT_SPEED_1` / `ORBIT_SPEED_2`)
+so the stars cross at different angles:
+
+```asm
+; Star 1
+star1_phase += ORBIT_SPEED_1
+star1_x = sin_tab[star1_phase] + KLOOT_X_CENTRE
+star1_y = sin_tab[star1_phase + 64] + KLOOT_Y_CENTRE
+
+; Star 2 (independent speed)
+star2_phase += ORBIT_SPEED_2
+star2_x = sin_tab[star2_phase] + KLOOT_X_CENTRE
+star2_y = sin_tab[star2_phase + 64] + KLOOT_Y_CENTRE
+```
+
+Cosine derived by offset +64 into the table (quarter cycle).
+ORBIT_RADIUS is baked into the sin_tab values at assembly time.
+
+Crossings happen roughly every 1-2 seconds depending on the
+speed ratio (relative prime speeds produce varied meeting angles).
+
+### Sprite setup
+
+Sprites 4-7 get the same X/Y expansion and background priority as
+sprites 0-3. Different colour for contrast — cyan/blue ($0E/$06)
+vs star 1's orange ($08):
+
+```asm
+lda #$0e              ; spr 4-7 colour (cyan)
+sta $d02b / sta $d02c / sta $d02d / sta $d02e
+```
+
+Sprite pointers for sprites 4-7 reuse the same shape bases but
+OR'd with `kloot_shape_2`:
+
+```asm
+lda kloot_shape_2
+ora #KLOOT_SHAPE_BASE_TR
+sta $07fc              ; spr 4 = TR
+lda kloot_shape_2
+ora #KLOOT_SHAPE_BASE_TL
+sta $07fd              ; spr 5 = TL
+...
+```
+
+### EFO header
+
+Widen claim from `'P', $08, $0A` to `'P', $08, $0B` to cover
+the new 256-byte `sin_tab` at `$0B00`. Shape data at `$2800-$37FF`
+unchanged.
+
+### Setup changes
+
+```
+$D015: enable bits 0-7 ($FF instead of $0F)
+$D017/$D01D: X/Y expand bits 4-7 for sprites 4-7
+$D01B: background priority bits 4-7
+$D02B-$D02E: colours for sprites 4-7
+Initial positions: both stars start centre, explode-out reveal
+```
+
+### Sound-bound bob
+
+Same bob applies to both stars — whole screen thumps as one.
+
+### Risks
+
+None worth worrying about. It's 8 sprites on a static title card.
+The CPU has nothing to do during visible area except spin.

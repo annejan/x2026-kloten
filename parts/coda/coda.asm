@@ -156,6 +156,14 @@
 
 .const INTRO_MUSIC_PLAY = $119e
 
+// Twin-star orbit parameters — each star follows a sine-based
+// circular path at different speed/phase so they regularly cross.
+.const ORBIT_RADIUS  = 40               // pixel radius of orbit (±40 px)
+.const ORBIT_SPEED_1 = 1                // star 1: ~5 s per full cycle at 50 Hz
+.const ORBIT_SPEED_2 = 2                // star 2: ~2.5 s per cycle
+.const ORBIT_PHASE_1 = 0                // start phase for star 1
+.const ORBIT_PHASE_2 = 192              // star 2 starts near opposite side
+
 .const zp_timer       = $f6           // transition: set to $30 to trigger pefchain
 .const zp_kick_count  = $f7           // IRQ countdown to next beat
 .const zp_kick_state  = $f8           // 0=idle, KICK_LEN+1=hard-restart frame,
@@ -249,7 +257,60 @@ setup:
         sta $07fb
 
         lda #$00
-        sta kloot_shape                 // counter 0..15 (incremented before write)
+        sta kloot_shape_1               // star 1 rotation counter
+        sta kloot_shape_2               // star 2 rotation counter (different phase)
+
+        // ---- Star 2 (sprites 4-7): second 4-sprite quad ----
+        // Enable sprites 4-7, expand, background priority
+        lda $d015
+        ora #$f0
+        sta $d015
+        lda $d017
+        ora #$f0
+        sta $d017                       // Y expand sprites 4-7
+        lda $d01d
+        ora #$f0
+        sta $d01d                       // X expand sprites 4-7
+        lda $d01b
+        ora #$f0
+        sta $d01b                       // background priority: title in front
+
+        // Star 2 colour: cyan (contrasts with star 1's orange)
+        lda #$0e
+        sta $d02b                       // spr 4
+        sta $d02c                       // spr 5
+        sta $d02d                       // spr 6
+        sta $d02e                       // spr 7
+
+        // Sprite pointers — same shape data as star 1
+        lda #KLOOT_SHAPE_BASE_TR
+        sta $07fc                       // spr 4 = TR
+        lda #KLOOT_SHAPE_BASE_TL
+        sta $07fd                       // spr 5 = TL
+        lda #KLOOT_SHAPE_BASE_BL
+        sta $07fe                       // spr 6 = BL
+        lda #KLOOT_SHAPE_BASE_BR
+        sta $07ff                       // spr 7 = BR
+
+        // Initial positions: all 4 stacked at centre
+        lda #KLOOT_X_CENTRE
+        sta $d008                       // spr 4 TR X
+        sta $d00a                       // spr 5 TL X
+        sta $d00c                       // spr 6 BL X
+        sta $d00e                       // spr 7 BR X
+        lda #KLOOT_Y_CENTRE
+        sta $d009                       // spr 4 TR Y
+        sta $d00b                       // spr 5 TL Y
+        sta $d00d                       // spr 6 BL Y
+        sta $d00f                       // spr 7 BR Y
+        lda #$00
+        sta $d010                       // all X < 256
+
+        // Init orbit phases
+        lda #ORBIT_PHASE_1
+        sta star1_orbit_phase
+        lda #ORBIT_PHASE_2
+        sta star2_orbit_phase
 
         // VIC: text mode, ROM chargen $1000 (uppercase), screen $0400.
         lda #$1b                        // DEN=1, RSEL=1, YSCROLL=3
@@ -384,32 +445,44 @@ interrupt:
         sta zp_subtick
         bne !skip_inc+
         inc zp_frame
-        // Advance the Kloot star shape on each zp_frame tick (25 Hz).
-        // 16 unique shapes cover 0..30° (12-fold symmetric, or 0..360°
-        // if --asymmetry was used at render time); the loop is seamless.
-        inc kloot_shape
-        lda kloot_shape
+        // Star 1 shape advance (25 Hz)
+        inc kloot_shape_1
+        lda kloot_shape_1
         and #$0f
-        sta kloot_shape
-        // Write all 4 sprite pointers (TR, TL, BL, BR) from this single
-        // counter — each quadrant uses a different base address but
-        // advances in lockstep. ORA works because every base has bits
-        // 0-3 clear.
-        ora #KLOOT_SHAPE_BASE_TR        // $A0 | shape  → $A0..$AF
-        sta $07f8
-        lda kloot_shape
-        ora #KLOOT_SHAPE_BASE_TL        // $B0 | shape  → $B0..$BF
-        sta $07f9
-        lda kloot_shape
-        ora #KLOOT_SHAPE_BASE_BL        // $C0 | shape  → $C0..$CF
-        sta $07fa
-        lda kloot_shape
-        ora #KLOOT_SHAPE_BASE_BR        // $D0 | shape  → $D0..$DF
-        sta $07fb
+        sta kloot_shape_1
+        // Write star 1 sprite pointers
+        ora #KLOOT_SHAPE_BASE_TR
+        sta $07f8                       // spr 0 = TR
+        lda kloot_shape_1
+        ora #KLOOT_SHAPE_BASE_TL
+        sta $07f9                       // spr 1 = TL
+        lda kloot_shape_1
+        ora #KLOOT_SHAPE_BASE_BL
+        sta $07fa                       // spr 2 = BL
+        lda kloot_shape_1
+        ora #KLOOT_SHAPE_BASE_BR
+        sta $07fb                       // spr 3 = BR
+
+        // Star 2 shape advance (different rate = drifting lobe angles)
+        inc kloot_shape_2
+        lda kloot_shape_2
+        and #$0f
+        sta kloot_shape_2
+        // Write star 2 sprite pointers
+        ora #KLOOT_SHAPE_BASE_TR
+        sta $07fc                       // spr 4 = TR
+        lda kloot_shape_2
+        ora #KLOOT_SHAPE_BASE_TL
+        sta $07fd                       // spr 5 = TL
+        lda kloot_shape_2
+        ora #KLOOT_SHAPE_BASE_BL
+        sta $07fe                       // spr 6 = BL
+        lda kloot_shape_2
+        ora #KLOOT_SHAPE_BASE_BR
+        sta $07ff                       // spr 7 = BR
 
         // Stage D animate-in: pick the interpolated base positions for
-        // this zp_frame. Tables hold 13 entries (0..12); zp_frame is
-        // clamped to 12 so post-reveal frames all use the final layout.
+        // this zp_frame (shared by both stars).
         ldx zp_frame
         cpx #KLOOT_REVEAL_FRAMES
         bcc !pos_ok+
@@ -425,27 +498,115 @@ interrupt:
         sta kloot_y_bot_base
 !skip_inc:
 
-        // Write sprite positions every IRQ (50 Hz) so the Y-bob has
-        // 20 ms granularity even though the animate-in base values
-        // only update at 25 Hz.
+        // ---- Orbital motion (50 Hz) — both stars drift on sine paths ----
+        // Star 1: advance phase, read X/Y offsets from sine table
+        lda star1_orbit_phase
+        clc
+        adc #ORBIT_SPEED_1
+        sta star1_orbit_phase
+        tax
+        lda sin_tab,x                   // X offset
+        clc
+        adc #KLOOT_X_CENTRE
+        sta star1_centre_x
+        txa
+        clc
+        adc #64                        // +64 = cosine for Y offset
+        tax
+        lda sin_tab,x
+        clc
+        adc #KLOOT_Y_CENTRE
+        sta star1_centre_y
+
+        // Star 2: independent speed/phase
+        lda star2_orbit_phase
+        clc
+        adc #ORBIT_SPEED_2
+        sta star2_orbit_phase
+        tax
+        lda sin_tab,x
+        clc
+        adc #KLOOT_X_CENTRE
+        sta star2_centre_x
+        txa
+        clc
+        adc #64
+        tax
+        lda sin_tab,x
+        clc
+        adc #KLOOT_Y_CENTRE
+        sta star2_centre_y
+
+        // ---- Write star 1 sprite positions (50 Hz) ----
+        // X = base + (star_centre - KLOOT_X_CENTRE)
         lda kloot_x_right_base
+        sec
+        sbc #KLOOT_X_CENTRE
+        clc
+        adc star1_centre_x
         sta $d000                       // spr 0 TR X
         sta $d006                       // spr 3 BR X
         lda kloot_x_left_base
+        sec
+        sbc #KLOOT_X_CENTRE
+        clc
+        adc star1_centre_x
         sta $d002                       // spr 1 TL X
         sta $d004                       // spr 2 BL X
 
-        // Y = base + bob (same bob offset on all 4 sprites).
         lda kloot_y_top_base
+        sec
+        sbc #KLOOT_Y_CENTRE
+        clc
+        adc star1_centre_y
         clc
         adc kloot_bob_now
         sta $d001                       // spr 0 TR Y
         sta $d003                       // spr 1 TL Y
         lda kloot_y_bot_base
+        sec
+        sbc #KLOOT_Y_CENTRE
+        clc
+        adc star1_centre_y
         clc
         adc kloot_bob_now
         sta $d005                       // spr 2 BL Y
         sta $d007                       // spr 3 BR Y
+
+        // ---- Write star 2 sprite positions (50 Hz) ----
+        lda kloot_x_right_base
+        sec
+        sbc #KLOOT_X_CENTRE
+        clc
+        adc star2_centre_x
+        sta $d008                       // spr 4 TR X
+        sta $d00e                       // spr 7 BR X
+        lda kloot_x_left_base
+        sec
+        sbc #KLOOT_X_CENTRE
+        clc
+        adc star2_centre_x
+        sta $d00a                       // spr 5 TL X
+        sta $d00c                       // spr 6 BL X
+
+        lda kloot_y_top_base
+        sec
+        sbc #KLOOT_Y_CENTRE
+        clc
+        adc star2_centre_y
+        clc
+        adc kloot_bob_now
+        sta $d009                       // spr 4 TR Y
+        sta $d00b                       // spr 5 TL Y
+        lda kloot_y_bot_base
+        sec
+        sbc #KLOOT_Y_CENTRE
+        clc
+        adc star2_centre_y
+        clc
+        adc kloot_bob_now
+        sta $d00d                       // spr 6 BL Y
+        sta $d00f                       // spr 7 BR Y
 
         lda zp_frame
         cmp #N_FRAMES
@@ -546,10 +707,27 @@ kick_freq:
         .byte 0
 
 
-// Kloot star shape counter (0..15), wraps each "quarter rotation"
-// visually. Lives in code RAM for the same reason as kick_freq.
-kloot_shape:
+// Kloot star shape counters (0..15) — independent per star so lobe
+// angles drift apart. Lives in code RAM, not zp.
+kloot_shape_1:
         .byte 0
+kloot_shape_2:
+        .byte 0
+
+// Orbital phase (0..255) — advances at ORBIT_SPEED per frame for
+// continuous sine-based circular motion. Each star has independent
+// speed and initial phase.
+star1_orbit_phase:
+        .byte 0
+star2_orbit_phase:
+        .byte 0
+
+// Orbital centre (X, Y) — computed every frame from sin_tab lookup
+// plus KLOOT_X/Y_CENTRE. The quad sprites offset from this centre.
+star1_centre_x:  .byte 0
+star1_centre_y:  .byte 0
+star2_centre_x:  .byte 0
+star2_centre_y:  .byte 0
 
 
 //==================================================================
@@ -708,6 +886,17 @@ col_tab:
         .if (s == 3) { .byte $0f }
 }
 
+
+//==================================================================
+// Sine table for twin-star orbital motion — 256 entries covering a
+// full cycle, each entry = floor(ORBIT_RADIUS * sin(angle)). Page-
+// aligned at $0B00 so indexed reads never cross a page boundary.
+//==================================================================
+.align 256
+sin_tab:
+.for (var i = 0; i < 256; i++) {
+        .byte floor(ORBIT_RADIUS * sin(i * 2 * PI / 256))
+}
 
 //==================================================================
 // Kloot star sprite shapes live at $2800-$2BFF (sprite pointer values
