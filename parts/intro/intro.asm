@@ -1331,24 +1331,36 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 // line's cy-14 check to fire a spurious badline that restarts the
 // frozen row.
 //
-// K=0..28 — sized for smoothness with the $5B FLD trigger:
+// K=0..20 — practical sweet spot with the $5B FLD trigger.
 //
-//   - At peak sine rate, dK = amp × (1080°/256 × π/180) per frame =
-//     14 × 0.074 = 1.03 K-units. So most frames K changes by 1,
-//     occasionally by 2 — eliminates the "block jumps" plateaus
-//     visible with K_max=20 (dK=0.74, K holds for 2-3 frames at
-//     the slow parts of the sine).
-//   - yscroll after K=28 writes = (5+27)&7 = 0, clean boundary.
-//   - Top FLD ends $5B+K_max = $77, 9 lines / 567 cy of slack to
-//     BAR_TOP=$80 — plenty for vector + rti handover.
-//   - Bounce arc 28 px = 14% of screen height.
+// Why not bigger:
+//   - K_max=36 (our initial pick): top FLD runs to $5B+36=$7F,
+//     only 1 line of slack to BAR_TOP=$80. Vector+rti handover
+//     misses irq_bars on K=36 frames → cascade failure: no bars,
+//     no bottom FLD, sprite Y-wrap, music hangup. Catastrophic.
+//   - K_max=28 (next try): yscroll cleanly = 0, peak dK=1.03 so
+//     motion looks smooth in theory, but per-frame sprite DMA
+//     on FLD raster lines varies the spurious-badline write
+//     cycles enough that VIC's VC alignment for row 8 (logo top)
+//     can land 1 px off. Visible as logo-top tearing/sawtooth.
+//   - K_max=20: yscroll = (5+19)&7 = 0, clean. Peak dK = 10×0.074
+//     = 0.74 K-units/frame → some frames hold same K for 2-3
+//     frames at the slow parts of the sine (= visible "plateaus"
+//     or "block jumps" in the motion), but no tearing. The
+//     FLD raster window has 17 lines / 1071 cy of slack to
+//     BAR_TOP, fully absorbs sprite DMA cycle theft.
 //
-// 3× sine frequency → ~1.7s per cycle. (Higher amplitudes give
-// jumpier per-frame motion because dK > 1 at peak: K skips
-// values; lower amplitudes give plateaus because dK < 1.)
+// The plateau-vs-tearing trade is fundamental to integer-K FLD
+// with $5B trigger. To eliminate both: switch irq_fld to the
+// codebase64 double-IRQ stable raster pattern (Mäkelä/JackAsser)
+// so the FLD-write cycles become independent of sprite DMA
+// timing. That's the documented next step in the architecture
+// doc. K_max=20 is the no-stable-raster pragmatic choice.
+//
+// 3× sine frequency → ~1.7s per cycle.
 .align 256
 bounce_total:
-        .fill 256, round(14 + 14 * sin(toRadians(i * 1080 / 256)))
+        .fill 256, round(10 + 10 * sin(toRadians(i * 1080 / 256)))
 
 
 //==================================================================
