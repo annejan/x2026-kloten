@@ -5,28 +5,13 @@
 //   open top border       lines $00..$32  (HCL trick)
 //   bitmap row 0 scroller lines $33..$3A  (cycles left / right / zig-zag
 //                                          via $fe sentinels in scroll_text)
-//   FLD stretch zone      lines $3B..$3B+K  (K = bounce_total[frame],
-//                                            freezes empty bitmap row 1)
-//   bitmap rows 2..7      shifted down by K   (row 4 carries fade-band text,
-//                                              which bounces together with logo —
-//                                              accepted trade-off for smooth FLD)
-//   logo wipe-reveal      rows 8..16, sliding down by K px (logo at $73+K)
+//   FLD stretch zone      lines $3B..$3B+K  (K = bounce_total[frame])
+//   logo wipe-reveal      rows 8..16, sliding down by K px
 //   rainbow rasterbars    lines $80..$EB  (behind logo, with sides)
 //   open bottom border    lines $EC..$FF  (HCL trick)
 //
 // IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld@$3B
 //          → irq_bars@$80 → irq_close@$F9.
-// Music (my_music_play) runs in irq_open so irq_fld → irq_bars has a
-// fixed cycle budget independent of music step-boundary frames
-// (BINTRIS pt-5: FLD stability requires the timing not to depend on
-// adjacent IRQs' workload).
-//
-// Tried symmetric-FLD-with-fixed-fade-text (commit 48530d1) following
-// ranzbak's defeest-fld pattern: top K + bottom (K_max-K). Logo
-// bounce held steady but the fade-text below picked up its own
-// wobble. Reverted in favour of single-FLD + bouncing fade-text;
-// ranzbak's implementation handles it better (smaller K_max=15,
-// careful raster latching). See docs/dilemmas.md.
 //
 // Sprite blink fix: balls 0..2 disabled in irq_close (line $F9) so
 // their Y+256 wrap duplicates between $F9 and next-frame $01 don't
@@ -148,10 +133,6 @@ setup:
         jsr clear_bitmap                // zero-fill $2000-$3FFF
         jsr copy_logo                  // copy logo rows to rows 8-16
         jsr init_sprites
-        // init_fade_text must run BEFORE init_bmp_scroll — it borrows
-        // zp_text_ptr / zp_smooth as scratch and leaves them clobbered,
-        // which would corrupt the scroller's state if it ran afterwards.
-        jsr init_fade_text             // render fade-band text into bitmap row 5
         jsr init_bmp_scroll
 
         jsr my_music_init
@@ -243,13 +224,10 @@ init_sprites:
         sta SPR_YEXP            // Y-expanded → round balls
         lda #0
         sta SPR_MC
-        // Sprite-foreground priority ($D01B): ALL sprites BEHIND bitmap.
-        // Set bit = sprite passes under bitmap %01/%10/%11 pixels.
-        // This gives: balls swim through the gaps in the logo / fade-text /
-        // scroller letters but never occlude them. The result is the
-        // "all touching" effect — balls drift between the foreground
-        // pixels rather than over them.
-        lda #%11111111
+        // Top sprites 0,1,2 pass behind the scroller letters: their
+        // foreground-priority bit set means the bitmap %01/%10/%11
+        // pixels (letter strokes) overdraw the sprite where they meet.
+        lda #%00000111
         sta SPR_FORE
 
         // 8 distinct colours
@@ -307,7 +285,6 @@ irq_close:
         bcc !scrolloff+
         jsr update_bmp_scroll
         jsr update_scroll_colors
-        jsr update_fade_text
 !scrolloff:
         pla
         tay
@@ -382,20 +359,9 @@ irq_open:
         // frame at raster ~282. This window is safe → no tearing.
         jsr move_sprites
 
-        // Music plays HERE in irq_open, not in irq_fld. That keeps
-        // the irq_fld → irq_bars → irq_fld_bottom chain on a tight,
-        // frame-independent budget — music_play's variable length
-        // (~600..2000 cy on step-boundary frames) used to push bars
-        // and the bottom-FLD trigger ~1..8 lines late on heavy
-        // music frames, which read as jitter in the bounce.
-        // (Per Janne Hellsten's BINTRIS-pt-5 stability lesson —
-        // FLD timing must not depend on adjacent-IRQ workload.)
-        jsr my_music_play
-
-        // Chain to irq_fld at line $3B (= row 1's natural badline).
-        // Scroller letters get their rainbow colours from per-cell
-        // color RAM (updated each frame in irq_close), not from
-        // per-scanline $D021 writes.
+        // Chain to irq_fld at line $3B. Scroller letters get their
+        // rainbow colours from per-cell color RAM (updated each frame
+        // in irq_close), not from per-scanline $D021 writes.
         lda #<irq_fld
         sta $fffe
         lda #>irq_fld
@@ -413,18 +379,15 @@ irq_open:
 
 //==================================================================
 // irq_fld — fires at line $3B (row 1's natural badline). Row 0 has
-// already displayed at $33..$3A and the scroller is locked in place.
-// Canonical HCL FLD pattern: write yscroll=5 before $3C cycle 14,
-// then loop "increment yscroll and write" once per line. Late-write
-// trick: each iteration's $D011 update lands at cy ~24 (AFTER VIC's
-// cy-14 check), so the change is seen by the NEXT line's cy-14
-// check, where yscroll now matches line%8 → VIC fires a SPURIOUS
-// badline that restarts row 1 (empty bg) with VCBASE pinned. After
+// already displayed at $33..$3A and the scroller in row 0 is locked
+// in place. Canonical HCL FLD pattern: write yscroll=5 before $3C
+// cycle 14, then loop "increment yscroll and write" once per line.
+// Late-write trick: each iteration's $D011 update lands at cy ~24
+// (AFTER VIC's cy-14 check), so the change is seen by the NEXT
+// line's cy-14 check, where yscroll now matches line%8 → VIC fires
+// a SPURIOUS badline that restarts row 1 with VCBASE pinned. After
 // K writes, row 1 has been stretched K times and row 2+ slide down
-// by K px. Logo (row 8) ends up at $73+K.
-// Music runs HERE after the FLD loop — the $3B..$80 window gives
-// 69 lines = 4347 cy, plenty for K=28 (28 lines) + music_play
-// (~600..2000 cy worst case) + vector switch + rti.
+// by K pixels. Bitmap shifts from $73 (K=0) to $73+K (K=28).
 //==================================================================
 irq_fld:
         pha
@@ -436,7 +399,7 @@ irq_fld:
         sta $d019
 
         ldx zp_frame
-        lda bounce_total,x      // K = FLD writes (0..36)
+        lda bounce_total,x      // K = FLD writes (0..28)
         tax
         beq !skip+
 
@@ -446,7 +409,7 @@ irq_fld:
         beq !w1-
 
         // First write at $3C cycle ~11 (BEFORE cycle 14): yscroll=5.
-        // $3C%8=4, ys=5 → no badline at $3C (mismatch).
+        // $3C%8=4, ys=5 → diff=1 → no badline at $3C.
         lda #$3d                // BMM + DEN + RSEL + yscroll=5
         sta VIC_CTRL1
 
@@ -459,8 +422,7 @@ irq_fld:
         beq !w2-
         // Per-line write at cy ~24 (AFTER cy 14). The PREVIOUS line's
         // yscroll therefore matches THIS line's line%8 at cy 14 → a
-        // spurious badline fires, restarting the frozen row with
-        // VCBASE pinned.
+        // spurious badline fires, restarting row 2 with VCBASE pinned.
         clc
         lda VIC_CTRL1
         adc #$01
@@ -471,9 +433,7 @@ irq_fld:
         bne !fld_loop-
 
 !skip:
-        // Music plays in irq_open now — keeps this handover tight
-        // and constant. Top-FLD-end → irq_bars is just vector + raster
-        // set + rti = ~20 cy regardless of K.
+        jsr my_music_play
 
         lda #<irq_bars
         sta $fffe
@@ -1160,19 +1120,12 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 
 // Anchor HCL FLD bounce: K = number of yscroll writes per frame.
 // With the late-write per-line loop, each write causes the NEXT
-// line's cy-14 check to fire a spurious badline that restarts the
-// frozen row.
-//
-// K=0..36 — bigger arc than the original 0..28, picked because:
-//   - yscroll after K=36 writes is (5+36-1) mod 8 = 0, clean boundary
-//   - top FLD ends at $3B+36=$5F, ~33 lines slack to BAR_TOP=$80
-//   - logo (rows 8..16) bounces $73..$97 — peak still inside the
-//     bars zone for a continuous "logo through rainbow" look
-//   - feels dramatic without being cartoony
+// line's cy-14 check to fire a spurious badline that restarts row 2.
+// Empirical shift function: 0 for K=0, K+1 for K=1..28. Smooth.
 // 3× sine frequency → ~1.7s per cycle.
 .align 256
 bounce_total:
-        .fill 256, round(18 + 18 * sin(toRadians(i * 1080 / 256)))
+        .fill 256, round(14 + 14 * sin(toRadians(i * 1080 / 256)))
 
 
 //==================================================================
@@ -1198,330 +1151,7 @@ text_ptr_odd:
 
 
 //==================================================================
-// Fade-band text — cycles 3 phrases at bitmap row 4. Travels with
-// the logo since rows 2..7 all sit inside the single-FLD shift zone
-// (trigger at $3B). Accepted trade-off: smooth bounce > fixed Y.
-//
-// Each character spans 2 cells = 8 MC pixels wide, rendered by direct
-// bit-expansion of the chargen-ROM glyph (each hires bit → one MC
-// bit-pair "11" or "00"). No OR-pair lossy fold-down, so letter holes
-// in b/d/o/p/e/a survive intact — text reads as crisp glyphs, not
-// chunky blobs. Phrases are 20 chars each → 40 cells = full width.
-//
-// Row 4 bitmap: $2500..$263F (320 bytes, 40 cells × 8 rows).
-// Row 4 colour RAM: $D8A0..$D8C7 (40 cells, animated each frame).
-//
-// Each MC byte expanded from a nibble:
-//   bit set → "11" (colour from $D800 = animated)
-//   bit clear → "00" (background = $D021)
-// Lookup table `nibble_to_mc` does the nibble → MC-byte conversion.
-//==================================================================
-
-.const TEXT_BITMAP_DST = BITMAP + 4 * 40 * 8             // $2500
-.const TEXT_COL_RAM    = $D800 + 4 * 40                  // $D8A0
-
-// Three Set B phrases. Each phrase is exactly 20 chars; 15-char
-// phrases get padded with 2 leading + 3 trailing spaces so the
-// visible glyphs all centre on the same screen column.
-// screencode_mixed: lowercase a-z = $01-$1A, uppercase A-Z = $41-$5A,
-// space = $20.
-text_phrases:
-        // phrase 0 — "  wake up the SID   "  (15-char text + pad)
-        .byte $20, $20, $17, $01, $0B, $05, $20, $15, $10, $20
-        .byte $14, $08, $05, $20, $53, $49, $44, $20, $20, $20
-        // phrase 1 — "  open my borders   "  (15-char + pad)
-        .byte $20, $20, $0F, $10, $05, $0E, $20, $0D, $19, $20
-        .byte $02, $0F, $12, $04, $05, $12, $13, $20, $20, $20
-        // phrase 2 — "the breadbin felt it"  (20-char, full width)
-        .byte $14, $08, $05, $20, $02, $12, $05, $01, $04, $02
-        .byte $09, $0E, $20, $06, $05, $0C, $14, $20, $09, $14
-
-// 0,1,2 — which phrase is currently rasterised.
-phrase_index:
-        .byte 0
-
-// Per-frame fade counter. Palette index = (counter >> 1) & $3F,
-// so each palette entry holds for 2 frames → 64 entries cycle in
-// 128 frames = 2.56 s. After a full cycle, phrase_index advances.
-fade_counter:
-        .byte 0
-
-// Chunked phrase swap: when entering the black-hold window we set
-// swap_pending = 20 and render one char per frame (~300 cy each),
-// so the heavy rasterise spreads across 20 frames = 0.4 s — well
-// inside the 1.28 s hold-black so the swap is invisible.
-swap_pending:
-        .byte 0
-
-// 64-entry COLFADE-style fade palette: in → hold → out → hold black.
-// At index 32 (the first frame of the black-hold), update_fade_text
-// re-rasterises the next phrase — the bitmap swap is invisible
-// because the colour RAM is $00 for the whole hold-black window.
-fade_palette:
-        // fade in (8 entries × 2 frames = 320 ms)
-        .byte $00, $00, $06, $06, $0E, $0E, $0F, $0F
-        // hold full bright (16 entries × 2 = 640 ms)
-        .byte $0F, $0F, $0F, $0F, $0F, $0F, $0F, $0F
-        .byte $0F, $0F, $0F, $0F, $0F, $0F, $0F, $0F
-        // fade out (8 entries × 2 = 320 ms)
-        .byte $0E, $0E, $06, $06, $00, $00, $00, $00
-        // hold black (32 entries × 2 = 1280 ms) — phrase swap happens here
-        .byte $00, $00, $00, $00, $00, $00, $00, $00
-        .byte $00, $00, $00, $00, $00, $00, $00, $00
-        .byte $00, $00, $00, $00, $00, $00, $00, $00
-        .byte $00, $00, $00, $00, $00, $00, $00, $00
-
-// Nibble → MC byte. Each hires bit becomes one MC bit-pair: set=11,
-// clear=00. Indexed by the high or low nibble of a chargen byte.
-nibble_to_mc:
-        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F
-        .byte $C0, $C3, $CC, $CF, $F0, $F3, $FC, $FF
-
-// Per-char destination pointers into row 4 of the bitmap. Char N
-// occupies cells (2N, 2N+1), i.e. bytes TEXT_BITMAP_DST + N*16.
-// For N >= 16 the offset crosses page $25 → $26, so we precompute
-// the lo/hi bytes here instead of multiplying X at runtime (which
-// loses the carry across the asl chain for N >= 16 — exactly the
-// kind of bug that wrote phrase 0's "D" on top of "wa" earlier).
-char_dst_lo:
-        .fill 20, <(TEXT_BITMAP_DST + i * 16)
-char_dst_hi:
-        .fill 20, >(TEXT_BITMAP_DST + i * 16)
-
-// phrase_base[idx] = idx * 20 → offset into text_phrases for that
-// phrase. 3 entries (one per phrase).
-phrase_base:
-        .byte 0, 20, 40
-
-
-//==================================================================
-// init_fade_text — boot-time render of all 20 chars of phrase 0 into
-// bitmap row 4. Setup runs without IRQ pressure so the full 20-char
-// rasterise (~6 kcy) is fine here. Runtime swaps are chunked.
-// Also clears the row's 40 colour-RAM cells to black.
-//==================================================================
-.const setup_charsrc = $f9       // (lo, hi) chargen byte source
-.const setup_bmpdst  = $fb       // (lo, hi) left-cell bitmap dest
-.const setup_save    = $fd       // scratch (chargen byte, Y, etc.)
-
-init_fade_text:
-        ldx #0
-!c_loop:
-        jsr render_one_char
-        inx
-        cpx #20
-        bne !c_loop-
-
-        lda #$00
-        ldx #39
-!cr_init:
-        sta TEXT_COL_RAM,x
-        dex
-        bpl !cr_init-
-
-        rts
-
-
-//==================================================================
-// render_one_char (X = char index 0..19) — bit-expand the chargen
-// glyph for text_phrases[phrase_index*20 + X] into bitmap row 4,
-// cells (2X) and (2X+1). Preserves X.
-//
-// 6510 cycle accounting (no page-cross penalties):
-//
-//   save 5 zp bytes (push runtime scratch) ....... ~37 cy
-//   x save + setup pointers ...................... ~55 cy
-//   LEFT pass — 8 rows × (lda(zp),y 5 + lsr×4 8
-//               + tax 2 + lda abs,x 4 + sta(zp),y 6
-//               + dey 2 + bpl 3) = 30 cy/row ..... ~240 cy
-//   bump bmpdst +8 ............................... ~10 cy
-//   RIGHT pass — 8 rows × (lda(zp),y 5 + and 2
-//               + tax 2 + lda abs,x 4 + sta(zp),y 6
-//               + dey 2 + bpl 3) = 24 cy/row ..... ~192 cy
-//   x restore + restore 5 zp bytes ............... ~52 cy
-//   rts .......................................... 6 cy
-//   ────────────────────────────────────────────
-//   TOTAL ~ 592 cy ≈ 10 raster lines
-//
-// Cheap enough to fit once per IRQ inside irq_close's $F9..$01
-// window (4032 cy, of which scroller eats ~2500 cy → plenty left).
-//==================================================================
-render_one_char:
-        // --- Save runtime zp scratch ($F9-$FD) ---
-        // render_one_char fires inside irq_close, BEFORE update_bmp_scroll
-        // on cold install (boot init) — but RUNTIME swaps run AFTER the
-        // scroller has stored state in $FB/$FC/$FD. Push & pop.
-        lda zp_tmp                       // $F9  -- 3
-        pha                              //       -- 3
-        lda zp_msb                       // $FA  -- 3
-        pha                              //       -- 3
-        lda zp_text_ptr                  // $FB  -- 3
-        pha
-        lda zp_text_ptr+1                // $FC
-        pha
-        lda zp_smooth                    // $FD
-        pha
-
-        txa                              // 2  preserve X (char index)
-        pha                              // 3
-
-        // y_offset = phrase_base[phrase_index] + X
-        // (max 40 + 19 = 59, no 8-bit overflow possible.)
-        txa                              // 2
-        ldy phrase_index                 // 3
-        clc                              // 2
-        adc phrase_base,y                // 4
-        tay                              // 2
-
-        // chargen src = FONT_BASE + text_phrases[Y] * 8
-        lda text_phrases,y               // 4
-        sta setup_save                   // 3
-        asl                              // 2
-        asl                              // 2
-        asl                              // 2  → low byte = char*8 (max $C8 for $19 char)
-        sta setup_charsrc                // 3
-        lda setup_save                   // 3
-        lsr                              // 2
-        lsr                              // 2
-        lsr                              // 2
-        lsr                              // 2
-        lsr                              // 2  → high-byte addend = char/32 (0..1 for codes <= $5A)
-        clc                              // 2
-        adc #>FONT_BASE                  // 2
-        sta setup_charsrc + 1            // 3
-
-        // bitmap dst (LEFT cell) — precomputed per-char in char_dst_*
-        lda char_dst_lo,x                // 4
-        sta setup_bmpdst                 // 3
-        lda char_dst_hi,x                // 4
-        sta setup_bmpdst + 1             // 3
-
-        // --- LEFT cell pass: 8 rows of high-nibble MC bytes ---
-        ldy #7                           // 2
-!left_loop:
-        lda (setup_charsrc),y            // 5
-        lsr                              // 2
-        lsr
-        lsr
-        lsr                              // 2 × 4  → high nibble in A
-        tax                              // 2
-        lda nibble_to_mc,x               // 4
-        sta (setup_bmpdst),y             // 6  → write LEFT cell row Y
-        dey                              // 2
-        bpl !left_loop-                  // 3 / 2
-
-        // --- bump pointer to RIGHT cell (+8 bytes = next cell) ---
-        clc                              // 2
-        lda setup_bmpdst                 // 3
-        adc #8                           // 2
-        sta setup_bmpdst                 // 3
-        bcc !right_pass+                 // 2 / 3
-        inc setup_bmpdst + 1             // 5
-!right_pass:
-
-        // --- RIGHT cell pass: 8 rows of low-nibble MC bytes ---
-        ldy #7                           // 2
-!right_loop:
-        lda (setup_charsrc),y            // 5
-        and #$0F                         // 2  → low nibble
-        tax                              // 2
-        lda nibble_to_mc,x               // 4
-        sta (setup_bmpdst),y             // 6  → write RIGHT cell row Y
-        dey                              // 2
-        bpl !right_loop-                 // 3 / 2
-
-        // --- restore X and runtime zp ---
-        pla                              // 4
-        tax                              // 2  (X back)
-
-        pla
-        sta zp_smooth                    // $FD
-        pla
-        sta zp_text_ptr+1                // $FC
-        pla
-        sta zp_text_ptr                  // $FB
-        pla
-        sta zp_msb                       // $FA
-        pla
-        sta zp_tmp                       // $F9
-        rts                              // 6
-
-
-//==================================================================
-// update_fade_text — per-frame colour-RAM cycle for the 40 text-row
-// cells, plus a chunked phrase swap. When fade_counter rolls to 64
-// (first frame of the 1.28 s black-hold), we advance phrase_index
-// and arm swap_pending = 20. Each subsequent frame renders one
-// character (~572 cy via render_one_char) until swap_pending hits 0
-// — the whole bitmap swap takes 20 frames = 0.4 s, comfortably
-// inside the 1.28 s black hold, so the user only ever sees the new
-// phrase fade in.
-//
-// Cycle budget (peak frame = first arming + first render):
-//   inc/cmp/branch arm logic .......... ~25 cy
-//   swap arm path (rare, 1 frame/cycle)  ~20 cy
-//   render path (20 frames/cycle) ..... 572 cy + 28 cy dispatch
-//   colour-RAM cycle (40 stores) ...... ~280 cy
-//   ──────────────────────────────────
-//   PEAK ~ 925 cy   IDLE ~ 305 cy
-//
-// irq_close window ($F9..$01) is ~4032 cy. update_bmp_scroll alone
-// budgets ~2400 cy, leaving ~1600 cy — fits peak with margin.
-//==================================================================
-update_fade_text:
-        // Outro gate — fade-text fades out together with the bars
-        // (zp_outro >= T_OUTRO_BARS). We slam colour RAM to $00 so
-        // any visible glyphs disappear immediately, then return early.
-        lda zp_outro                     // 3
-        cmp #T_OUTRO_BARS                // 2
-        bcc !active+                     // 3 / 2
-        lda #$00                         // 2
-        ldx #39                          // 2
-!off_loop:
-        sta TEXT_COL_RAM,x               // 5
-        dex                              // 2
-        bpl !off_loop-                   // 3 / 2
-        rts                              // 6
-!active:
-        inc fade_counter                 // 5
-        lda fade_counter                 // 3
-        cmp #64                          // 2
-        bne !no_arm+                     // 3 / 2
-        // Just entered black hold — advance phrase 0→1→2→0…
-        ldx phrase_index                 // 3
-        inx                              // 2
-        cpx #3                           // 2
-        bne !ok_idx+                     // 3 / 2
-        ldx #0                           // 2
-!ok_idx:
-        stx phrase_index                 // 3
-        lda #20                          // 2
-        sta swap_pending                 // 3
-!no_arm:
-        // If a swap is in flight, render one character per frame.
-        lda swap_pending                 // 3
-        beq !no_render+                  // 3 / 2
-        // X = 20 - swap_pending → chars rendered in order 0..19
-        lda #20                          // 2
-        sec                              // 2
-        sbc swap_pending                 // 3
-        tax                              // 2
-        jsr render_one_char              // 6 + 572 + 6 = ~584
-        dec swap_pending                 // 5
-!no_render:
-        // Always cycle the 40 cells of colour RAM for the fade band.
-        // 40 × (sta abs,x 5 + dex 2 + bpl 3/2) = ~ 280 cy
-        lda fade_counter                 // 3
-        lsr                              // 2
-        and #$3F                         // 2
-        tax                              // 2
-        lda fade_palette,x               // 4
-        ldx #39                          // 2
-!u_loop:
-        sta TEXT_COL_RAM,x               // 5
-        dex                              // 2
-        bpl !u_loop-                     // 3 / 2
-        rts                              // 6
+// copy_chargen — bank CHARGEN ROM in, copy MIXED-case set ($D800-$DFFF)
 // to RAM at FONT_BASE, restore. SEI is on from start.
 // Mixed set: a-z at screen codes $01-$1A, A-Z at $41-$5A — matches
 // .encoding "screencode_mixed" so "deFEEST" prints correctly.
@@ -2057,13 +1687,10 @@ update_bmp_scroll:
 !done:
         rts
 
-// Sprite Y for top-border sprites — range 14..50.
-// Amplitude 18 chosen so top sprites' display (Y..Y+41 with
-// Y-expand) ends at Y=91 at peak — just touching mid sprites'
-// minimum display Y=90, mirroring the mid↔bot kiss.
+// Sprite Y for top-border sprites — range 14..30
 .align 256
 sine_top:
-        .fill 256, 14 + round(18 * (1 - cos(toRadians(i * 360 / 256))))
+        .fill 256, 14 + round(8 * (1 - cos(toRadians(i * 360 / 256))))
 
 // Sprite Y for display-area sprites — range 90..200.
 // Floor 90 keeps mid sprites out of the FLD zone ($3C..$58 max):
