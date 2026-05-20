@@ -279,6 +279,16 @@ setup:
         inx
         bne !clr-
 
+        // Write visible characters at each star position
+        // (screen RAM at star offsets is $20 = space → invisible
+        // even with colour RAM set). Use $2A = asterisk.
+        ldx #15
+!star:  lda #$2a
+        ldy star_pos,x
+        sta SCREEN,y
+        dex
+        bpl !star-
+
         // Clear colour RAM to dark grey ($0E) — otherwise leftover
         // colours from greets leak into the background.
         lda #$0e

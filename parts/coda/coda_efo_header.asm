@@ -17,7 +17,7 @@
         // Code + col_tab fit in 3 pages: code at $0800-$09xx, col_tab
         // at $0A00 (256 bytes). Reuses the area sinus claimed earlier
         // — by the time coda loads, sinus is long gone.
-        .byte 'P', $08, $0A
+        .byte 'P', $08, $0B
         // Kloot star quad sprite shapes (Stage B): 4 quadrants × 16
         // frames × 64 bytes = 4 KB contiguous at $2800-$37FF. The
         // sprite payloads MUST avoid $1000-$1FFF — VIC sees chargen ROM
