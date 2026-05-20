@@ -394,16 +394,31 @@ setup:
         inx
         bne !cclr-
 
-        // ---- paint star chars (asterisks) at star_pos positions ----
-        // star_field below only animates COLOUR RAM at these offsets;
-        // without visible chars at those screen positions the colour
-        // writes have no pixels to colour and the stars are invisible.
-        // Asterisk ($2A) on the lunchbox-party background reads like
-        // little sparkles around the title — fits the celebration.
-        ldx #15
-!star:  ldy star_pos,x
-        lda #$2a
-        sta SCREEN,y
+        // ---- paint star chars (asterisks) at 32 full-screen positions ----
+        // star_field below animates COLOUR RAM at these positions; chars
+        // must exist for colour writes to have visible pixels. Asterisk
+        // ($2A) on the dark-grey background reads like sparkles.
+        // Self-modifying STA patches the screen address per-star to avoid
+        // ZP indirect (which would clobber zp_subtick / zp_frame).
+        ldx #31
+!star:  txa
+        asl                            // *2 for .word offset
+        tay
+        lda star_pos,y                 // COL_RAM address low
+        sta star_patch_scr              // patch into STA operand
+        lda star_pos + 1,y             // COL_RAM address high
+        sta star_patch_scr + 1
+        // Convert COL_RAM -> SCREEN:  SCREEN = COL_RAM - ($D800 - $0400)
+        sec
+        lda star_patch_scr
+        sbc #$00
+        sta star_patch_scr
+        lda star_patch_scr + 1
+        sbc #$d4
+        sta star_patch_scr + 1
+        lda #$2a                       // asterisk char
+star_patch_scr:
+        sta $0400                      // operand patched per star
         dex
         bpl !star-
 
@@ -916,38 +931,50 @@ star_field:
         lda zp_subtick
         bne !skip+
 
+        // 8-bank twinkle: active bank cycles 0,4,8,12,16,20,24,28
         lda zp_frame
-        and #$0c                // active bank: 0,4,8,12
-        sta $f9
+        and #$1c                // bits 2-4 = active bank ×4
+        sta $f9                 // $f9 safe after my_music_play
 
-        ldx #15
-!loop:
-        txa
-        and #$0c                // which bank this star belongs to
+        ldx #31
+!loop:  txa
+        and #$1c                // this star's bank
         cmp $f9
         bne !dim+
-        lda #$0f                // bright white
+        lda #$01                // bright white
         jmp !wcol+
-!dim:   lda #$0e                // dark grey (matches bg rows)
-!wcol:
-        ldy star_pos,x
-        sta COL_RAM,y
+!dim:   lda #$0e                // dark grey
+!wcol:  sta $fa                 // save colour ($fa scratch after music_play)
+        // Self-modifying STA — patch COL_RAM address for this star
+        txa
+        asl                     // *2 for .word offset
+        tay
+        lda star_pos,y          // low byte
+        sta star_patch_col
+        lda star_pos + 1,y      // high byte
+        sta star_patch_col + 1
+        lda $fa                 // restore colour
+star_patch_col:
+        sta $d800               // operand patched per star
         dex
         bpl !loop-
-!skip:
-        rts
+!skip:  rts
 
 
 //==================================================================
-// Star position table — 16 offsets into COL_RAM ($D800), rows 0-4.
-// Grouped as 4 banks of 4 for the active-bank twinkle scheme.
-// All offsets < 256 so they index via Y register.
+// Star position table — 32 full-screen COL_RAM addresses ($D800..$DBD8).
+// Grouped as 8 banks of 4 for the active-bank twinkle scheme.
+// Avoids title rows 11-13 and the kloot quad centre area.
 //==================================================================
 star_pos:
-        .byte $02, $2e, $5a, $a8         // bank 0: top spread
-        .byte $0a, $3c, $68, $7c         // bank 1: mid-top spread
-        .byte $1c, $4a, $76, $8c         // bank 2: mid spread
-        .byte $24, $9c, $b8, $c8         // bank 3: side spread
+        .word $D805, $D811, $D819, $D841
+        .word $D851, $D855, $D86B, $D87F
+        .word $D896, $D8B2, $D8CB, $D8CE
+        .word $D8D0, $D913, $DA00, $DA01
+        .word $DA36, $DA5A, $DA8B, $DAE1
+        .word $DB14, $DB2F, $DB41, $DB43
+        .word $DB58, $DB73, $DB7B, $DB87
+        .word $DB8D, $DB9E, $DBCA, $DBD8
 
 
 //==================================================================
