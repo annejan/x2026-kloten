@@ -49,6 +49,7 @@
 .const zp_scroll_tick = $f8
 .const zp_kick_state  = $f9    // V3 kick state machine (0=idle)
 .const zp_kick_freq   = $fa    // shadow of V3 freq hi (SID regs are write-only)
+.const zp_beat_kick   = $f3    // beat-sync Y kick (decays 0→0)
 
 // Brute-force loud kick. Don't try to be clever with envelope
 // retriggers — just FORCE V3 to noise + sustain=15 + gate on
@@ -153,6 +154,7 @@ setup:
         sta zp_scroll_tick
         sta zp_kick_state         // CRITICAL: was leaking stale interlude value
         sta zp_kick_freq
+        sta zp_beat_kick
 
         lda #$00
         sta VIC_RASTER
@@ -218,20 +220,72 @@ interrupt:
         // DYCP — advance wobble phase each frame
         inc zp_wobble_pos
 
-        // apply DYCP Y offsets to each sprite
+        // beat-sync: on beat (zp_beat_phase == 0, just wrapped),
+// flash border, push Y down, boost colours
+        lda zp_beat_phase
+        bne !no_beat_flash+
+        // border flash — bright cyan on beat, fades next frame
+        lda #$0e
+        sta VIC_BORDER
+        // Y kick — push sprites down 2px on beat
+        lda #2
+        sta zp_beat_kick
+        jmp !aft_flash+
+!no_beat_flash:
+        // fade border back to black
+        lda #$00
+        sta VIC_BORDER
+        // decay kick safely (clamp at 0)
+        lda zp_beat_kick
+        beq !aft_flash+
+        sec
+        sbc #1
+        bpl !set_kick+
+        lda #0
+!set_kick:
+        sta zp_beat_kick
+!aft_flash:
+
+        // apply DYCP Y offsets to each sprite (amplitude ±3)
         ldx #0                     // sprite index
 !dycp:
         txa
         clc
         adc zp_wobble_pos          // phase = wobble_pos + i * PHASE_STEP
         tay
-        lda sine_table,y           // signed -1..+1 (subtle)
+        lda sine_table,y           // signed -3..+3 (visible wave)
         clc
         adc #SPR_Y_BASE
+        // add beat kick
+        pha
+        lda zp_beat_kick
+        sta $fb
+        pla
+        clc
+        adc $fb
         sta $d001,x                // Y register: d001, d003, ...
         inx
         cpx #8
         bne !dycp-
+
+        // horizontal bob — sine offset to X positions, 90° out of phase
+        // with Y wobble for a subtle circular motion. Uses sine_table_x
+        // (amplitude ±2), phase-shifted by +64 (90° of 256-entry table).
+        ldx #0
+!dxcp:  txa
+        clc
+        adc zp_wobble_pos
+        clc
+        adc #64                    // +64 = 90° phase shift
+        tay
+        lda sine_table_x,y         // signed -2..+2
+        clc
+        adc sprite_x_table,x
+        sta $d000,x
+        inx
+        cpx #8
+        bne !dxcp-
+        // $d010 stays $01 (only sprite 0 needs hi-bit for X=292)
 
         // scroll tick — advance char every SCROLL_DELAY frames
         ldx zp_scroll_tick
@@ -355,8 +409,16 @@ colour_cycle:
 .byte $09, $0a, $0c, $0e, $01, $01, $01, $07
 
 sine_table:
+// Amplitude 3 for visible wave (±3 px). X wobble uses 90° phase shift
+// (offset +64) for a circular bob combined with Y.
 .for (var i = 0; i < 256; i++) {
-        .byte floor(1 * sin(i * 2 * PI / 256) + 0.5)
+        .byte floor(3 * sin(i * 2 * PI / 256) + 0.5)
+}
+
+sine_table_x:
+// Amplitude 2 for horizontal bob (±2 px), used with 90° phase offset.
+.for (var i = 0; i < 256; i++) {
+        .byte floor(2 * sin(i * 2 * PI / 256) + 0.5)
 }
 
 
