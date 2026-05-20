@@ -104,6 +104,8 @@ setup:
         sta zp_bar_clr_ofs
         sta sp_phase
         sta sp_frame
+        sta line_a_pos
+        sta line_a_tick
 
         // Fill screen with solid block ($A0 reverse-space in screencode_mixed)
         // so the per-cell colour-RAM plasma is actually visible. Plain
@@ -118,16 +120,11 @@ setup:
         inx
         bne !clr-
 
-        // ----- story line A — stays in colour-RAM cells, gets read out
-        //       by the plasma flow at row 11 (centered 35 chars).
-        // Line B is now the AI WROTE sprite-letter drop (init_sprites
-        // below); we don't render any cell-based text for row 13.
-        ldx #0
-!st1:   lda story_line_a,x
-        sta $05B8 + 2,x
-        inx
-        cpx #35
-        bne !st1-
+        // Line A is now revealed by update_line_a one char every 2 frames
+        // during the pad phase — see story_line_a section. The screen is
+        // already filled with $A0 above, so row 11 starts as a wash of
+        // plasma-coloured blocks; chars overwrite them as they "type".
+        // Line B is the AI WROTE sprite-letter drop (init_sprites below).
 
         // fill ALL 25 color RAM rows
         lda #0
@@ -310,6 +307,7 @@ interrupt:
         sta zp_filt_cut
 !no_beat:
 
+        jsr update_line_a
         jsr update_sprites
 
         // plasma — advance both phases at different rates so the
@@ -382,6 +380,42 @@ interrupt:
         tax
         pla
         rti
+
+
+//==================================================================
+// update_line_a — typewriter reveal of "FOR YEARS NO TIME FOR BREADBIN
+// CODE" into row 11. 1 char every LINE_A_PERIOD frames. Cursor is a
+// $A0 block at the next-to-reveal position; once all 35 chars are out,
+// the cursor disappears and we no-op. Screen is pre-filled with $A0 in
+// setup so unrevealed cells already match the plasma backdrop.
+//==================================================================
+.const LINE_A_PERIOD = 2          // frames per char — 35 chars × 2 = 70 frames (~1.4 s) of typing
+
+update_line_a:
+        lda line_a_pos
+        cmp #35
+        bcs !done+                // line fully revealed → nothing to do
+        inc line_a_tick
+        lda line_a_tick
+        cmp #LINE_A_PERIOD
+        bcc !no_advance+
+        lda #0
+        sta line_a_tick
+        ldx line_a_pos
+        lda story_line_a,x
+        sta $05BA,x               // $05B8 + 2 = column-2 start of row 11
+        inc line_a_pos
+!no_advance:
+        // Blinking cursor at the next-to-reveal cell (block $A0) — already
+        // sitting there from the screen-fill, but rewriting each frame
+        // makes it survive any later clobber and keeps the "the typewriter
+        // hasn't reached here yet" surface visually solid.
+        ldx line_a_pos
+        cpx #35
+        bcs !done+
+        lda #$a0
+        sta $05BA,x
+!done:  rts
 
 
 //==================================================================
@@ -763,6 +797,10 @@ story_line_a:
 // Phase state — PHASE_OFF / FLY_IN / BOUNCE / FLY_OUT.
 sp_phase: .byte 0
 sp_frame: .byte 0
+
+// Typewriter state for line A.
+line_a_pos:  .byte 0    // chars revealed so far (0..35)
+line_a_tick: .byte 0    // frame counter, advances pos every LINE_A_PERIOD
 
 // Horizontal positions for the 8 sprite-letters of "AI WROTE". With
 // 8-px spacing the phrase reads "AI" then a 1-letter gap then "WROTE"
