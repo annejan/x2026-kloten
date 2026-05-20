@@ -10,22 +10,70 @@ behind each choice. Update this as the design evolves over the
 PAL 50 Hz, 312 raster lines × 63 cy = **19,656 cy/frame**.
 
 ```
-   $F9 ──irq_close──> $01 ──irq_open──> $43 ──irq_fld──> $80
-                                          │
-   irq_close <───── $F9 ──irq_fld_bottom@$C3+K──── irq_bars──┘
+   $F9 ──irq_close──> $01 ──irq_open──> $59 ──irq_fld_pre──> $5B ──irq_fld──> $80
+                                                                          │
+   irq_close <─── $F9 ──irq_fld_bottom@$C3+K ────── irq_bars ──────────────┘
 ```
 
 | Stage | Window | Lines | Cycles | Work |
 |-------|--------|-------|--------|------|
 | `irq_close@$F9` → `irq_open@$01` | bottom border + vblank | 64 | 4032 | `update_bmp_scroll` (~2400), `update_scroll_colors` (~150), `update_fade_text` (~280), my_music_step (~10..210), counters, vector |
-| `irq_open@$01` → `irq_fld@$43` | top border + rows 0..1 | 66 | 4158 | counters, fade-in bg ramp, reveal_column, move_sprites, my_music_critical (~85), vector |
-| `irq_fld@$43` → `irq_bars@$80` | top FLD + slack | 61 | 3843 | top FLD K writes (raster-locked = K × 63 cy), vector |
+| `irq_open@$01` → `irq_fld_pre@$59` | top border + rows 0..4 | 88 | 5544 | counters, fade-in bg ramp, reveal_column, move_sprites, my_music_critical (~85), vector |
+| `irq_fld_pre@$59` → `irq_fld@$5B` | 2-line trampoline | 2 | 126 | self-mod register save, pre-compute K, vector swap, `tsx + cli + 40× nop` |
+| `irq_fld@$5B` → `irq_bars@$80` | top FLD + slack | 37 | 2331 | stall delay (39 cy), top FLD K writes (raster-locked = K × 63 cy, K≤20), vector |
 | `irq_bars@$80` → `irq_fld_bottom@$C3+K` | bars + handover | 67..95 | 4222..5985 | tight bar palette loop `$80..$BE`, vector with self-modified raster |
 | `irq_fld_bottom@$C3+K` → `irq_close@$F9` | bottom FLD + tail | 22..54 | 1386..3402 | bottom FLD (K_max-K) writes (raster-locked), 40-cy latch pad, vector |
 
-K_max = **36** (range 0..36). yscroll lands at 0 after K_max writes
-(`(5+35) & 7 == 0`), so the chain transitions cleanly into
-irq_close.
+K_max = **20** (range 0..20). yscroll lands at 0 after K_max writes
+(`(5+19) & 7 == 0`), clean. Peak `dK = 10 × (1080/256)·π/180 =
+0.74` K-units per frame so the sine plateaus at K = same value
+for 2-3 frames at its extrema — visible as mild "block-jump"
+twitching at peak/trough. Was tried at K_max=28 with the stable
+raster in place; logo still tore top AND bottom because per-line
+mid-sprite DMA on FLD lines (sine_mid Y≥90 displays into the FLD
+zone $5C..$5C+K) drifts the in-loop `cmp $d012` polling exit by
+enough cy to break the spurious-badline pattern on a few lines
+per frame. Stable raster fixed only the entry cycle, not in-loop
+DMA. Path to K_max=28: sprite-free FLD lines (raise sine_mid
+Y_min above $77 or raster-toggle SPR_EN off across the FLD zone).
+
+## Stable raster (Mäkelä / JackAsser double-IRQ)
+
+`irq_fld_pre@$59` is the cycle-UNSTABLE entry: jittered IRQ latency
+(7–13 cy depending on the interrupted instruction) doesn't matter
+because all it does is set up the trigger for `irq_fld@$5B` and then
+`tsx + cli + 40× nop`. The NOP run is the alignment window — the
+next IRQ fires somewhere inside it with **0–1 cy jitter** (NOPs are
+2-cy instructions, so the worst case is being interrupted between
+NOP boundaries).
+
+`irq_fld@$5B`'s first instruction is `txs` which restores SP to the
+value pre saved with `tsx`, discarding pre's own IRQ frame. The
+final `rti` then pops the *original* return (the pefchain idle
+loop) — pre's path is skipped entirely.
+
+Why this matters:
+
+- Without it, `irq_open`'s variable load plus per-line sprite DMA on
+  `$5B`/`$5C` shifted the FLD loop's first write cycle by enough cy
+  to break VIC's spurious-badline trigger at K = 28, causing logo-
+  top sawtooth tearing. K ≤ 20 was the only stable choice without
+  stable raster, but its peak dK = 0.74 produced "plateau" twitching.
+- With it, the FLD loop enters at a deterministic cycle of `$5B`
+  every frame, so the per-line yscroll writes land in the same
+  cy 23–25 window every frame. K = 28 holds the spurious-badline
+  pattern across all frames including step-boundary music + peak
+  sprite DMA.
+
+Pattern lifted directly from `/tmp/ranzbak/Raster.asm`
+(`rasirq1 → rasirq2`) — same form as the codebase64 pages:
+`making_stable_raster_routines`, `double_irq`,
+`stable_timing_-_jackasser`.
+
+Register save uses self-modification (`sta fld_a_save+1`) instead
+of `pha` — the IRQ entry only stacks PC+flags, so the `txs` in
+`irq_fld` discards a clean 3-byte IRQ frame. A `pha` trio in pre
+would push 3 extra bytes that `txs` would mis-account for.
 
 ## Music architecture
 
@@ -140,18 +188,19 @@ chain transitions to natural display. Without it, the post-FLD
 raster alignment was K-dependent — visible as fade-text wobble.
 Borrowed from ranzbak's `defeest-fld/badline.asm`.
 
-### Trigger move ($3B → $43)
+### Trigger move ($3B → $43 → $5B + pre)
 
-Originally the top-FLD trigger was at `$3B` (row 1's natural
-badline). That gave irq_open only 58 lines = 3654 cy before
-irq_fld fired. On step-boundary music frames + heavy sprites,
-irq_open overran. Moved to `$43` (row 2's badline): irq_open
-window is now 66 lines = 4158 cy with ~360 cy of headroom over
-the worst-case frame.
+The top-FLD trigger has moved twice. Originally at `$3B` (row 1's
+natural badline), it gave irq_open only 58 lines = 3654 cy and
+overran on heavy frames. Moved to `$43` (row 2): 66 lines /
+4158 cy. Then to `$5B` (row 5): 88 lines / 5544 cy of irq_open
+slack, plus an extra 2-line trampoline ($59 → $5B) for the
+double-IRQ stable-raster wrapper.
 
-Net effect: row 1 (`$3B..$42`) now displays as empty background
-naturally; row 2 is the FLD-frozen row. Logo Y position
-unchanged ($73+K), total stretch unchanged. Visually identical.
+Net effect: rows 0..4 (`$33..$5A`) all display normally — the
+scroller at row 0 and the fade-band text at row 4 sit ABOVE the
+bouncing logo at fixed Y. Row 5 (`$5B..$5B+K`) is the FLD-frozen
+row (empty bg). Logo at row 8 still bounces `$73+K`.
 
 ### BAR_BOT margin
 
@@ -183,11 +232,10 @@ look.
   FRONT. We could detect "sprite Y crosses fade-text Y band" and
   flip priority for those sprites' specific Y range via raster
   IRQ. Eliminates the occlusion. ~50 cy in an extra raster IRQ.
-- **K_max tuning under music load** — measure whether step-
-  boundary frames specifically still wobble. If yes, push trigger
-  further (e.g. `$4B = row 3 badline`) for even more irq_open
-  headroom, at the cost of 8 more lines of unstretched bg before
-  the logo.
+- **Second fade-text band below the logo** — bottom FLD ends at
+  raster `$E2`, so rows 19..21 ($E3..$FA) are also fixed-Y. We
+  could render a second fade-band text in the bottom bitmap and
+  alternate phrases between top and bottom for a richer feel.
 - **End-of-intro outro polish** — the wipe-out cascade is
   functional but a bit abrupt. Could ease it with K_max ramp-down
   (= K_max decreasing toward 0 over the outro window) so the logo

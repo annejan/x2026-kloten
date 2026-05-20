@@ -293,15 +293,59 @@ you write/read at runtime**, including page-aligned tables.
   of the screen, in the open border zone. Pre-existing in original
   code. Hiding it would need the deferred-copy or DEN-toggle
   techniques above.
-- **Logo top "tearing"**: with FLD `$3B` and the original geometry,
-  the logo's top yellow arc has a stepped bitmap design that reads
-  as slight stair-stepping when the bounce is mid-arc. Bitmap
-  feature, not a raster glitch.
+- **K_max plateau twitch**: with K_max=20 the bounce holds K
+  unchanged for 2-3 frames at sine extrema (peak dK=0.74). Visible
+  as mild step-jumping at peak/trough. Tried K_max=28 (peak
+  dK=1.03 — smooth) but logo tore top AND bottom. Path forward
+  documented below under "K=28 in-loop sprite DMA".
 - **Phrase 3 may not have time to show**: with intro ending around
   `zp_intro = $FF` and fade-text only starting at `T_SCROLLER=240`,
   the 2.56 s × 3 phrases cycle barely fits before intro outro
   triggers. Phrase 0 + 1 always show; phrase 2 ("the breadbin felt
   it") may be cut short or skipped.
+
+---
+
+## Stable raster wrapper at irq_fld
+
+We ported the Mäkelä/JackAsser double-IRQ pattern from
+`/tmp/ranzbak/Raster.asm` (rasirq1→rasirq2) into a `irq_fld_pre`
+at `$59` chaining to a cycle-stable `irq_fld` at `$5B`. Self-mod
+register save (not pha — pha would push 3 bytes the txs in
+irq_fld would mis-account for); 40-NOP slack between pre's `cli`
+and the next IRQ; `txs` in irq_fld discards pre's IRQ frame so
+RTI returns to the pefchain idle loop. See `docs/intro-architecture.md`
+for the cycle counts.
+
+This pins the FLD-loop ENTRY cycle. Sufficient for K_max=20 with
+zero entry-jitter wobble, but **not** sufficient for K_max=28:
+
+### K=28 in-loop sprite DMA
+
+The FLD loop polls `cmp $d012` per line — naturally stable for
+the line transition but the polling-exit-to-write cycle gap is
+stretched by per-line sprite DMA. `sine_mid` at Y_min=90 displays
+$5A..$83, which fully overlaps the FLD zone ($5C..$77 for K=28).
+3 mid sprites visible on a FLD line steal ~6-9 cy. Cumulative
+drift breaks the spurious-badline pattern on enough lines per
+frame to tear the logo top edge AND bottom edge (the latter
+because rows after the failed line slide by 1 px relative to
+rows before it, manifesting as a moving discontinuity).
+
+Stable raster alone won't fix this. Need sprite-free FLD lines:
+
+1. **Raise sine_mid Y_min above the FLD zone** — Y≥119 puts mid
+   sprites entirely below the FLD zone. Loses the "mid touches
+   top" visual but K_max=28 (or higher) becomes safe.
+2. **Toggle SPR_EN off across the FLD zone** — store the active-
+   sprites mask, write SPR_EN=0 at irq_fld entry, restore at
+   irq_fld exit. Mid sprites still display above/below the zone
+   but blank ON the FLD lines. ~4 cy/frame cost.
+3. **Stretch via D016 instead of D011** — XSCROLL FLD variants
+   exist but the canonical late-write trick depends on D011's
+   yscroll comparison so this is a rewrite, not a tweak.
+
+TBD which to pursue, or whether the K=20 plateau is good enough.
 
 ---
 
