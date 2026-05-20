@@ -12,7 +12,10 @@
 //                copied from inline data at setup.
 //   $07F8-$07FF  sprite pointers (screen at $0400)
 //
-// Transition out: pefchain script triggers on f6 = $20 (~15 s).
+// Transition out: pefchain script triggers on f6 = $A0 (~77 s).
+// Settle phase kicks in at f6 = $90 (~69 s) and holds the screen
+// on "  KLOOT " for the last ~7 s — sprites stop bobbing, scroll
+// freezes, colour cycle keeps shimmering as the calm landing.
 //==================================================================
 
 .const VIC_CTRL1   = $d011
@@ -40,19 +43,36 @@
 
 .const BEAT_PERIOD     = 24    // frames per beat
 .const DYCP_PHASE_STEP = 32    // phase shift between sprites
-.const SCROLL_DELAY    = 12    // advance 1 char every N frames
+.const SCROLL_DELAY    = 8     // advance 1 char every N frames (was 12)
 
-.const zp_beat_phase  = $f4
-.const zp_wobble_pos  = $f5
-.const zp_beat_count  = $f6
-.const zp_scroll_pos  = $f7
-.const zp_scroll_tick = $f8
-.const zp_beat_kick   = $f3    // beat-sync Y kick (decays 0→0)
+// ---- duration shape ----
+// pefchain script transitions at zp_beat_count == TRANSITION_BEAT.
+// Three phases:
+//   normal      0..FADE_BEAT_START   full bobble, scroll @ SCROLL_DELAY
+//   fade        FADE_BEAT_START..SETTLE_BEAT   wobble amplitude damps
+//                                              progressively (ASR per
+//                                              step), scroll slows
+//   settle      SETTLE_BEAT..TRANSITION_BEAT   scroll snaps to punchline,
+//                                              sprites perfectly flat,
+//                                              colour cycle still cycles
+.const FADE_BEAT_START = $78   // 120 beats × 24 = 57.6 s
+.const SETTLE_BEAT     = $90   // 144 beats × 24 = 69.1 s
+.const TRANSITION_BEAT = $a0   // 160 beats × 24 = 76.8 s — must match
+                               //   pefchain_script's `f6 = a0`
+
+.const zp_beat_phase     = $f4
+.const zp_wobble_pos     = $f5
+.const zp_beat_count     = $f6
+.const zp_scroll_pos     = $f7  // 16-bit lo (was 8-bit only)
+.const zp_scroll_tick    = $f8
+.const zp_scroll_pos_hi  = $f9  // 16-bit hi — message > 256 B needs this
+.const zp_damp_shift     = $fa  // 0..5 — ASR count for fade-phase damp
+.const zp_beat_kick      = $f3  // beat-sync Y kick (decays 0→0)
 
 // (Dead greets kick code removed — drums now ride on intro's
 // resident `my_music_play` via the K-S-K-S kit + V1 bass-bleed.
-// Constants/state used to live here for greets' own kick machine;
-// the EFO header still keeps $f9-$fa in the Z claim as scratch.)
+// $fa still reserved by EFO claim as scratch; update_sprite_ptrs
+// uses $fb/$fc which sit outside the claim — fine during IRQ.)
 
 
 * = $8000 "Greets"
@@ -99,6 +119,7 @@ setup:
         // initial sprite pointers: first 8 chars of message
         lda #0
         sta zp_scroll_pos
+        sta zp_scroll_pos_hi
         jsr update_sprite_ptrs
 
         // X-expand all 8, no Y-expand, mono, in front
@@ -145,6 +166,7 @@ setup:
         sta zp_beat_count
         sta zp_scroll_tick
         sta zp_beat_kick
+        sta zp_damp_shift
 
         lda #$00
         sta VIC_RASTER
@@ -193,6 +215,43 @@ interrupt:
         sta zp_beat_phase
         inc zp_beat_count
 !no_beat:
+
+        // ----- Fade-phase damp_shift -----
+        // From FADE_BEAT_START up to SETTLE_BEAT, ramp `zp_damp_shift`
+        // from 0 → 5 in steps of 1 every 4 beats. The DYCP/DXCP code
+        // below applies that many arithmetic-shift-rights to each
+        // sine sample, so the wobble amplitude shrinks 3 → 1 → 0 px.
+        // The scroll tick reads its delay from `SCROLL_DELAY_TABLE`
+        // indexed by the same shift, so the scroller also slows
+        // progressively. By SETTLE_BEAT the world is already standing
+        // still — the actual settle freeze is then invisible.
+        lda zp_beat_count
+        cmp #FADE_BEAT_START
+        bcs !in_fade+
+        lda #0
+        sta zp_damp_shift
+        jmp !damp_done+
+!in_fade:
+        sec
+        sbc #FADE_BEAT_START
+        lsr
+        lsr                       // / 4 — one damp step every 4 beats
+        cmp #5
+        bcc !clamp_ok+
+        lda #5
+!clamp_ok:
+        sta zp_damp_shift
+!damp_done:
+
+        // ----- Settle gate -----
+        // Once zp_beat_count crosses SETTLE_BEAT, snap scroll_pos to
+        // the punchline + skip the DYCP/DXCP wobble + freeze the scroll
+        // ticker. Colour cycle keeps running so the held text shimmers.
+        lda zp_beat_count
+        cmp #SETTLE_BEAT
+        bcc !no_settle+
+        jmp !settled+
+!no_settle:
 
         // Always re-write sprite pointers every frame. The Spindle NMI
         // loader can clobber $07F8-$07FF during background loads, and
@@ -271,6 +330,16 @@ interrupt:
         adc zp_wobble_pos
         tay
         lda sine_table,y           // signed -3..+3
+        // Sign-preserving arithmetic shift right, zp_damp_shift times.
+        // shift 0 = full amplitude; shift 5 = effectively 0.
+        ldy zp_damp_shift
+        beq !d_no_damp+
+!d_damp:
+        cmp #$80                   // C := bit 7 (sign)
+        ror                        // rotate with sign-extend
+        dey
+        bne !d_damp-
+!d_no_damp:
         clc
         adc #SPR_Y_BASE
         clc
@@ -303,6 +372,15 @@ interrupt:
         adc #64                    // +64 = 90° phase shift vs DYCP
         tay
         lda sine_table_x,y         // signed -2..+2
+        // Same damp ramp as DYCP — ASR sign-preserving.
+        ldy zp_damp_shift
+        beq !x_no_damp+
+!x_damp:
+        cmp #$80
+        ror
+        dey
+        bne !x_damp-
+!x_no_damp:
         clc
         adc sprite_x_table,x
         pha
@@ -316,16 +394,78 @@ interrupt:
         bpl !dxcp-
         // $d010 stays $01 (only sprite 0 needs hi-bit for X=292)
 
-        // scroll tick — advance char every SCROLL_DELAY frames
+        // scroll tick — advance char every N frames where N is
+        // SCROLL_DELAY_TABLE[damp_shift]. Normal phase uses 8 frames;
+        // the fade ramps up to 64 so the scroll smoothly slows toward
+        // a stop alongside the wobble damp. 16-bit scroll_pos carries
+        // lo → hi on overflow so the full ~700 B message is reachable.
+        ldy zp_damp_shift
+        lda SCROLL_DELAY_TABLE,y
+        sta $fc                    // scratch (outside EFO claim, IRQ-owned)
         ldx zp_scroll_tick
         inx
-        cpx #SCROLL_DELAY
+        cpx $fc
         bcc !no_scroll+
         ldx #0
         inc zp_scroll_pos
+        bne !no_scroll_carry+
+        inc zp_scroll_pos_hi
+!no_scroll_carry:
 !no_scroll:
         stx zp_scroll_tick
 
+        jmp !irq_exit+
+
+!settled:
+        // ----- Settle phase — held punchline -----
+        // Snap scroll position to the settle_text label every frame
+        // (idempotent — costs ~10 cy to overwrite the same bytes).
+        lda #<(settle_text - message)
+        sta zp_scroll_pos
+        lda #>(settle_text - message)
+        sta zp_scroll_pos_hi
+        jsr update_sprite_ptrs
+
+        // Colour cycle keeps shimmering so the held phrase doesn't
+        // look frozen-dead. zp_wobble_pos still advances to drive
+        // the cycle index (but it no longer drives X/Y because we
+        // skip DYCP/DXCP below).
+        ldx #0
+!scol:  txa
+        clc
+        adc zp_wobble_pos
+        and #7
+        tay
+        lda colour_cycle,y
+        sta SPR_COL,x
+        inx
+        cpx #8
+        bne !scol-
+        inc zp_wobble_pos
+
+        // Border solid black — no per-beat flash during settle so
+        // the punchline reads as the calm landing point.
+        lda #$00
+        sta VIC_BORDER
+
+        // Write flat X (sprite_x_table) + flat Y (SPR_Y_BASE) so the
+        // 8 sprites sit perfectly still on a single horizontal line.
+        // (Beat counter was already incremented up at the top of the
+        // IRQ, so pefchain still sees zp_beat_count climb to
+        // TRANSITION_BEAT for the auto-advance.)
+        ldx #7
+!sflat: txa
+        asl
+        tay
+        lda sprite_x_table,x
+        sta $d000,y                // X = base position
+        iny
+        lda #SPR_Y_BASE
+        sta $d000,y                // Y = base line
+        dex
+        bpl !sflat-
+
+!irq_exit:
         pla
         tay
         pla
@@ -335,9 +475,13 @@ interrupt:
 
 
 //==================================================================
-// fadeout
+// fadeout — clear sprites cleanly so coda's setup doesn't briefly
+// inherit the held greets sprites at greets' positions/shapes.
 //==================================================================
 fadeout:
+        lda #$00
+        sta SPR_EN                    // all 8 sprites off
+        sta VIC_BORDER                // border solid black
         sec
         rts
 
@@ -354,23 +498,32 @@ fadeout:
 // claim, safe as scratch during IRQ.
 //==================================================================
 update_sprite_ptrs:
-        ldx #0
-!lp:    stx $fb                     // save loop counter
-        txa
+        // Compute (message + scroll_pos) as a 16-bit absolute address
+        // and patch it into the LDA in the loop below. This is what
+        // gives us reach past the 8-bit-Y limit — the previous version
+        // capped scroll_pos at ~248 because `lda message,y` could only
+        // index 256 bytes from a single base.
         clc
-        adc zp_scroll_pos           // A = scroll_pos + x
+        lda #<message
+        adc zp_scroll_pos
+        sta msg_lookup + 1
+        lda #>message
+        adc zp_scroll_pos_hi
+        sta msg_lookup + 2
+
+        ldx #0
+!lp:    txa
+        tay                          // Y = loop counter (0..7)
+msg_lookup:
+        lda $0000,y                  // operand patched to (message+scroll_pos)
         tay
-        lda message,y               // char code from message
-        tay
-        lda ptr_lookup,y            // sprite pointer value
-        sta $fc                     // save pointer value
-        ldx $fb                     // restore loop counter
+        lda ptr_lookup,y             // char code → sprite pointer value
+        sta $fc                      // save pointer value (scratch)
         txa
-        eor #7                      // reversed sprite index (7-x)
+        eor #7                       // reversed sprite index (7-x)
         tay
-        lda $fc                     // get pointer value back
-        sta SPR_PTR_BASE,y          // store at reversed position
-        ldx $fb                     // restore counter
+        lda $fc
+        sta SPR_PTR_BASE,y           // store at reversed slot
         inx
         cpx #8
         bne !lp-
@@ -425,6 +578,12 @@ sprite_x_table:
 sprite_cols:
 .byte $07, $08, $0a, $0c, $0e, $03, $05, $0d
 
+// Scroll delay per damp_shift step. Frame count between char advances:
+// damp 0 = normal 8 → ramps up so scroll smoothly decelerates into the
+// settle freeze. damp 5 = 128 frames = ~2.5 s/char (basically stopped).
+SCROLL_DELAY_TABLE:
+.byte 8, 12, 18, 28, 50, 128
+
 // Warm colour cycle table — rotates through yellow/orange/red/magenta/cyan/green
 // for good readability on black background, with sprite-to-sprite phase offset.
 colour_cycle:
@@ -452,50 +611,46 @@ sine_table_x:
 
 
 //==================================================================
-// scrolling message — aligned to $8500 to avoid pefchain load split
-// at $84FF/$8500 (first segment $8000-$84FF skips message data).
+// scrolling message — page-aligned to $8600 so it sits cleanly
+// after the (now larger) code block. The old $8500 anchor collided
+// with the expanded settle-aware IRQ. Font data starts after the
+// message, still within the $8000-$8FFF EFO claim.
+//
+// Sized for the SCROLL_DELAY=8 cadence over ~69 s of scroll before
+// the settle phase locks the screen on settle_text. update_sprite_ptrs
+// reaches the full message via 16-bit indexing (the old `lda message,y`
+// capped at scroll_pos ≤ 248).
 //==================================================================
 // Greets text — uppercase only (font is A-Z + blank).
 // The real story: never had time to code the breadbin, then AI made
 // it possible. Tongue in cheek, grateful, and shout-outs to the
 // folks whose tools / inspiration got us here.
-* = $8500
+* = $8600
 message:
-.text "      GREETZ TO ALL LUNCHBASED LIFEFORMS   "
-.text "      IN ROTTERDAM AND BEYOND               "
-.text "      NO BREAD WAS HARMED DURING            "
-.text "      THIS PRODUCTION                       "
-.text "      EXCEPT THE PINDKAAS SANDWICH          "
-.text "      LEFT IN DRIVE 1541                    "
-.text "      KLOTEN MET DE BROODTROMMEL            "
-.text "      IS THE OFFICIAL LUNCHTIME             "
-.text "      RELEASE OF X2026                      "
-.text "      GREETINGS                             "
-.text "      SMEERKAAS   BROODJEKAAS.EXE           "
-.text "      TUPPERWARE DIVISION   ROTTERDAM       "
-.text "      ALL HAIL THE HAM PIRATES              "
-.text "      XENON   SILICON LTD   SCS TRC         "
-.text "      FOCUS   FAIRLIGHT   REFLEX            "
-.text "      BONZAI   GENESIS PROJECT   EXTEND     "
-.text "      TRSI   OXYRON   BYTERAPERS            "
-.text "      CENSOR DESIGN   CHANNEL FOUR          "
-.text "      PADUA   ATLANTIS   ELYSIUM            "
-.text "      EXCESS   TRIAD   NEOPLASIA            "
-.text "      THE DREAMS   RADWAR   PERFORMERS      "
-.text "      VANDALISM NEWS   NAH-KOLOR   LOTEK    "
-.text "      CHOCOTROPHY   PHOBOS TEAM             "
-.text "      SIDMASTERS   THE WEEKENDERS           "
-.text "      LETHARGY   ONSLAUGHT   LEVEL          "
-.text "      SUCCESS   ARTLINE   RESOURCE          "
-.text "      PLUSH   FINNISH GOLD   ABYSS CONNECTION "
-.text "      OFFENCE   POO-BRAIN   RABENAUGE       "
-.text "      HOKUTO FORCE                          "
-.text "      AND ALL THE QUIET CODERS              "
-.text "      ESPECIALLY KLOOT                      "
-.text "      FOR MAKING IT HAPPEN                  "
-.text "      THANK YOU EVERYONE                    "
-.text "      NOW GO EAT YOUR LUNCH                 "
-.text "                                            "
+.text "        GREETZ TO ALL LUNCHBASED LIFEFORMS    "
+.text "FROM ROTTERDAM AND BEYOND     "
+.text "NO BREAD WAS HARMED DURING THIS PRODUCTION    "
+.text "EXCEPT THE PINDAKAAS SANDWICH IN DRIVE 1541   "
+.text "KLOTEN MET DE BROODTROMMEL    "
+.text "THE OFFICIAL LUNCHTIME RELEASE OF X2026    "
+.text "SMEERKAAS   BROODJEKAAS.EXE   "
+.text "TUPPERWARE DIVISION   ROTTERDAM   "
+.text "ALL HAIL THE HAM PIRATES    "
+.text "GREETINGS TO FAIRLIGHT   TRIAD   BONZAI   "
+.text "GENESIS PROJECT   OXYRON   BYTERAPERS    "
+.text "CENSOR DESIGN   PHOBOS TEAM    "
+.text "AND ALL THE QUIET CODERS WHO MADE THE TOOLS    "
+.text "THIS RELEASE STANDS ON YOUR SHOULDERS    "
+.text "ESPECIALLY KLOOT THE AI FOR MAKING IT HAPPEN    "
+.text "THANK YOU EVERYONE    "
+.text "NOW GO EAT YOUR LUNCH    "
+.text "        "
+// Landing point for the settle phase. The first 8 chars after this
+// label fill the on-screen 8-sprite window once settle kicks in;
+// pad with trailing spaces so even if the scroller drifts past it
+// for any reason, the visible window stays clean.
+settle_text:
+.text "  KLOOT                                                  "
 .byte $00
 
 
@@ -552,6 +707,12 @@ font_data:
                 .byte g.get(i)
         }
 }
+// Blank glyph for ptr_lookup's $9A slot — every char outside A-Z
+// (spaces, '.', digits, etc.) gets mapped here. Without this explicit
+// fill the slot reads uninitialised RAM and the "blanks" between words
+// render as random pixels, which made the new message look glitched
+// as soon as it picked up chars like 'BROODJEKAAS.EXE' or 'X2026'.
+.fill 64, 0
 // space (blank)
 .for (var i = 0; i < 64; i++) {
         .byte 0
