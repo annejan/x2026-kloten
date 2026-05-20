@@ -318,7 +318,14 @@ irq_close:
         sta $ffff
         lda #$01
         sta VIC_RASTER
-        // Intro gate: scroller off until T_SCROLLER.
+
+        // Music: step-boundary half (V1 bass, V2 lead, drum trigger).
+        // Non-step frames return in ~10 cy. Step frames cost ~210 cy.
+        // Runs unconditionally so mu_frame keeps ticking even before
+        // T_BARS / T_BALLS gates open the bass + lead voices.
+        jsr my_music_step
+
+        // Intro gate: scroller / fade-text off until T_SCROLLER.
         // jsr update_bmp_scroll is ~2400 cy; in $f9..$01 ~4000-cy window.
         lda zp_intro
         cmp #T_SCROLLER
@@ -400,15 +407,13 @@ irq_open:
         // frame at raster ~282. This window is safe → no tearing.
         jsr move_sprites
 
-        // Music plays HERE in irq_open, not in irq_fld. That keeps
-        // the irq_fld → irq_bars → irq_fld_bottom chain on a tight,
-        // frame-independent budget — music_play's variable length
-        // (~600..2000 cy on step-boundary frames) used to push bars
-        // and the bottom-FLD trigger ~1..8 lines late on heavy
-        // music frames, which read as jitter in the bounce.
-        // (Per Janne Hellsten's BINTRIS-pt-5 stability lesson —
-        // FLD timing must not depend on adjacent-IRQ workload.)
-        jsr my_music_play
+        // Music: per-frame critical half only (vol fade + V3 arp +
+        // V3 gate + V3 drum tick). Constant ~85 cy, independent of
+        // music step boundaries. The step-boundary work (V1 bass,
+        // V2 lead, drum trigger) runs in irq_close's my_music_step.
+        // See "MUSIC SPLIT" comment above my_music_play in the music
+        // segment for the rationale.
+        jsr my_music_critical
 
         // Chain to irq_fld at line $43 (= row 2's natural badline).
         // 8 lines later than the original $3B trigger — gives irq_open
@@ -820,15 +825,56 @@ my_music_init:
         rts
 
 
+//==================================================================
+// MUSIC SPLIT for the intro IRQ chain
+//
+// `my_music_play` (the legacy entry at $119e, called by interlude /
+// sinus / greets / coda via INTRO_MUSIC_PLAY) is just a dispatcher
+// now: jsr critical + jmp step. Other parts get the original
+// monolithic behaviour with one rts overhead.
+//
+// Intro's IRQ chain splits the work for less peakiness:
+//
+//   my_music_critical (called by intro irq_open, every frame):
+//       master vol fade, V3 arpeggio, V3 gate, V3 drum tick
+//       ~85 cy peak (constant per frame). Includes the drum tick
+//       so V3 keeps playing the drum override across frames once
+//       step has triggered it.
+//
+//   my_music_step (called by intro irq_close, every frame):
+//       inc mu_frame, check STEP_FRAMES boundary, if step:
+//       inc mu_step, V1 bass note, V2 lead note, V3 drum trigger.
+//       ~10 cy idle, ~210 cy on step-boundary frames.
+//
+// One-frame delay note: in the monolithic version, step's V1/V2
+// triggers and the V3 drum override happened in the SAME call as
+// the V3 arp write. In the split, step runs at irq_close ($F9 of
+// frame N) and critical runs at irq_open ($01 of frame N+1) — so
+// the next V3 arp uses the new mu_step exactly when step's V1/V2
+// notes start playing. Audible alignment is identical.
+//
+// Why this split helps: irq_open's worst-case load was being driven
+// by music_play hitting its step-boundary path on the same frame
+// when sprite + reveal + counter work was already heaviest. With
+// the split, irq_open's music cost is constant (~85 cy) regardless
+// of step frames, and step's ~200 cy of work lives in irq_close
+// which has more slack at end-of-frame.
+//==================================================================
+
+.pc = $119e "MusicDispatch"
 my_music_play:
+        // Legacy entry — keep at $119e so inheritor parts (interlude,
+        // sinus, greets, coda) that hard-code INTRO_MUSIC_PLAY=$119e
+        // see exactly the original behaviour: critical then step.
+        jsr my_music_critical
+        jmp my_music_step       // tail call — saves the trailing rts
+
+my_music_critical:
         // --- Master volume: fade IN over intro tick window only ---
         // vol = min(zp_intro >> 3, $0f) — reaches $0f at intro=120 (~4.8s).
         // We intentionally DO NOT subtract a vol_out fade here: the music
         // needs to carry continuously through intro outro → interlude →
-        // greets (interlude / greets call this routine too via my_music_play
-        // residency). The "transitioning out" feel during intro's outro
-        // is carried by the visual cascade (sprites, bars, logo) and by
-        // V1 muting in interlude — not by silencing the SID.
+        // greets → coda. End uses its own routine.
         lda zp_intro
         lsr
         lsr
@@ -869,14 +915,42 @@ my_music_play:
         sta $d412
 !v3_skipgate:
 
+        // --- V3 DRUM tick (every frame, including non-step frames).
+        // Override V3 with noise + pitch-swept freq for the kick
+        // window. Runs LAST in critical so the V3 noise+gate write
+        // takes precedence over the arp/gate writes above whenever
+        // drum_state > 0. Envelope stays at peak — no audible silence
+        // when transitioning between drum and arp at frame boundaries.
+        lda drum_state
+        beq !drum_skip+
+        dec drum_state
+        lda drum_freq
+        sec
+        sbc #DRUM_SWEEP
+        cmp #DRUM_FLOOR
+        bcs !sweep_ok+
+        lda #DRUM_FLOOR
+!sweep_ok:
+        sta drum_freq
+        lda #$00
+        sta $d40e                 // V3 freq lo
+        lda drum_freq
+        sta $d40f                 // V3 freq hi (sweeping down)
+        lda #$81
+        sta $d412                 // V3: noise wave + gate on
+!drum_skip:
+        rts
+
+
+my_music_step:
         // --- Step boundary work ---
         inc mu_frame
         lda mu_frame
         cmp #STEP_FRAMES
-        beq !is_step+
-        jmp !done+                // bne range exceeded since drum block added
+        beq !is_step+             // non-step frame — fall through to rts
+        rts
 !is_step:
-
+        // Step boundary path:
         lda #0
         sta mu_frame
         inc mu_step
@@ -937,50 +1011,17 @@ my_music_play:
         jmp !v2_done+
 !v2_skip:
 !v2_done:
-        // --- V3 DRUM trigger (step boundary, every 4th step = ~125 BPM)
-        // Only after zp_outro != 0, i.e. once the intro's outro
-        // animation has armed (~20 s into intro). Drums then continue
-        // through interlude + greets via my_music_play residency. End
-        // uses its own music routine — no drums there.
+        // --- V3 DRUM trigger (every 4th step = ~125 BPM).
+        // Only after zp_outro != 0 (intro's outro armed, ~20 s in).
         lda zp_outro
-        beq !drum_done+
+        beq !drum_skip+
         lda mu_step
         and #$03
-        bne !drum_done+
-        // BEAT — arm a new kick window + reset freq shadow to start
-        // pitch so the next sweep begins from the top.
+        bne !drum_skip+
         lda #DRUM_LEN
         sta drum_state
         lda #DRUM_FREQ_HI
         sta drum_freq
-!drum_done:
-!done:
-        // --- V3 DRUM tick (every frame, including non-step frames).
-        // Override V3 with noise + pitch-swept freq for the kick
-        // window. Envelope is at peak sustain (SR=\$F0 from arp init)
-        // so noise is LOUD. When drum_state hits 0 we stop overriding;
-        // next music_play call writes V3 ctrl=\$41 (pulse) and the arp
-        // resumes — envelope stays at peak, no audible silence.
-        lda drum_state
-        beq !drum_skip+
-        dec drum_state
-        // Pitch sweep: drum_freq starts at DRUM_FREQ_HI on beat, ramps
-        // down by DRUM_SWEEP per frame to DRUM_FLOOR. Gives the deep
-        // "boom" thwump characteristic of an 808-style kick.
-        lda drum_freq
-        sec
-        sbc #DRUM_SWEEP
-        cmp #DRUM_FLOOR
-        bcs !sweep_ok+
-        lda #DRUM_FLOOR
-!sweep_ok:
-        sta drum_freq
-        lda #$00
-        sta $d40e                 // V3 freq lo
-        lda drum_freq
-        sta $d40f                 // V3 freq hi (sweeping down)
-        lda #$81
-        sta $d412                 // V3: noise wave + gate on
 !drum_skip:
         rts
 
