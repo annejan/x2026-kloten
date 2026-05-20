@@ -26,12 +26,13 @@
 // reverted us last time — previous code did "current+1" which only
 // worked for K>=1).
 //
-// IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld@$5B
-//          → irq_bars@$80 → irq_fld_bottom@$C3+K → irq_close@$F9.
+// IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld_pre@$59
+//          → irq_fld@$5B → irq_bars@$80 → irq_fld_bottom@$C3+K
+//          → irq_close@$F9.
 // Music (my_music_critical) runs in irq_open. Music step-boundary
 // work is in irq_close (my_music_step). irq_fld trigger sits at
 // $5B (= row 5 badline) so:
-//   - $01..$5B = 90 lines = 5670 cy for irq_open — TONS of headroom
+//   - $01..$59 = 88 lines = 5544 cy for irq_open — TONS of headroom
 //     for peak music + sprite + reveal work (was 4158 cy at $43,
 //     which still wobbled on heavy frames).
 //   - rows 0..4 ($33..$5A) all display BEFORE any FLD → fixed Y →
@@ -39,11 +40,17 @@
 //   - row 5 ($5B..) is the FLD-frozen row (empty bg, invisible).
 //   - rows 6..17 + logo at row 8 still bounce $73+K — same as before.
 //
-// If logo-top tearing returns at this trigger (it did historically
-// at K=28), upgrade irq_fld's entry to the codebase64 double-IRQ
-// stable-raster pattern (Marko Mäkelä / JackAsser): set up a
-// throwaway IRQ at $5A that fills with NOPs and chains to irq_fld
-// at $5B with 1-cycle jitter. See docs/intro-architecture.md.
+// Stable-raster entry to irq_fld (codebase64 / Mäkelä / JackAsser /
+// ranzbak's Raster.asm rasirq1→rasirq2 pattern): irq_fld_pre at $59
+// is the cycle-UNSTABLE entry — it saves regs via self-mod (not PHA),
+// pre-computes K, arms the IRQ vector + raster for $5B, tsx + cli +
+// NOP slack. The NEXT IRQ fires inside the NOP run with 0-1 cy
+// jitter (NOPs are 2 cy each). irq_fld's first instruction is `txs`
+// which discards the pre's IRQ frame so this handler's RTI returns
+// to the originally-interrupted main loop (pefchain wait). Net:
+// every FLD-start write lands at the SAME cycle of $5C every frame,
+// independent of irq_open's variable load and sprite DMA on $59/$5A.
+// That permits K_max=28 without sprite-DMA-induced FLD tearing.
 //
 // Sprite blink fix: balls 0..2 disabled in irq_close (line $F9) so
 // their Y+256 wrap duplicates between $F9 and next-frame $01 don't
@@ -421,16 +428,15 @@ irq_open:
         // segment for the rationale.
         jsr my_music_critical
 
-        // Chain to irq_fld at line $5B (= row 5's natural badline).
-        // 32 lines later than the original $3B trigger — gives irq_open
-        // 5670 cy of slack so peak music + sprite frames can never
-        // overrun the FLD entry. Rows 1..4 ($3B..$5A) are now in
-        // natural-display zone — fade-text at row 4 stays at fixed Y.
-        lda #<irq_fld
+        // Chain to irq_fld_pre at line $59 (= 2 lines before $5B). It's
+        // the cycle-unstable entry that arms the cycle-stable irq_fld@$5B
+        // (Mäkelä/JackAsser double-IRQ pattern). 88 lines/5544 cy of irq_open
+        // slack are still well over peak music + sprite load.
+        lda #<irq_fld_pre
         sta $fffe
-        lda #>irq_fld
+        lda #>irq_fld_pre
         sta $ffff
-        lda #$5b
+        lda #$59
         sta VIC_RASTER
 
         pla
@@ -442,31 +448,83 @@ irq_open:
 
 
 //==================================================================
-// irq_fld — fires at line $5B (row 5's natural badline). Rows 0..4
-// have already displayed normally — row 0 scroller, rows 1..3 empty
-// bg, row 4 carries the fade-band text at fixed Y. Canonical HCL
-// FLD pattern: write yscroll=5 before $5C cycle 14, then loop
-// "increment yscroll and write" once per line. Late-write trick:
-// each iteration's $D011 update lands at cy ~24 (AFTER VIC's cy-14
-// check), so the change is seen by the NEXT line's cy-14 check
-// where yscroll now matches line%8 → VIC fires a SPURIOUS badline
-// that restarts row 5 (empty bg) with VCBASE pinned. After K writes,
-// row 5 has been stretched K times and row 6+ slide down by K px.
-// Logo (row 8) at $73+K.
+// irq_fld_pre — cycle-UNSTABLE entry at line $59. Mäkelä/JackAsser
+// double-IRQ wrapper: save regs via self-mod (NOT pha — pha would
+// add an extra stack frame that the txs in irq_fld would mis-discard),
+// pre-compute K, arm IRQ vector + raster for $5B, then tsx + cli +
+// NOP slack. The next IRQ ($5B) fires INSIDE the NOP run, jittered by
+// only 0-1 cy (NOPs are 2 cy each, so the worst that can happen is
+// being interrupted between NOP 1 and NOP 2 vs. between NOP 2 and 3).
+// Pattern lifted from /tmp/ranzbak/Raster.asm rasirq1.
+//
+// Stack on entry (just `[main flags] [main PC hi] [main PC lo]`, no
+// PHA pushes) is intentional — irq_fld's `txs` will restore SP to
+// this exact level so its RTI pops main's frame, completely skipping
+// any return-to-here path.
+//==================================================================
+irq_fld_pre:
+        sta fld_a_save+1         // self-mod register save (3 PHAs would
+        stx fld_x_save+1         // push 3 bytes that mess up txs accounting)
+        sty fld_y_save+1
+
+        // Pre-compute K NOW so cycle-stable irq_fld doesn't waste cycles
+        // on the bounce_total lookup.
+        ldx zp_frame
+        lda bounce_total,x
+        sta saved_K              // also used by irq_fld_bottom and irq_bars
+
+        lda #$ff
+        sta $d019                // ack pre IRQ
+        lda #<irq_fld
+        sta $fffe
+        lda #>irq_fld
+        sta $ffff
+        lda #$5b
+        sta VIC_RASTER           // arm irq_fld at $5B
+
+        tsx                       // save SP so irq_fld can `txs` back to it
+        stx fld_sp_save+1         // and self-mod for the irq_fld restore
+        cli                       // unmask IRQ
+
+        // NOP slack — covers the ~70 cy from cli to start of $5B in the
+        // fastest case (no DMA stretch in pre body), shrinks naturally as
+        // sprite DMA on $59/$5A stretches pre's runtime. 40 NOPs = 80 cy
+        // gives full coverage in either direction. irq_fld is guaranteed
+        // to fire mid-NOP, giving 0-1 cy entry jitter.
+        .for(var i = 0; i < 40; i++) nop
+
+        // Safety net — should never run; if we hit it we missed the IRQ.
+        jmp *
+
+
+//==================================================================
+// irq_fld — cycle-STABLE entry at line $5B. First instruction `txs`
+// reinstates pre's pre-cli SP, discarding our IRQ frame so this
+// handler's RTI returns to the originally-interrupted main loop
+// (= pefchain's idle wait). Rows 0..4 ($33..$5A) have already
+// displayed normally — fade-text at row 4 stays fixed Y.
+//
+// HCL FLD pattern: write yscroll=5 before $5C cy 14, then loop
+// "increment yscroll and write per line" with each write landing
+// AFTER cy 14 so the NEXT line's cy-14 check matches yscroll → VIC
+// fires a SPURIOUS badline that restarts row 5. After K writes,
+// row 5 has stretched K times and row 6+ slide down by K. Logo
+// (row 8) lands at $73+K.
 //==================================================================
 irq_fld:
-        pha
-        txa
-        pha
-        tya
-        pha
-        lda #$ff
-        sta $d019
+fld_sp_save:
+        ldx #$00                 // [2] self-mod from pre's tsx (operand patched)
+        txs                       // [2] discard our IRQ frame — RTI will pop pre's frame
+        // 4 cy + 7-8 cy entry latency = ~12 cy into $5B at this point.
 
-        ldx zp_frame
-        lda bounce_total,x      // K = FLD writes (0..36)
-        sta saved_K              // remember for irq_fld_bottom's (K_max-K) writes
-        tax
+        // Stall to clear sprite-DMA-stealing window on $5B. 8 iter ×
+        // 5 cy - 1 = 39 cy delay → cy ~51 of $5B. Then poll $5B → $5C
+        // transition for the cycle-locked first write.
+        ldx #$08
+!w0:    dex
+        bne !w0-
+
+        ldx saved_K              // [3] = K writes for this frame
         beq !skip+
 
         // Wait for raster to leave $5B (= we're now at $5C).
@@ -511,11 +569,12 @@ irq_fld:
         lda #BAR_TOP
         sta VIC_RASTER
 
-        pla
-        tay
-        pla
-        tax
-        pla
+fld_y_save:
+        ldy #$00                 // self-mod restore from pre's sty
+fld_x_save:
+        ldx #$00                 // self-mod restore from pre's stx
+fld_a_save:
+        lda #$00                 // self-mod restore from pre's sta
         rti
 
 
@@ -1331,36 +1390,25 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 // line's cy-14 check to fire a spurious badline that restarts the
 // frozen row.
 //
-// K=0..20 — practical sweet spot with the $5B FLD trigger.
+// K=0..28 — restored after double-IRQ stable raster (Mäkelä/JackAsser)
+// fixed irq_fld's entry jitter. (5+27)&7 = 0 → yscroll exits the FLD
+// loop cleanly. Peak dK = 14 × 0.074 = 1.03 K-units/frame ⇒ K changes
+// every frame at the steep sine slopes, no plateau twitch.
 //
 // Why not bigger:
-//   - K_max=36 (our initial pick): top FLD runs to $5B+36=$7F,
-//     only 1 line of slack to BAR_TOP=$80. Vector+rti handover
-//     misses irq_bars on K=36 frames → cascade failure: no bars,
-//     no bottom FLD, sprite Y-wrap, music hangup. Catastrophic.
-//   - K_max=28 (next try): yscroll cleanly = 0, peak dK=1.03 so
-//     motion looks smooth in theory, but per-frame sprite DMA
-//     on FLD raster lines varies the spurious-badline write
-//     cycles enough that VIC's VC alignment for row 8 (logo top)
-//     can land 1 px off. Visible as logo-top tearing/sawtooth.
-//   - K_max=20: yscroll = (5+19)&7 = 0, clean. Peak dK = 10×0.074
-//     = 0.74 K-units/frame → some frames hold same K for 2-3
-//     frames at the slow parts of the sine (= visible "plateaus"
-//     or "block jumps" in the motion), but no tearing. The
-//     FLD raster window has 17 lines / 1071 cy of slack to
-//     BAR_TOP, fully absorbs sprite DMA cycle theft.
-//
-// The plateau-vs-tearing trade is fundamental to integer-K FLD
-// with $5B trigger. To eliminate both: switch irq_fld to the
-// codebase64 double-IRQ stable raster pattern (Mäkelä/JackAsser)
-// so the FLD-write cycles become independent of sprite DMA
-// timing. That's the documented next step in the architecture
-// doc. K_max=20 is the no-stable-raster pragmatic choice.
+//   - K_max=36 (our initial pick): top FLD runs to $5B+36=$7F, only
+//     1 line of slack to BAR_TOP=$80. Vector+rti handover misses
+//     irq_bars on K=36 frames → cascade failure: no bars, no bottom
+//     FLD, sprite Y-wrap, music hangup. Catastrophic.
+//   - K_max=20 (intermediate): yscroll clean but peak dK=0.74 holds
+//     same K for 2-3 frames at the slow parts of the sine → visible
+//     "plateau" twitching. Only justified before stable raster
+//     because K_max=28 was tearing from sprite-DMA-induced jitter.
 //
 // 3× sine frequency → ~1.7s per cycle.
 .align 256
 bounce_total:
-        .fill 256, round(10 + 10 * sin(toRadians(i * 1080 / 256)))
+        .fill 256, round(14 + 14 * sin(toRadians(i * 1080 / 256)))
 
 
 //==================================================================
