@@ -394,6 +394,19 @@ setup:
         inx
         bne !cclr-
 
+        // ---- paint star chars (asterisks) at star_pos positions ----
+        // star_field below only animates COLOUR RAM at these offsets;
+        // without visible chars at those screen positions the colour
+        // writes have no pixels to colour and the stars are invisible.
+        // Asterisk ($2A) on the lunchbox-party background reads like
+        // little sparkles around the title — fits the celebration.
+        ldx #15
+!star:  ldy star_pos,x
+        lda #$2a
+        sta SCREEN,y
+        dex
+        bpl !star-
+
         // ---- paint the title text ----
         // Row 11 starts at $0400 + 11*40 = $05B8.
         // "KLOTEN MET DE BROODTROMMEL" = 26 chars, center at col 7.
