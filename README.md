@@ -1,4 +1,4 @@
-# outline26-claude-c64 — Kloot and the Breadbin
+# outline26-claude-c64 — Kloten met de broodtrommel
 
 A C64 demo by **deFEEST**, releasing at **X2026**. Work started at
 Outline 2026; about three weeks of development total. Written together
@@ -184,7 +184,7 @@ trigger. The end card is the only "stay" loop.
 
 ### Part 6 — `parts/coda/coda.asm` (title card)
 
-- **Title card** — "KLOOT AND THE BREADBIN" on row 11, "BY DEFEEST   FOR
+- **Title card** — "KLOTEN MET DE BROODTROMMEL" on row 11, "A DIGITAL LUNCH EXPERIENCE" on row 13, "BY DEFEEST   FOR
   X2026" on row 13. Text mode, ROM uppercase chargen at `$1000`. The
   breather where the story lands between greets' scroller and end's
   credit roll.

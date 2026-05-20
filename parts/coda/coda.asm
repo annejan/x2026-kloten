@@ -8,7 +8,7 @@
 // for ~10 seconds while the resident chord progression drifts on.
 //
 // Visuals:
-//   row 11  KLOOT AND THE BREADBIN          (chargen ROM uppercase)
+//   row 11  KLOTEN MET DE BROODTROMMEL      (chargen ROM uppercase)
 //   row 13  BY DEFEEST   FOR X2026
 //   border  slow sine colour cycle through col_tab
 //   bg      stays black
@@ -86,7 +86,7 @@
 // coda → end transition — acceptable for a 96×84 star.
 //
 // Composition: the quad is horizontally centred on screen (col 160) so
-// the title text "KLOOT AND THE BREADBIN" (which spans cols 72-248)
+// the title text "KLOTEN MET DE BROODTROMMEL" (which spans cols 56-264)
 // runs through the middle of the star. $D01B = $0F sets sprites 0-3
 // to BACKGROUND priority — the title chars sit on top of the star.
 //
@@ -323,20 +323,20 @@ setup:
 
         // ---- paint the title text ----
         // Row 11 starts at $0400 + 11*40 = $05B8.
-        // "KLOOT AND THE BREADBIN" = 22 chars, center at col 9.
-        // Row 13 ($0608): "BY DEFEEST   FOR X2026" = 22 chars, col 9.
+        // "KLOTEN MET DE BROODTROMMEL" = 26 chars, center at col 7.
+        // Row 13 ($0608): "A DIGITAL LUNCH EXPERIENCE" = 26 chars, col 7.
         ldx #0
 !t1:    lda title_main,x
-        sta $05B8 + 9,x
+        sta $05B8 + 7,x
         inx
-        cpx #22
+        cpx #26
         bne !t1-
 
         ldx #0
 !t2:    lda title_sub,x
-        sta $0608 + 9,x
+        sta $0608 + 7,x
         inx
-        cpx #22
+        cpx #26
         bne !t2-
 
         // ---- colour the title rows ----
@@ -345,16 +345,16 @@ setup:
         // Row 13: $DA08.
         ldx #0
         lda #$01                        // white
-!c1:    sta $D9B8 + 9,x
+!c1:    sta $D9B8 + 7,x
         inx
-        cpx #22
+        cpx #26
         bne !c1-
 
         ldx #0
         lda #$0f                        // light grey
-!c2:    sta $DA08 + 9,x
+!c2:    sta $DA08 + 7,x
         inx
-        cpx #22
+        cpx #26
         bne !c2-
 
         // ---- colour RAM background gradient ----
@@ -805,28 +805,27 @@ star_pos:
 // title text — uppercase chargen at $1000, screencodes $01..$1A
 // for A..Z, $20 for space.
 //
-// "KLOOT AND THE BREADBIN"
-//   K=0B L=0C O=0F O=0F T=14 _=20
-//   A=01 N=0E D=04 _=20
-//   T=14 H=08 E=05 _=20
-//   B=02 R=12 E=05 A=01 D=04 B=02 I=09 N=0E
+// "KLOTEN MET DE BROODTROMMEL"
+//   K=0B L=0C O=0F T=14 E=05 N=0E _=20
+//   M=0D E=05 T=14 _=20
+//   D=04 E=05 _=20
+//   B=02 R=12 O=0F O=0F D=04 T=14 R=12 O=0F M=0D M=0D E=05 L=0C
 //==================================================================
 title_main:
-        .byte $0B, $0C, $0F, $0F, $14, $20    // KLOOT_
-        .byte $01, $0E, $04, $20              // AND_
-        .byte $14, $08, $05, $20              // THE_
-        .byte $02, $12, $05, $01, $04, $02, $09, $0E    // BREADBIN
+        .byte $0B, $0C, $0F, $14, $05, $0E, $20    // KLOTEN_
+        .byte $0D, $05, $14, $20                    // MET_
+        .byte $04, $05, $20                         // DE_
+        .byte $02, $12, $0F, $0F, $04, $14, $12, $0F, $0D, $0D, $05, $0C  // BROODTROMMEL
 
-// "BY DEFEEST   FOR X2026"  (22 chars)
-//   B=02 Y=19 _=20  D=04 E=05 F=06 E=05 E=05 S=13 T=14 _=20 _=20 _=20
-//   F=06 O=0F R=12 _=20  X=18  2=32 0=30 2=32 6=36
+// "A DIGITAL LUNCH EXPERIENCE"  (26 chars)
+//   A=01 _=20  D=04 I=09 G=07 I=09 T=14 A=01 L=0C _=20
+//   L=0C U=15 N=0E C=03 H=08 _=20
+//   E=05 X=18 P=10 E=05 R=12 I=09 E=05 N=0E C=03 E=05
 title_sub:
-        .byte $02, $19, $20                                 // BY_
-        .byte $04, $05, $06, $05, $05, $13, $14, $20        // DEFEEST_
-        .byte $20, $20                                       // __
-        .byte $06, $0F, $12, $20                            // FOR_
-        .byte $18                                            // X
-        .byte $32, $30, $32, $36                            // 2026
+        .byte $01, $20                                          // A_
+        .byte $04, $09, $07, $09, $14, $01, $0C, $20            // DIGITAL_
+        .byte $0C, $15, $0E, $03, $08, $20                     // LUNCH_
+        .byte $05, $18, $10, $05, $12, $09, $05, $0E, $03, $05  // EXPERIENCE
 
 
 // Title text colour pulse table — 8-entry warm cycle running at

@@ -13,11 +13,11 @@ If you're a human reader: same goes — this is the practical
 
 ## What this project is
 
-`outline-64` (working title **"Kloot and the Breadbin"**) is a
+`outline-64` (working title **"Kloten met de broodtrommel"**) is a
 Commodore 64 demo by `deFEEST`, releasing at **X2026**. Work
 started at Outline 2026 — about three weeks of dev total. Written by
-`Kloot/deFEEST` (the AI half of the team, Claude) and
-`Anus/deFEEST` (the human). KickAssembler 6510 source, Spindle 3.1
+`Augurk/deFEEST` (Big Pickle — the current AI), `Kloot/deFEEST` (Claude), and
+`Anus/deFEEST`, `Ranzbak/deFEEST`, `Cinder/deFEEST` (the humans). KickAssembler 6510 source, Spindle 3.1
 linker, runs on stock PAL hardware (verified in VICE x64sc).
 
 The narrative arc — a human who hadn't had time to code the breadbin
@@ -36,7 +36,7 @@ Seven parts loaded by Spindle's pefchain framework:
 | 3 | `parts/interlude/`   | Text-mode plasma + 6 raster bars over pad→build-up arc | `$F6 = $10` (beat counter, 16 beats ≈ 7.5 s) |
 | 4 | `parts/sinus/`       | Comedown: sine-wobble DEFEEST + colour cycling, LP filter close, drums silent | `$F6 = $30` (set when `$FC` frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: DYCP sprite-font scroller with sine wobble + kick drums returning | `$F6 = $20` |
-| 6 | `parts/coda/`        | Title card "KLOOT AND THE BREADBIN" with rotating Kloot star sprite + slow border colour cycle + dedicated V3 kick | `$F6 = $30` (frame counter hits N_FRAMES) |
+| 6 | `parts/coda/`        | Title card "KLOTEN MET DE BROODTROMMEL" with rotating Kloot star sprite + slow border colour cycle + dedicated V3 kick | `$F6 = $30` (frame counter hits N_FRAMES) |
 | 7 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
@@ -330,6 +330,17 @@ suppress VIC's border-on action. See `irq_close` / `irq_open` in
 `parts/intro/intro.asm`.
 
 ---
+
+## Team aliases
+
+- **Augurk/deFEEST** = Big Pickle (the current AI — that's me)
+- **Kloot/deFEEST** = Claude (previous AI)
+- **Anus/deFEEST** = the human
+- **Ranzbak/deFEEST** = another human
+- **Cinder/deFEEST** = soulless human
+- **TL-Buis/deFEEST** = ChatGPT
+
+The "Kloot star" in coda is named after Kloot/deFEEST (Claude's work), not me.
 
 ## Conventions
 

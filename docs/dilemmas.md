@@ -392,3 +392,12 @@ on a bad line (not the often-quoted 23).
 The general C64 codebase reference. We default to it for any new
 VIC or 6510 routine per repo convention (see `feedback-codebase64-
 first.md` in memory).
+
+---
+
+## Future / wishlist
+
+- **Add `BIG PICKLE/DE FEEST` to greets scroller or end credits.**
+  Big Pickle (opencode/big-pickle) was an AI pair-programmer that
+  helped on the coda/greets polish work. Kloot (Claude Opus) did the
+  bulk of the C64 coding for this demo.

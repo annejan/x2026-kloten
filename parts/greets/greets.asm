@@ -426,22 +426,21 @@ sine_table_x:
 // scrolling message — aligned to $8500 to avoid pefchain load split
 // at $84FF/$8500 (first segment $8000-$84FF skips message data).
 //==================================================================
-// Greets text — uppercase only (font is A-Z + blank).
-// The real story: never had time to code the breadbin, then AI made
-// it possible. Tongue in cheek, grateful, and shout-outs to the
-// folks whose tools / inspiration got us here.
 * = $8500
 message:
-.text "      FOR YEARS I WANTED TO MAKE A DEMO     "
-.text "      FOR THE X PARTY                       "
-.text "      BUT LIFE GOT IN THE WAY               "
-.text "      THE BREADBIN GATHERING DUST           "
-.text "      THEN I SAT DOWN WITH KLOOT            "
-.text "      AND STARTED POKING REGISTERS          "
-.text "      SOMEHOW THIS HAPPENED                 "
+.text "      GREETZ TO ALL LUNCHBASED LIFEFORMS   "
+.text "      IN ROTTERDAM AND BEYOND               "
+.text "      NO BREAD WAS HARMED DURING            "
+.text "      THIS PRODUCTION                       "
+.text "      EXCEPT THE PINDKAAS SANDWICH          "
+.text "      LEFT IN DRIVE 1541                    "
+.text "      KLOTEN MET DE BROODTROMMEL            "
+.text "      IS THE OFFICIAL LUNCHTIME             "
+.text "      RELEASE OF X2026                      "
 .text "      GREETINGS                             "
-.text "      STILL CODING THE BREADBIN             "
-.text "      CODEBASE FOR REMEMBERING THE TRICKS   "
+.text "      SMEERKAAS   BROODJEKAAS.EXE           "
+.text "      TUPPERWARE DIVISION   ROTTERDAM       "
+.text "      ALL HAIL THE HAM PIRATES              "
 .text "      XENON   SILICON LTD   SCS TRC         "
 .text "      FOCUS   FAIRLIGHT   REFLEX            "
 .text "      BONZAI   GENESIS PROJECT   EXTEND     "
@@ -450,18 +449,19 @@ message:
 .text "      PADUA   ATLANTIS   ELYSIUM            "
 .text "      EXCESS   TRIAD   NEOPLASIA            "
 .text "      THE DREAMS   RADWAR   PERFORMERS      "
-.text "      VANDALISM NEWS   NAH-KOLOR   LOTEK        "
+.text "      VANDALISM NEWS   NAH-KOLOR   LOTEK    "
 .text "      CHOCOTROPHY   PHOBOS TEAM             "
 .text "      SIDMASTERS   THE WEEKENDERS           "
 .text "      LETHARGY   ONSLAUGHT   LEVEL          "
 .text "      SUCCESS   ARTLINE   RESOURCE          "
-.text "      PLUSH   FINNISH GOLD   ABYSS CONNECTION    "
-.text "      OFFENCE   POO-BRAIN   RABENAUGE          "
-.text "      HOKUTO FORCE                            "
+.text "      PLUSH   FINNISH GOLD   ABYSS CONNECTION "
+.text "      OFFENCE   POO-BRAIN   RABENAUGE       "
+.text "      HOKUTO FORCE                          "
 .text "      AND ALL THE QUIET CODERS              "
-.text "      AND ESPECIALLY KLOOT                  "
-.text "      FOR FINALLY GETTING ME HERE           "
+.text "      ESPECIALLY KLOOT                      "
+.text "      FOR MAKING IT HAPPEN                  "
 .text "      THANK YOU EVERYONE                    "
+.text "      NOW GO EAT YOUR LUNCH                 "
 .text "                                            "
 .byte $00
 
