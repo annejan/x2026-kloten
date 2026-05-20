@@ -1,8 +1,9 @@
 # Kloten met de broodtrommel
 
 A C64 demo by **deFEEST**, releasing at **X2026**. Work started at
-Outline 2026; about three weeks of development total. Written together
-with Claude. KickAssembler 6510 source, tested on VICE x64sc (PAL).
+Outline 2026; about three weeks of development total. Written by
+Augurk/deFEEST, Kloot/deFEEST, TL-Buis/deFEEST,
+Anus/deFEEST, Ranzbak/deFEEST, Cinder/deFEEST. KickAssembler 6510 source, tested on VICE x64sc (PAL).
 
 The arc: a human (`Anus/deFEEST`) hadn't had time to code the
 breadbin in years. Sat down one evening with `Kloot` (a Claude AI
