@@ -1331,17 +1331,24 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 // line's cy-14 check to fire a spurious badline that restarts the
 // frozen row.
 //
-// K=0..20 — sized for the $5B FLD trigger. Top FLD ends at
-// $5B+K_max = $6F, leaving 17 lines / ~1070 cy of slack before
-// BAR_TOP=$80 for the vector+rti handover to irq_bars. yscroll
-// after K=20 writes = (5+19)&7 = 0, clean boundary into the
-// bars zone. K_max=36 (our previous setting) overran the irq_fld
-// → irq_bars handover at peak K because top FLD ran to $7F,
-// missed the bars trigger, and produced wild visual artifacts.
-// 3× sine frequency → ~1.7s per cycle.
+// K=0..28 — sized for smoothness with the $5B FLD trigger:
+//
+//   - At peak sine rate, dK = amp × (1080°/256 × π/180) per frame =
+//     14 × 0.074 = 1.03 K-units. So most frames K changes by 1,
+//     occasionally by 2 — eliminates the "block jumps" plateaus
+//     visible with K_max=20 (dK=0.74, K holds for 2-3 frames at
+//     the slow parts of the sine).
+//   - yscroll after K=28 writes = (5+27)&7 = 0, clean boundary.
+//   - Top FLD ends $5B+K_max = $77, 9 lines / 567 cy of slack to
+//     BAR_TOP=$80 — plenty for vector + rti handover.
+//   - Bounce arc 28 px = 14% of screen height.
+//
+// 3× sine frequency → ~1.7s per cycle. (Higher amplitudes give
+// jumpier per-frame motion because dK > 1 at peak: K skips
+// values; lower amplitudes give plateaus because dK < 1.)
 .align 256
 bounce_total:
-        .fill 256, round(10 + 10 * sin(toRadians(i * 1080 / 256)))
+        .fill 256, round(14 + 14 * sin(toRadians(i * 1080 / 256)))
 
 
 //==================================================================
