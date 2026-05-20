@@ -14,10 +14,11 @@
         .word $0000              // cleanup
         .word $0000              // callmusic
 
-        // Code + col_tab + sin_tab: code at $0800-$09xx, col_tab at
-        // $0A00 (256 bytes), sin_tab at $0B00 (256 bytes). sin_tab
-        // drives the twin-star orbital motion.
-        .byte 'P', $08, $0B
+        // Code + parallax starfield state/tables + col_tab + sin_tab.
+        // Code, tier tables, row lookups and per-star state span
+        // $0800-$0DFF (6 pages). col_tab page-aligned at $0E00,
+        // sin_tab at $0F00 (drives twin-star orbital motion).
+        .byte 'P', $08, $0F
         // Kloot star quad sprite shapes (Stage E — pre-rendered zoom):
         // 4 quadrants × 24 frames × 64 B = 6 KB contiguous at
         // $2000-$37FF. Each 24-frame sequence = 8 zoom (small→full

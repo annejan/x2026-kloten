@@ -12,7 +12,9 @@
 //   row 13  A DIGITAL LUNCH EXPERIENCE
 //   border  slow sine colour cycle through col_tab
 //   bg      stays black
-//   top 5 rows: 16 stars twinkle via colour-RAM toggle (4 banks of 4)
+//   parallax PETSCII starfield: 32 stars across 4 speed tiers, each
+//   tier with its own char + colour, drifting left (col 0 wraps to 39).
+//   Reads as depth via differential motion alone — no priority swap.
 //
 // Music: jsr INTRO_MUSIC_PLAY each frame. Drums silent because
 // setup zeros $F6 (the gating byte for percussion in my_music_play)
@@ -22,9 +24,9 @@
 // and pefchain advances to end.
 //
 // Memory:
-//   $0800-$09xx  code
-//   $0A00-$0AFF  col_tab (border colour cycle)
-//   $0B00-$0BFF  sin_tab (twin-star orbital motion)
+//   $0800-$0Dxx  code + parallax starfield state + tier tables
+//   $0E00-$0EFF  col_tab (border colour cycle)
+//   $0F00-$0FFF  sin_tab (twin-star orbital motion)
 //   $1000-$125D  intro music tables (inherited via 'I' tag)
 //==================================================================
 
@@ -394,33 +396,47 @@ setup:
         inx
         bne !cclr-
 
-        // ---- paint star chars (asterisks) at 32 full-screen positions ----
-        // star_field below animates COLOUR RAM at these positions; chars
-        // must exist for colour writes to have visible pixels. Asterisk
-        // ($2A) on the dark-grey background reads like sparkles.
-        // Self-modifying STA patches the screen address per-star to avoid
-        // ZP indirect (which would clobber zp_subtick / zp_frame).
+        // ---- init parallax starfield ----
+        // Seed (row, col, tier) state per star and paint the initial
+        // char + colour into screen / colour RAM. Tier = i AND 3
+        // (8 stars per tier). $f9/$fa are safe scratch here (setup
+        // runs once, no music_play interference). They're re-used as
+        // a (zp),y indirect pointer to avoid 32 separate self-mod
+        // STAs and keep the loop compact.
         ldx #31
-!star:  txa
-        asl                            // *2 for .word offset
+!sf_init:
+        lda star_init_row,x
+        sta star_row,x
+        lda star_init_col,x
+        sta star_col,x
+        txa
+        and #$03
+        sta star_tier,x
         tay
-        lda star_pos,y                 // COL_RAM address low
-        sta star_patch_scr + 1         // → patch into STA's OPERAND-LO
-        lda star_pos + 1,y             // COL_RAM address high
-        sta star_patch_scr + 2         // → patch into STA's OPERAND-HI
-        // Convert COL_RAM -> SCREEN:  SCREEN = COL_RAM - ($D800 - $0400)
-        sec
-        lda star_patch_scr + 1
-        sbc #$00
-        sta star_patch_scr + 1
-        lda star_patch_scr + 2
-        sbc #$d4
-        sta star_patch_scr + 2
-        lda #$2a                       // asterisk char
-star_patch_scr:
-        sta $0400                      // operand patched per star
+        lda tier_speed,y
+        sta star_tick,x
+        // Set screen ptr = $0400 + row*40
+        ldy star_row,x
+        lda row_start_lo,y
+        sta $f9
+        lda row_start_hi,y
+        sta $fa
+        // Write tier_char at col
+        ldy star_tier,x
+        lda tier_char,y
+        ldy star_col,x
+        sta ($f9),y
+        // Switch ptr to COL_RAM (hi += $D4)
+        clc
+        lda $fa
+        adc #$d4
+        sta $fa
+        ldy star_tier,x
+        lda tier_color,y
+        ldy star_col,x
+        sta ($f9),y
         dex
-        bpl !star-
+        bpl !sf_init-
 
         // ---- paint the title text ----
         // Row 11 starts at $0400 + 11*40 = $05B8.
@@ -917,64 +933,117 @@ last_safe_bit: .byte $ff        // previous bit 6 of phase diff ($ff = uninitial
 
 
 //==================================================================
-// star_field — twinkle 16 stars in the top 5 screen rows.
+// star_field — 4-tier horizontal parallax PETSCII starfield.
 //
-// Runs every frame, only updates on half-rate ticks (zp_subtick==0).
-// 16 pre-defined colour RAM positions are grouped into 4 banks of 4.
-// Each update writes all 16: bright white ($0F) for the active bank,
-// dark grey ($0E) for the others. The active bank rotates every 4
-// frames of zp_frame (~160ms per bank).
+// 32 stars distributed across 4 speed tiers (tier = i AND 3, so 8
+// stars per tier). Each tier has its own:
+//   tier_speed[] — half-rate ticks between moves (3 / 5 / 8 / 14)
+//   tier_char[]  — '+' '*' '.' ',' (foreground → background)
+//   tier_color[] — white / lt grey / dk grey / blue
 //
-// Uses $f9 as temp (safe: my_music_play clobbers it before we run).
+// Per half-rate tick (25 Hz): each star's tick counts down; when it
+// hits 0 the star erases its old char, advances col left (wrap 0→39),
+// draws the tier's char + colour at the new col, and reloads tick
+// from tier_speed.
+//
+// Title rows 11/13 are never assigned to any star, so the slow drift
+// passes above + below the centred title without overwriting it.
+//
+// $f9/$fa are used as a (zp),y indirect pointer — safe scratch here
+// because star_field always runs immediately after my_music_play
+// (which has already finished clobbering $f9/$fa) and before any
+// other consumer.
 //==================================================================
 star_field:
         lda zp_subtick
-        bne !skip+
-
-        // 8-bank twinkle: active bank cycles 0,4,8,12,16,20,24,28
-        lda zp_frame
-        and #$1c                // bits 2-4 = active bank ×4
-        sta $f9                 // $f9 safe after my_music_play
-
+        beq !sf_run+
+        rts
+!sf_run:
         ldx #31
-!loop:  txa
-        and #$1c                // this star's bank
-        cmp $f9
-        bne !dim+
-        lda #$01                // bright white
-        jmp !wcol+
-!dim:   lda #$0e                // dark grey
-!wcol:  sta $fa                 // save colour ($fa scratch after music_play)
-        // Self-modifying STA — patch COL_RAM address for this star
-        txa
-        asl                     // *2 for .word offset
+!sf_loop:
+        dec star_tick,x
+        beq !sf_move+
+        jmp !sf_next+
+!sf_move:
+        // Reload tick from tier_speed for next cycle
+        lda star_tier,x
         tay
-        lda star_pos,y          // low byte
-        sta star_patch_col + 1  // → STA's OPERAND-LO (was +0 = opcode byte!)
-        lda star_pos + 1,y      // high byte
-        sta star_patch_col + 2  // → STA's OPERAND-HI (was +1 = operand-lo)
-        lda $fa                 // restore colour
-star_patch_col:
-        sta $d800               // operand patched per star
+        lda tier_speed,y
+        sta star_tick,x
+
+        // Set screen ptr = $0400 + row*40
+        ldy star_row,x
+        lda row_start_lo,y
+        sta $f9
+        lda row_start_hi,y
+        sta $fa
+
+        // Erase old char at current col
+        ldy star_col,x
+        lda #$20
+        sta ($f9),y
+
+        // Advance col left; wrap $FF → 39
+        dec star_col,x
+        bpl !sf_no_wrap+
+        lda #$27
+        sta star_col,x
+!sf_no_wrap:
+
+        // Draw new char at new col
+        ldy star_tier,x
+        lda tier_char,y
+        ldy star_col,x
+        sta ($f9),y
+
+        // Switch ptr to COL_RAM (hi += $D4)
+        clc
+        lda $fa
+        adc #$d4
+        sta $fa
+
+        // Write tier colour at new col
+        ldy star_tier,x
+        lda tier_color,y
+        ldy star_col,x
+        sta ($f9),y
+!sf_next:
         dex
-        bpl !loop-
-!skip:  rts
+        bpl !sf_loop-
+        rts
 
 
 //==================================================================
-// Star position table — 32 full-screen COL_RAM addresses ($D800..$DBD8).
-// Grouped as 8 banks of 4 for the active-bank twinkle scheme.
-// Avoids title rows 11-13 and the kloot quad centre area.
+// Parallax starfield tables + per-star state.
+//
+// State arrays (4 × 32 = 128 B) hold the live row / col / tier / tick
+// per star. Tier tables (3 × 4 B) are parallel-indexed by tier. Row
+// lookup tables (2 × 25 B) give screen-address lo/hi for each text
+// row to skip a per-frame multiply by 40. Init tables (2 × 32 B) seed
+// the starting (row, col) — rows chosen to avoid 11/13 (title rows).
 //==================================================================
-star_pos:
-        .word $D805, $D811, $D819, $D841
-        .word $D851, $D855, $D86B, $D87F
-        .word $D896, $D8B2, $D8CB, $D8CE
-        .word $D8D0, $D913, $DA00, $DA01
-        .word $DA36, $DA5A, $DA8B, $DAE1
-        .word $DB14, $DB2F, $DB41, $DB43
-        .word $DB58, $DB73, $DB7B, $DB87
-        .word $DB8D, $DB9E, $DBCA, $DBD8
+star_row:  .fill 32, 0
+star_col:  .fill 32, 0
+star_tier: .fill 32, 0
+star_tick: .fill 32, 0
+
+tier_speed: .byte 3, 5, 8, 14
+tier_char:  .byte $2B, $2A, $2E, $2C    // + * . ,
+tier_color: .byte $01, $0F, $0B, $06    // white, lt grey, dk grey, blue
+
+row_start_lo: .fill 25, <($0400 + i * 40)
+row_start_hi: .fill 25, >($0400 + i * 40)
+
+star_init_row:
+        .byte  0,  0,  0,  1,  2,  2,  2,  3
+        .byte  3,  4,  5,  5,  5,  6, 12, 12
+        .byte 14, 15, 16, 18, 19, 20, 20, 20
+        .byte 21, 22, 22, 22, 22, 23, 24, 24
+star_init_col:
+        .byte  5, 17, 25, 25,  1,  5, 27,  7
+        .byte 30, 18,  3,  6,  8, 35, 32, 33
+        .byte  6,  2, 11, 17, 28, 15, 33, 35
+        .byte 16,  3, 11, 23, 29,  6, 10, 24
 
 
 //==================================================================
