@@ -80,25 +80,13 @@
 // Drums fire only once zp_outro is non-zero (intro's outro animation
 // has armed, ~20 s into intro). Continues through interlude + greets
 // via my_music_play residency. End uses its own music_play, no drums.
-.const DRUM_LEN    = 10          // V3 drum window in frames (~200 ms thump)
-// Noise frequency on SID controls LFSR step rate — HIGH freq sounds
-// hi-hat-y, LOW freq is bass rumble (per Codebase64 noise-waveform
-// notes). The earlier $20→$03 sweep spent most of its window in
-// hat territory and only briefly touched rumble at the end, giving
-// the kick a swept-crash character instead of a thump.
-//
-// Stay in rumble: start at $10 (bass-band noise, still has some
-// transient snap on the first frame) and sweep fast to $02 (deep
-// sub rumble). All 10 frames are kick-band — no hat-tail.
-//
-// ADSR is left at the arp's $00/$F0 (sustain pinned at peak) so V3
-// can flip back to pulse for the arp without an envelope reset —
-// a real envelope shape would force a hard-restart that kills the
-// arp's recovery on this shared voice. The "kick body" is therefore
-// painted entirely by waveform + freq sweep, not by amplitude.
-.const DRUM_FREQ_HI = $10        // starting pitch — already in bass-band
-.const DRUM_SWEEP   = $02        // steeper fall: $10→$02 over 7 frames
-.const DRUM_FLOOR   = $02        // deep sub-rumble body
+// V3 kick is table-driven (Geir Tjelta / Jeroen Tel "Macro Player"
+// pattern + Prince-of-Persia SFX routine). 8 per-frame command rows,
+// each writing ctrl ($d412) + freq-hi ($d40f) + AD ($d413) + SR ($d414).
+// Frame 0..1 noise transient (click), 2..6 triangle body with steep
+// pitch drop, frame 7 restores arp ADSR so the next-frame arp gate
+// retrigger lands cleanly.
+.const DRUM_LEN = 8
 
 // Outro phase thresholds (in zp_outro ticks; mirror intro pacing).
 // Outro starts when scroll_text hits $ff. Scroller stops immediately (gate
@@ -789,52 +777,74 @@ my_music_play:
         lda mu_step
         and #$03
         bne !drum_done+
-        // BEAT — arm a new kick window + reset freq shadow to start
-        // pitch so the next sweep begins from the top.
+        // BEAT — arm a new kick window. drum_table is walked frame
+        // by frame in the tick block below.
         lda #DRUM_LEN
         sta drum_state
-        lda #DRUM_FREQ_HI
-        sta drum_freq
 !drum_done:
 !done:
-        // --- V3 DRUM tick (every frame, including non-step frames).
-        // Override V3 with noise + pitch-swept freq for the kick
-        // window. Envelope is at peak sustain (SR=\$F0 from arp init)
-        // so noise is LOUD. When drum_state hits 0 we stop overriding;
-        // next music_play call writes V3 ctrl=\$41 (pulse) and the arp
-        // resumes — envelope stays at peak, no audible silence.
+        // --- V3 DRUM tick (table-driven).
+        // Each row in drum_table is { ctrl ($d412), freq-hi ($d40f),
+        // A/D ($d413), S/R ($d414) }. Walking the table forward over
+        // DRUM_LEN frames gives a noise→triangle kick with proper
+        // ADSR + steep pitch sweep — much punchier than the prior
+        // all-noise sustain-pinned thump.
         lda drum_state
         beq !drum_skip+
         dec drum_state
-        // Pitch sweep: drum_freq starts at DRUM_FREQ_HI on beat, ramps
-        // down by DRUM_SWEEP per frame to DRUM_FLOOR. Gives the deep
-        // "boom" thwump characteristic of an 808-style kick.
-        lda drum_freq
+
+        // phase = (DRUM_LEN-1) - drum_state  →  forward index
+        lda #DRUM_LEN-1
         sec
-        sbc #DRUM_SWEEP
-        cmp #DRUM_FLOOR
-        bcs !sweep_ok+
-        lda #DRUM_FLOOR
-!sweep_ok:
-        sta drum_freq
+        sbc drum_state
+        asl
+        asl                       // × 4 bytes/row
+        tay
+
+        lda drum_table,y
+        sta $d412                 // ctrl (waveform + gate)
+        lda drum_table+1,y
+        sta $d40f                 // V3 freq hi
+        lda drum_table+2,y
+        sta $d413                 // V3 AD
+        lda drum_table+3,y
+        sta $d414                 // V3 SR
         lda #$00
         sta $d40e                 // V3 freq lo
-        lda drum_freq
-        sta $d40f                 // V3 freq hi (sweeping down)
-        lda #$81
-        sta $d412                 // V3: noise wave + gate on
 !drum_skip:
         rts
 
 
-// V3 drum state. drum_state = countdown (0=idle, 1..N=active frame).
-// drum_freq = shadow of V3 freq hi (SID regs are write-only).
-// Both live in intro's music segment so every part that inherits
-// the music ('I', $10, $12) can drive them.
+// V3 drum state. drum_state = countdown (0=idle, 1..DRUM_LEN=active).
+// Lives in intro's music segment so every part that inherits the
+// music ('I', $10, $12) can drive it.
 drum_state:
         .byte 0
-drum_freq:
-        .byte 0
+
+// V3 kick voice table — see DRUM_LEN comment block at the top of intro
+// for the design rationale.
+//
+//   ctrl:     $81 = noise + gate, $11 = triangle + gate, $10 = triangle no-gate
+//   freq-hi:  high byte of V3 freq ($d40f); freq-lo is forced to $00 each
+//             frame, so this drives the pitch directly. SID hi-bytes:
+//             $80 ≈ 2 kHz, $40 ≈ 1 kHz, $20 ≈ 500 Hz, $10 ≈ 250 Hz,
+//             $08 ≈ 125 Hz, $04 ≈ 62 Hz, $02 ≈ 31 Hz (sub-bass).
+//   AD ($d413): high nibble = attack rate, low nibble = decay rate.
+//               $09 = instant attack + medium decay  →  classic kick punch.
+//               $00 on the last frame restores arp's "no-decay" envelope
+//               so the next-frame arp gate retrigger lands at peak.
+//   SR ($d414): high nibble = sustain level, low nibble = release rate.
+//               $A8 = sustain ~$A (loud) + medium release; $F0 = arp normal.
+drum_table:
+        // ctrl  fhi  ad   sr        phase  notes
+        .byte $81, $80, $09, $A8   //  0 — noise click, hi pitch (~2 kHz)
+        .byte $81, $40, $09, $A8   //  1 — noise transition (~1 kHz)
+        .byte $11, $20, $09, $A8   //  2 — triangle body starts (~500 Hz)
+        .byte $11, $10, $09, $A8   //  3 — drop (~250 Hz)
+        .byte $11, $08, $09, $A8   //  4 — drop (~125 Hz)
+        .byte $11, $04, $09, $A8   //  5 — drop (~62 Hz)
+        .byte $11, $03, $09, $A8   //  6 — sub-bass body
+        .byte $11, $02, $00, $F0   //  7 — settled, restore arp ADSR for clean handover
 
 // Compact logo bitmap rows 8-16 — extracted from defeest.kla at build
 // time. Stored at $1300 to avoid the runtime-cleared $2000-$3FFF bitmap
