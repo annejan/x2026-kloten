@@ -5,52 +5,28 @@
 //   open top border       lines $00..$32  (HCL trick)
 //   bitmap row 0 scroller lines $33..$3A  (cycles left / right / zig-zag
 //                                          via $fe sentinels in scroll_text)
-//   bitmap rows 1..4      lines $3B..$5A     (FIXED Y — fade-text at row 4)
-//   Top FLD               lines $5B..$5B+K   (K writes, freezes empty row 5)
-//   bitmap rows 6..17     shifted down by K  (logo at rows 8..16 bounces $73+K)
-//   rainbow rasterbars    lines $80..$C1     (behind logo, must end before
-//                                             bottom-FLD's earliest trigger $C3)
-//   Bottom FLD            lines $C3+K..$E2   ((K_max-K) writes, freezes row 18)
-//   FIXED-Y zone          lines $E3..$F2     (rows 19..21 — do NOT bounce)
-//                                             — fade-band text at row 19
-//   open bottom border    lines $F3..$FF     (HCL trick)
+//   FLD stretch zone      lines $3B..$3B+K  (K = bounce_total[frame],
+//                                            freezes empty bitmap row 1)
+//   bitmap rows 2..7      shifted down by K   (row 4 carries fade-band text,
+//                                              which bounces together with logo —
+//                                              accepted trade-off for smooth FLD)
+//   logo wipe-reveal      rows 8..16, sliding down by K px (logo at $73+K)
+//   rainbow rasterbars    lines $80..$EB  (behind logo, with sides)
+//   open bottom border    lines $EC..$FF  (HCL trick)
 //
-// Symmetric FLD (ranzbak/defeest-fld pattern, Jesder original):
-// total FLD writes per frame = K_max = 36 (constant). Top FLD adds K
-// stretch lines before the logo; bottom FLD adds (K_max-K) after.
-// Net: rows 19+ land at the same raster every frame regardless of K.
+// IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld@$3B
+//          → irq_bars@$80 → irq_close@$F9.
+// Music (my_music_play) runs in irq_open so irq_fld → irq_bars has a
+// fixed cycle budget independent of music step-boundary frames
+// (BINTRIS pt-5: FLD stability requires the timing not to depend on
+// adjacent IRQs' workload).
 //
-// Bottom-FLD-first-write fix: yscroll set EXPLICITLY to (5+K)%8 so
-// the spurious-badline chain starts on the very first line for ALL
-// K, including K=0 where top FLD did nothing (was the bug that
-// reverted us last time — previous code did "current+1" which only
-// worked for K>=1).
-//
-// IRQ chain: irq_close@$F9 → irq_open@$01 → irq_fld_pre@$59
-//          → irq_fld@$5B → irq_bars@$80 → irq_fld_bottom@$C3+K
-//          → irq_close@$F9.
-// Music (my_music_critical) runs in irq_open. Music step-boundary
-// work is in irq_close (my_music_step). irq_fld trigger sits at
-// $5B (= row 5 badline) so:
-//   - $01..$59 = 88 lines = 5544 cy for irq_open — TONS of headroom
-//     for peak music + sprite + reveal work (was 4158 cy at $43,
-//     which still wobbled on heavy frames).
-//   - rows 0..4 ($33..$5A) all display BEFORE any FLD → fixed Y →
-//     fade-band text can live at row 4 above the bouncing logo.
-//   - row 5 ($5B..) is the FLD-frozen row (empty bg, invisible).
-//   - rows 6..17 + logo at row 8 still bounce $73+K — same as before.
-//
-// Stable-raster entry to irq_fld (codebase64 / Mäkelä / JackAsser /
-// ranzbak's Raster.asm rasirq1→rasirq2 pattern): irq_fld_pre at $59
-// is the cycle-UNSTABLE entry — it saves regs via self-mod (not PHA),
-// pre-computes K, arms the IRQ vector + raster for $5B, tsx + cli +
-// NOP slack. The NEXT IRQ fires inside the NOP run with 0-1 cy
-// jitter (NOPs are 2 cy each). irq_fld's first instruction is `txs`
-// which discards the pre's IRQ frame so this handler's RTI returns
-// to the originally-interrupted main loop (pefchain wait). Net:
-// every FLD-start write lands at the SAME cycle of $5C every frame,
-// independent of irq_open's variable load and sprite DMA on $59/$5A.
-// That permits K_max=28 without sprite-DMA-induced FLD tearing.
+// Tried symmetric-FLD-with-fixed-fade-text (commit 48530d1) following
+// ranzbak's defeest-fld pattern: top K + bottom (K_max-K). Logo
+// bounce held steady but the fade-text below picked up its own
+// wobble. Reverted in favour of single-FLD + bouncing fade-text;
+// ranzbak's implementation handles it better (smaller K_max=15,
+// careful raster latching). See docs/dilemmas.md.
 //
 // Sprite blink fix: balls 0..2 disabled in irq_close (line $F9) so
 // their Y+256 wrap duplicates between $F9 and next-frame $01 don't
@@ -96,13 +72,8 @@
                                                 // Row 0 displays at $33..$3A — before FLD trigger ($3B) → no bounce.
 
 
-.const BAR_TOP      = $80       // first line of bar zone (after top FLD)
-.const BAR_BOT      = $be       // first line PAST bar zone — must end with
-                                 // enough margin that we can set $D012 = $C3
-                                 // BEFORE raster reaches it (otherwise the
-                                 // irq_fld_bottom trigger misses this frame
-                                 // → no bottom FLD → fade-text pulled up
-                                 // with the logo). 5 lines = ~315 cy is ample.
+.const BAR_TOP      = $80       // first line of bar zone (after FLD + music)
+.const BAR_BOT      = $ec       // first line PAST bar zone (in open bot border)
 
 // Zero-page
 .const zp_text_ptr  = $fb
@@ -272,15 +243,13 @@ init_sprites:
         sta SPR_YEXP            // Y-expanded → round balls
         lda #0
         sta SPR_MC
-        // Sprite-foreground priority ($D01B). Set bit = sprite passes
-        // BEHIND bitmap %01/%10/%11 pixels.
-        //   bits 0,1,2 → top sprites 0..2 BEHIND (under scroller letters)
-        //   bits 3..7  → mid + bot sprites IN FRONT (overlap logo / text)
-        // Original design — sprite balls visibly bounce OVER the logo
-        // and fade-text. With symmetric-FLD the fade-text sits at row 19
-        // (raster $E3..$EA), mostly below the mid-sprite display range
-        // (which ends at Y=241), so occlusion is rare.
-        lda #%00000111
+        // Sprite-foreground priority ($D01B): ALL sprites BEHIND bitmap.
+        // Set bit = sprite passes under bitmap %01/%10/%11 pixels.
+        // This gives: balls swim through the gaps in the logo / fade-text /
+        // scroller letters but never occlude them. The result is the
+        // "all touching" effect — balls drift between the foreground
+        // pixels rather than over them.
+        lda #%11111111
         sta SPR_FORE
 
         // 8 distinct colours
@@ -331,14 +300,7 @@ irq_close:
         sta $ffff
         lda #$01
         sta VIC_RASTER
-
-        // Music: step-boundary half (V1 bass, V2 lead, drum trigger).
-        // Non-step frames return in ~10 cy. Step frames cost ~210 cy.
-        // Runs unconditionally so mu_frame keeps ticking even before
-        // T_BARS / T_BALLS gates open the bass + lead voices.
-        jsr my_music_step
-
-        // Intro gate: scroller / fade-text off until T_SCROLLER.
+        // Intro gate: scroller off until T_SCROLLER.
         // jsr update_bmp_scroll is ~2400 cy; in $f9..$01 ~4000-cy window.
         lda zp_intro
         cmp #T_SCROLLER
@@ -420,23 +382,25 @@ irq_open:
         // frame at raster ~282. This window is safe → no tearing.
         jsr move_sprites
 
-        // Music: per-frame critical half only (vol fade + V3 arp +
-        // V3 gate + V3 drum tick). Constant ~85 cy, independent of
-        // music step boundaries. The step-boundary work (V1 bass,
-        // V2 lead, drum trigger) runs in irq_close's my_music_step.
-        // See "MUSIC SPLIT" comment above my_music_play in the music
-        // segment for the rationale.
-        jsr my_music_critical
+        // Music plays HERE in irq_open, not in irq_fld. That keeps
+        // the irq_fld → irq_bars → irq_fld_bottom chain on a tight,
+        // frame-independent budget — music_play's variable length
+        // (~600..2000 cy on step-boundary frames) used to push bars
+        // and the bottom-FLD trigger ~1..8 lines late on heavy
+        // music frames, which read as jitter in the bounce.
+        // (Per Janne Hellsten's BINTRIS-pt-5 stability lesson —
+        // FLD timing must not depend on adjacent-IRQ workload.)
+        jsr my_music_play
 
-        // Chain to irq_fld_pre at line $59 (= 2 lines before $5B). It's
-        // the cycle-unstable entry that arms the cycle-stable irq_fld@$5B
-        // (Mäkelä/JackAsser double-IRQ pattern). 88 lines/5544 cy of irq_open
-        // slack are still well over peak music + sprite load.
-        lda #<irq_fld_pre
+        // Chain to irq_fld at line $3B (= row 1's natural badline).
+        // Scroller letters get their rainbow colours from per-cell
+        // color RAM (updated each frame in irq_close), not from
+        // per-scanline $D021 writes.
+        lda #<irq_fld
         sta $fffe
-        lda #>irq_fld_pre
+        lda #>irq_fld
         sta $ffff
-        lda #$59
+        lda #$3b
         sta VIC_RASTER
 
         pla
@@ -448,92 +412,41 @@ irq_open:
 
 
 //==================================================================
-// irq_fld_pre — cycle-UNSTABLE entry at line $59. Mäkelä/JackAsser
-// double-IRQ wrapper: save regs via self-mod (NOT pha — pha would
-// add an extra stack frame that the txs in irq_fld would mis-discard),
-// pre-compute K, arm IRQ vector + raster for $5B, then tsx + cli +
-// NOP slack. The next IRQ ($5B) fires INSIDE the NOP run, jittered by
-// only 0-1 cy (NOPs are 2 cy each, so the worst that can happen is
-// being interrupted between NOP 1 and NOP 2 vs. between NOP 2 and 3).
-// Pattern lifted from /tmp/ranzbak/Raster.asm rasirq1.
-//
-// Stack on entry (just `[main flags] [main PC hi] [main PC lo]`, no
-// PHA pushes) is intentional — irq_fld's `txs` will restore SP to
-// this exact level so its RTI pops main's frame, completely skipping
-// any return-to-here path.
-//==================================================================
-irq_fld_pre:
-        sta fld_a_save+1         // self-mod register save (3 PHAs would
-        stx fld_x_save+1         // push 3 bytes that mess up txs accounting)
-        sty fld_y_save+1
-
-        // Pre-compute K NOW so cycle-stable irq_fld doesn't waste cycles
-        // on the bounce_total lookup.
-        ldx zp_frame
-        lda bounce_total,x
-        sta saved_K              // also used by irq_fld_bottom and irq_bars
-
-        lda #$ff
-        sta $d019                // ack pre IRQ
-        lda #<irq_fld
-        sta $fffe
-        lda #>irq_fld
-        sta $ffff
-        lda #$5b
-        sta VIC_RASTER           // arm irq_fld at $5B
-
-        tsx                       // save SP so irq_fld can `txs` back to it
-        stx fld_sp_save+1         // and self-mod for the irq_fld restore
-        cli                       // unmask IRQ
-
-        // NOP slack — covers the ~70 cy from cli to start of $5B in the
-        // fastest case (no DMA stretch in pre body), shrinks naturally as
-        // sprite DMA on $59/$5A stretches pre's runtime. 40 NOPs = 80 cy
-        // gives full coverage in either direction. irq_fld is guaranteed
-        // to fire mid-NOP, giving 0-1 cy entry jitter.
-        .for(var i = 0; i < 40; i++) nop
-
-        // Safety net — should never run; if we hit it we missed the IRQ.
-        jmp *
-
-
-//==================================================================
-// irq_fld — cycle-STABLE entry at line $5B. First instruction `txs`
-// reinstates pre's pre-cli SP, discarding our IRQ frame so this
-// handler's RTI returns to the originally-interrupted main loop
-// (= pefchain's idle wait). Rows 0..4 ($33..$5A) have already
-// displayed normally — fade-text at row 4 stays fixed Y.
-//
-// HCL FLD pattern: write yscroll=5 before $5C cy 14, then loop
-// "increment yscroll and write per line" with each write landing
-// AFTER cy 14 so the NEXT line's cy-14 check matches yscroll → VIC
-// fires a SPURIOUS badline that restarts row 5. After K writes,
-// row 5 has stretched K times and row 6+ slide down by K. Logo
-// (row 8) lands at $73+K.
+// irq_fld — fires at line $3B (row 1's natural badline). Row 0 has
+// already displayed at $33..$3A and the scroller is locked in place.
+// Canonical HCL FLD pattern: write yscroll=5 before $3C cycle 14,
+// then loop "increment yscroll and write" once per line. Late-write
+// trick: each iteration's $D011 update lands at cy ~24 (AFTER VIC's
+// cy-14 check), so the change is seen by the NEXT line's cy-14
+// check, where yscroll now matches line%8 → VIC fires a SPURIOUS
+// badline that restarts row 1 (empty bg) with VCBASE pinned. After
+// K writes, row 1 has been stretched K times and row 2+ slide down
+// by K px. Logo (row 8) ends up at $73+K.
+// Music runs HERE after the FLD loop — the $3B..$80 window gives
+// 69 lines = 4347 cy, plenty for K=28 (28 lines) + music_play
+// (~600..2000 cy worst case) + vector switch + rti.
 //==================================================================
 irq_fld:
-fld_sp_save:
-        ldx #$00                 // [2] self-mod from pre's tsx (operand patched)
-        txs                       // [2] discard our IRQ frame — RTI will pop pre's frame
-        // 4 cy + 7-8 cy entry latency = ~12 cy into $5B at this point.
+        pha
+        txa
+        pha
+        tya
+        pha
+        lda #$ff
+        sta $d019
 
-        // Stall to clear sprite-DMA-stealing window on $5B. 8 iter ×
-        // 5 cy - 1 = 39 cy delay → cy ~51 of $5B. Then poll $5B → $5C
-        // transition for the cycle-locked first write.
-        ldx #$08
-!w0:    dex
-        bne !w0-
-
-        ldx saved_K              // [3] = K writes for this frame
+        ldx zp_frame
+        lda bounce_total,x      // K = FLD writes (0..36)
+        tax
         beq !skip+
 
-        // Wait for raster to leave $5B (= we're now at $5C).
-        lda #$5b
+        // Wait for raster to leave $3B (= we're now at $3C).
+        lda #$3b
 !w1:    cmp VIC_RASTER
         beq !w1-
 
-        // First write at $5C cycle ~11 (BEFORE cycle 14): yscroll=5.
-        // $5C%8=4, ys=5 → no badline at $5C (mismatch).
+        // First write at $3C cycle ~11 (BEFORE cycle 14): yscroll=5.
+        // $3C%8=4, ys=5 → no badline at $3C (mismatch).
         lda #$3d                // BMM + DEN + RSEL + yscroll=5
         sta VIC_CTRL1
 
@@ -569,12 +482,11 @@ fld_sp_save:
         lda #BAR_TOP
         sta VIC_RASTER
 
-fld_y_save:
-        ldy #$00                 // self-mod restore from pre's sty
-fld_x_save:
-        ldx #$00                 // self-mod restore from pre's stx
-fld_a_save:
-        lda #$00                 // self-mod restore from pre's sta
+        pla
+        tay
+        pla
+        tax
+        pla
         rti
 
 
@@ -583,7 +495,7 @@ fld_a_save:
 // $d021 from bar_palette[(line + frame/2) & $1f]. Palette is a smooth
 // 32-entry gradient so per-line seams blend visually. The CPU is
 // tied up in this loop until line BAR_BOT — no other work scheduled
-// during this window. Chains to irq_fld_bottom at $C3+K.
+// during this window. Chains to irq_close at $f9.
 //==================================================================
 irq_bars:
         pha
@@ -626,108 +538,7 @@ bar_lda:
         sta VIC_BORDER          // restore border to black
 !barsoff:
         // bg/border are already $00 from previous frame; nothing to do
-        // when bars are off besides chaining to irq_fld_bottom.
-
-        // Chain to irq_fld_bottom at $C3 + saved_K (= row 18's first
-        // line in post-top-FLD raster space).
-        lda #<irq_fld_bottom
-        sta $fffe
-        lda #>irq_fld_bottom
-        sta $ffff
-        clc
-        lda saved_K
-        adc #$c3
-        sta VIC_RASTER
-
-        pla
-        tay
-        pla
-        rti
-
-
-//==================================================================
-// irq_fld_bottom — fires at line $C3 + K (row 18's first line after
-// top-FLD shift). Performs (K_max - K) FLD writes, freezing row 18
-// (empty bg). Combined with top FLD's K writes, total stretch is
-// K_max = 36 lines per frame, CONSTANT. Rows 19+ land at the same
-// raster position every frame → fade-text at row 19 stays nailed.
-//
-// THE FIRST-WRITE FIX (previous symmetric FLD attempt's bug):
-// The very first bottom-FLD write must set yscroll = (5+K) % 8
-// EXPLICITLY, not "current+1". For K>=1 the two coincide (top FLD
-// left yscroll at (4+K)%8), but for K=0 top FLD didn't run, yscroll
-// was still 3, and the old "current+1" produced yscroll=4 — which
-// doesn't match $C5's line%8=5, so no spurious badline fires on the
-// first line, total stretch is K_max-1 instead of K_max, and the
-// fade-text wobbles by 1 raster line on K=0 frames. Setting yscroll
-// to (5+K)%8 explicitly fixes all K including K=0.
-//
-// Cycle budget ($C3..$F9 window = 54 lines = 3402 cy):
-//   wait for $C3+K to change       ~25 cy
-//   FLD raster loop (K_max-K) lines  raster-locked = (K_max-K)*63
-//   vector + raster + pla/rti       ~40 cy
-// At K=0: 36 raster lines (2268 cy) + ~65 cy overhead = ~2333 cy.
-// At K=K_max: 0 lines + ~65 cy. Plenty of slack either way.
-//==================================================================
-irq_fld_bottom:
-        pha
-        txa
-        pha
-        tya
-        pha
-        lda #$ff
-        sta $d019
-
-        // X = (K_max - K) = remaining FLD writes.
-        lda #36                  // K_max
-        sec
-        sbc saved_K
-        tax
-        beq !skip+
-
-        // Wait for raster to leave $C3+K
-        clc
-        lda saved_K
-        adc #$c3
-!w1:    cmp VIC_RASTER
-        beq !w1-
-
-        // First write: set yscroll EXPLICITLY to (5+K)%8. The +5 is
-        // chosen so that at the NEXT line's cy-14 check, yscroll
-        // matches that line's line%8 (which is (5+K+1)%8 = (6+K)%8
-        // — wait, recompute: ($C5+K)%8 = (5+K)%8 since $C5%8=5).
-        clc
-        lda saved_K
-        adc #$05
-        and #$07
-        ora #$38
-        sta VIC_CTRL1
-
-        dex
-        beq !skip+
-
-!fld2_loop:
-        lda VIC_RASTER
-!w2:    cmp VIC_RASTER
-        beq !w2-
-        clc
-        lda VIC_CTRL1
-        adc #$01
-        and #$07
-        ora #$38
-        sta VIC_CTRL1
-        dex
-        bne !fld2_loop-
-
-!skip:
-        // 40-cy "latch final bitmap line" pad (ranzbak/Jesder trick):
-        // gives VIC's state machine one quiet line to settle the last
-        // spurious badline's VC/VCBASE before the mode transitions
-        // back to natural flow. Without this, the post-FLD raster
-        // alignment was K-dependent and produced fade-text wobble.
-        ldx #8
-!latch: dex
-        bne !latch-
+        // when bars are off besides chaining to irq_close.
 
         lda #<irq_close
         sta $fffe
@@ -738,8 +549,6 @@ irq_fld_bottom:
 
         pla
         tay
-        pla
-        tax
         pla
         rti
 
@@ -893,56 +702,15 @@ my_music_init:
         rts
 
 
-//==================================================================
-// MUSIC SPLIT for the intro IRQ chain
-//
-// `my_music_play` (the legacy entry at $119e, called by interlude /
-// sinus / greets / coda via INTRO_MUSIC_PLAY) is just a dispatcher
-// now: jsr critical + jmp step. Other parts get the original
-// monolithic behaviour with one rts overhead.
-//
-// Intro's IRQ chain splits the work for less peakiness:
-//
-//   my_music_critical (called by intro irq_open, every frame):
-//       master vol fade, V3 arpeggio, V3 gate, V3 drum tick
-//       ~85 cy peak (constant per frame). Includes the drum tick
-//       so V3 keeps playing the drum override across frames once
-//       step has triggered it.
-//
-//   my_music_step (called by intro irq_close, every frame):
-//       inc mu_frame, check STEP_FRAMES boundary, if step:
-//       inc mu_step, V1 bass note, V2 lead note, V3 drum trigger.
-//       ~10 cy idle, ~210 cy on step-boundary frames.
-//
-// One-frame delay note: in the monolithic version, step's V1/V2
-// triggers and the V3 drum override happened in the SAME call as
-// the V3 arp write. In the split, step runs at irq_close ($F9 of
-// frame N) and critical runs at irq_open ($01 of frame N+1) — so
-// the next V3 arp uses the new mu_step exactly when step's V1/V2
-// notes start playing. Audible alignment is identical.
-//
-// Why this split helps: irq_open's worst-case load was being driven
-// by music_play hitting its step-boundary path on the same frame
-// when sprite + reveal + counter work was already heaviest. With
-// the split, irq_open's music cost is constant (~85 cy) regardless
-// of step frames, and step's ~200 cy of work lives in irq_close
-// which has more slack at end-of-frame.
-//==================================================================
-
-.pc = $119e "MusicDispatch"
 my_music_play:
-        // Legacy entry — keep at $119e so inheritor parts (interlude,
-        // sinus, greets, coda) that hard-code INTRO_MUSIC_PLAY=$119e
-        // see exactly the original behaviour: critical then step.
-        jsr my_music_critical
-        jmp my_music_step       // tail call — saves the trailing rts
-
-my_music_critical:
         // --- Master volume: fade IN over intro tick window only ---
         // vol = min(zp_intro >> 3, $0f) — reaches $0f at intro=120 (~4.8s).
         // We intentionally DO NOT subtract a vol_out fade here: the music
         // needs to carry continuously through intro outro → interlude →
-        // greets → coda. End uses its own routine.
+        // greets (interlude / greets call this routine too via my_music_play
+        // residency). The "transitioning out" feel during intro's outro
+        // is carried by the visual cascade (sprites, bars, logo) and by
+        // V1 muting in interlude — not by silencing the SID.
         lda zp_intro
         lsr
         lsr
@@ -983,42 +751,14 @@ my_music_critical:
         sta $d412
 !v3_skipgate:
 
-        // --- V3 DRUM tick (every frame, including non-step frames).
-        // Override V3 with noise + pitch-swept freq for the kick
-        // window. Runs LAST in critical so the V3 noise+gate write
-        // takes precedence over the arp/gate writes above whenever
-        // drum_state > 0. Envelope stays at peak — no audible silence
-        // when transitioning between drum and arp at frame boundaries.
-        lda drum_state
-        beq !drum_skip+
-        dec drum_state
-        lda drum_freq
-        sec
-        sbc #DRUM_SWEEP
-        cmp #DRUM_FLOOR
-        bcs !sweep_ok+
-        lda #DRUM_FLOOR
-!sweep_ok:
-        sta drum_freq
-        lda #$00
-        sta $d40e                 // V3 freq lo
-        lda drum_freq
-        sta $d40f                 // V3 freq hi (sweeping down)
-        lda #$81
-        sta $d412                 // V3: noise wave + gate on
-!drum_skip:
-        rts
-
-
-my_music_step:
         // --- Step boundary work ---
         inc mu_frame
         lda mu_frame
         cmp #STEP_FRAMES
-        beq !is_step+             // non-step frame — fall through to rts
-        rts
+        beq !is_step+
+        jmp !done+                // bne range exceeded since drum block added
 !is_step:
-        // Step boundary path:
+
         lda #0
         sta mu_frame
         inc mu_step
@@ -1079,17 +819,50 @@ my_music_step:
         jmp !v2_done+
 !v2_skip:
 !v2_done:
-        // --- V3 DRUM trigger (every 4th step = ~125 BPM).
-        // Only after zp_outro != 0 (intro's outro armed, ~20 s in).
+        // --- V3 DRUM trigger (step boundary, every 4th step = ~125 BPM)
+        // Only after zp_outro != 0, i.e. once the intro's outro
+        // animation has armed (~20 s into intro). Drums then continue
+        // through interlude + greets via my_music_play residency. End
+        // uses its own music routine — no drums there.
         lda zp_outro
-        beq !drum_skip+
+        beq !drum_done+
         lda mu_step
         and #$03
-        bne !drum_skip+
+        bne !drum_done+
+        // BEAT — arm a new kick window + reset freq shadow to start
+        // pitch so the next sweep begins from the top.
         lda #DRUM_LEN
         sta drum_state
         lda #DRUM_FREQ_HI
         sta drum_freq
+!drum_done:
+!done:
+        // --- V3 DRUM tick (every frame, including non-step frames).
+        // Override V3 with noise + pitch-swept freq for the kick
+        // window. Envelope is at peak sustain (SR=\$F0 from arp init)
+        // so noise is LOUD. When drum_state hits 0 we stop overriding;
+        // next music_play call writes V3 ctrl=\$41 (pulse) and the arp
+        // resumes — envelope stays at peak, no audible silence.
+        lda drum_state
+        beq !drum_skip+
+        dec drum_state
+        // Pitch sweep: drum_freq starts at DRUM_FREQ_HI on beat, ramps
+        // down by DRUM_SWEEP per frame to DRUM_FLOOR. Gives the deep
+        // "boom" thwump characteristic of an 808-style kick.
+        lda drum_freq
+        sec
+        sbc #DRUM_SWEEP
+        cmp #DRUM_FLOOR
+        bcs !sweep_ok+
+        lda #DRUM_FLOOR
+!sweep_ok:
+        sta drum_freq
+        lda #$00
+        sta $d40e                 // V3 freq lo
+        lda drum_freq
+        sta $d40f                 // V3 freq hi (sweeping down)
+        lda #$81
+        sta $d412                 // V3: noise wave + gate on
 !drum_skip:
         rts
 
@@ -1237,13 +1010,7 @@ copy_logo:
 move_sprites:
         lda #0
         sta zp_msb
-        // Iterate x=0..7 so top sprites (0,1,2 at Y=14, displaying from
-        // line $0E) get their new Y written BEFORE the raster reaches
-        // their display line. Old order (x=7..0) wrote top sprites last
-        // → race with raster $0E → some frames missed the Y compare and
-        // the top sprite blinked. zp_msb's OR accumulation is order-
-        // independent so reversing the loop is otherwise safe.
-        ldx #0
+        ldx #7
 !loop:
         // X position low byte
         lda zp_frame
@@ -1292,9 +1059,8 @@ move_sprites:
         iny                     // SPR_Y is SPR_X+1
         lda zp_tmp
         sta SPR_X,y             // SPR_X[2N+1] = SPR_Y[N]
-        inx
-        cpx #8
-        bne !loop-
+        dex
+        bpl !loop-
 
         lda zp_msb
         sta SPR_MSB
@@ -1397,22 +1163,16 @@ sprite_yphase: .byte 0, 80, 160, 40, 120, 200, 56, 184
 // line's cy-14 check to fire a spurious badline that restarts the
 // frozen row.
 //
-// K=0..20 — stable raster pinned the entry cycle, but per-line sprite
-// DMA inside the FLD loop ($5C..$5C+K, fully overlapping mid sprite
-// display range Y≥90) still steals cy from the polling loop. At
-// K_max=28 that cumulative drift breaks the spurious-badline pattern
-// on a handful of lines per frame → logo tearing top AND bottom.
-// At K_max=20 the budget tolerates the drift, at the cost of peak
-// dK = 0.74 → some 2-3-frame plateaus at sine extrema.
-//
-// True fix for K_max=28 needs sprite-free FLD lines: either drop
-// sine_mid Y_min above $5B+K_max ($77 → Y≥119 vs current 90) or
-// raster-toggle SPR_EN off during the FLD zone (~4 cy/frame). TBD.
-//
+// K=0..36 — bigger arc than the original 0..28, picked because:
+//   - yscroll after K=36 writes is (5+36-1) mod 8 = 0, clean boundary
+//   - top FLD ends at $3B+36=$5F, ~33 lines slack to BAR_TOP=$80
+//   - logo (rows 8..16) bounces $73..$97 — peak still inside the
+//     bars zone for a continuous "logo through rainbow" look
+//   - feels dramatic without being cartoony
 // 3× sine frequency → ~1.7s per cycle.
 .align 256
 bounce_total:
-        .fill 256, round(10 + 10 * sin(toRadians(i * 1080 / 256)))
+        .fill 256, round(18 + 18 * sin(toRadians(i * 1080 / 256)))
 
 
 //==================================================================
@@ -1436,19 +1196,11 @@ pending_odd:
 text_ptr_odd:
         .word 0
 
-// K for the current frame's FLD bounce. irq_fld stashes it,
-// irq_bars reads it to compute irq_fld_bottom's trigger ($C3 + K),
-// irq_fld_bottom reads it to compute write count (K_max - K) and
-// the explicit yscroll value for the first write.
-saved_K:
-        .byte 0
-
 
 //==================================================================
-// Fade-band text — cycles 3 phrases at bitmap row 4 (= raster
-// $53..$5A, ABOVE the FLD trigger at $5B). Rows 0..4 all display
-// at fixed Y regardless of K, so the text stays nailed in place
-// while the logo bounces below.
+// Fade-band text — cycles 3 phrases at bitmap row 4. Travels with
+// the logo since rows 2..7 all sit inside the single-FLD shift zone
+// (trigger at $3B). Accepted trade-off: smooth bounce > fixed Y.
 //
 // Each character spans 2 cells = 8 MC pixels wide, rendered by direct
 // bit-expansion of the chargen-ROM glyph (each hires bit → one MC
