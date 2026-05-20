@@ -8,7 +8,12 @@
       "Bash(cargo info *)",
       "Bash(cargo check *)",
       "Bash(cargo clippy *)",
-      "Bash(clang-format --dry-run *)"
+      "Bash(clang-format --dry-run *)",
+      "Bash(python3:*)",
+      "Bash(curl -s -X POST http://127.0.0.1:6510/mcp:*)",
+      "Bash(curl -s https://codebase.c64.org/*)",
+      "Bash(curl -s https://nurpax.github.io/*)",
+      "Bash(curl -s https://raw.githubusercontent.com/ranzbak/*)"
     ]
   }
 }

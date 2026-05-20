@@ -252,6 +252,15 @@ setup:
         lda #$00
         sta kloot_shape                 // counter 0..15 (incremented before write)
 
+        // Initialise animate-in base positions to centre so the first IRQ
+        // doesn't write sprites at (0,0) before the half-rate tick updates them.
+        lda #KLOOT_X_CENTRE
+        sta kloot_x_left_base
+        sta kloot_x_right_base
+        lda #KLOOT_Y_CENTRE
+        sta kloot_y_top_base
+        sta kloot_y_bot_base
+
         // VIC: text mode, ROM chargen $1000 (uppercase), screen $0400.
         lda #$1b                        // DEN=1, RSEL=1, YSCROLL=3
         sta VIC_CTRL1
