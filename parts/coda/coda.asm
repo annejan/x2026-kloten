@@ -311,19 +311,22 @@ setup:
         sta $d02d                       // spr 6
         sta $d02e                       // spr 7
 
-        // Initial shape pointers = frame 0 of the same 24-frame sequence.
-        lda #KLOOT_SHAPE_BASE_TR
+        // Star 2 starts at frame 8 (first rotation frame) so the two
+        // stars are out of phase — one zooms in from a dot while the
+        // other is already full-size and rotating.
+        lda #KLOOT_SHAPE_BASE_TR + 8
         sta $07fc                       // spr 4 = TR
-        lda #KLOOT_SHAPE_BASE_TL
+        lda #KLOOT_SHAPE_BASE_TL + 8
         sta $07fd                       // spr 5 = TL
-        lda #KLOOT_SHAPE_BASE_BL
+        lda #KLOOT_SHAPE_BASE_BL + 8
         sta $07fe                       // spr 6 = BL
-        lda #KLOOT_SHAPE_BASE_BR
+        lda #KLOOT_SHAPE_BASE_BR + 8
         sta $07ff                       // spr 7 = BR
 
         lda #$00
         sta kloot_shape_1               // star 1 counter 0..23
-        sta kloot_shape_2               // star 2 counter 0..23
+        lda #KLOOT_FRAMES_ZOOM          // star 2 starts at rotation frame 0
+        sta kloot_shape_2               // (= frame 8 in 24-frame sequence)
         sta star1_orbit_phase           // orbital phase counters
         lda #192                        // star 2 starts near opposite side
         sta star2_orbit_phase
