@@ -72,7 +72,19 @@ build_part parts/coda       coda \
 build_part parts/end        end
 
 echo ">>> linking with pefchain"
-( cd "$ROOT" && "$PEFCHAIN" -v -o outline-64.d64 pefchain_script )
+# --title       16-char disk name, lowercase by demoscene convention
+# --disk-id     2-char ID; arbitrary identity beyond Spindle's default `2a`
+# --dirart      PETSCII-style box-drawing listing; see dirart.txt
+# --dir-entry   Hex index of the entry that's the actual PRG (= the row
+#               in dirart.txt holding the entry the user wants visible
+#               as "the demo file" when LISTing). We point at $06 — the
+#               first "kloten met" line.
+( cd "$ROOT" && "$PEFCHAIN" -v \
+    --title "defeest/x2026" \
+    --disk-id "kl" \
+    --dirart dirart.txt \
+    --dir-entry 6 \
+    -o outline-64.d64 pefchain_script )
 
 echo ">>> done — outline-64.d64"
 ls -la "$ROOT/outline-64.d64"
