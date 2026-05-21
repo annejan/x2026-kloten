@@ -120,39 +120,68 @@ SID goes silent, or the entire program corrupts.
 VIC bank 0 throughout (`$DD00 & 3 = 11`). All parts run in this bank
 so we never touch CIA2 `$DD00` after the initial Spindle setup.
 
-### CPU view — per-part
+### CPU view — per-part (current as of 2026-05-21)
 
 | Range          | screenfill | intro      | interlude | sinus     | greets    | coda      | end       |
 |----------------|------------|------------|-----------|-----------|-----------|-----------|-----------|
 | `$0200-$03FF`  | Spindle    | Spindle    | Spindle   | Spindle   | Spindle   | Spindle   | Spindle   |
-| `$0400-$07FF`  | screen RAM | bitmap colour info | screen + plasma | screen (DEFEEST) | screen | title screen | screen + credits |
-| `$0800-$0AFF`  | —          | code + IRQs| —         | code + tables | —      | code + col_tab | — |
-| `$0B00-$0BFF`  | —          | sprite shapes | —      | sine_tab / col_tab | — | driver overflow | — |
-| `$0C00-$0CFF`  | —          | (free)     | —         | bg_tab    | —         | —         | —         |
+| `$0400-$07FF`  | screen RAM | bitmap colour info | screen + plasma | screen (DEFEEST) | screen + chars | title screen | screen + credits |
+| `$0800-$0BFF`  | —          | code + IRQs + sprite shapes | code + tables | code + tables | —     | code + state + tier tables | — |
+| `$0C00-$0CFF`  | —          | (free)     | code+     | bg_tab    | —         | code (cont.) + ping-pong state + starfield init data | — |
+| `$0D00-$0DFF`  | —          | —          | code+     | —         | —         | code (cont.) + title text | — |
+| `$0E00-$0EFF`  | —          | —          | code (interlude) | — | —         | col_tab   | —         |
+| `$0F00-$0FFF`  | —          | —          | —         | —         | —         | sin_tab   | —         |
 | `$1000-$125D`  | —          | **resident music tables + `my_music_play` — inherited by interlude / sinus / greets / coda; end uses its own player** ||||||
 | `$1300-$1FFF`  | —          | compact logo_rows | —    | —         | —         | —         | —         |
-| `$2000-$23FF`  | —          | logo bitmap (multicolour) | — | —    | sprite font | —      | —         |
-| `$2400-$27FF`  | —          | (logo bitmap continues) | — | —     | —         | —         | —         |
-| `$2800-$2BFF`  | —          | (logo bitmap continues) | — | —     | —         | Kloot-star sprite shapes (16 frames) | — |
-| `$2C00-$3F3F`  | —          | (logo bitmap continues) | — | —     | —         | —         | end font + code |
+| `$2000-$27FF`  | —          | logo bitmap (multicolour) | — | —    | sprite font | Kloot-star TR + TL shapes (24 frames ea.) | — |
+| `$2800-$2BFF`  | —          | (logo bitmap continues) | — | —     | —         | Kloot-star TL shapes (cont.) | — |
+| `$2C00-$31FF`  | —          | (logo bitmap continues) | — | —     | —         | Kloot-star BL shapes (24 frames) | — |
+| `$3200-$37FF`  | —          | (logo bitmap continues) | — | —     | —         | Kloot-star BR shapes (24 frames) | — |
+| `$3800-$3F3F`  | —          | (logo bitmap continues) | — | —     | —         | —         | end font + code |
 | `$4000-$47FF`  | —          | rainbow palette + sine + bounce tables | — | — | — | — | — |
 | `$4C00-$53FF`  | —          | chargen-ROM copy (for scroll) | — | — | — | — | — |
 | `$5400-$5BBC`  | —          | bitmap scroller + scroll text + extra sprite shape | — | — | — | — | — |
-| `$8000-…`      | —          | —          | code      | —         | code + tables | —     | —         |
+| `$8000-$85FF`  | —          | —          | —         | —         | code + IRQ + DYCP tables | —     | —         |
+| `$8600-$88B7`  | —          | —          | —         | —         | scroll message + settle_text | — | — |
+| `$88B8-$8F37`  | —          | —          | —         | —         | sprite-font glyph data (A-Z + `$9A` blank) | — | — |
 | `$C000-$CAFF`  | code + dist_table + ripple palette + char_table | — | — | — | — | — | — |
 
-Coda reuses the same `$0800-$0AFF` pages sinus claimed earlier in the
-chain — sinus is long gone by the time coda loads, so the bytes are
-free to repurpose. Greets' sprite font at `$2000-$23FF` and coda's
-Kloot-star shapes at `$2800-$2BFF` both overlap the area intro used
-for its bitmap; again, intro is gone by then.
+EFO `'P'` claims as of today:
+
+| Part       | Page claims           |
+|------------|-----------------------|
+| screenfill | `$C0-$CA`             |
+| intro      | `$04-$5B`, `$10-$12`  |
+| interlude  | `$08-$0E`             |
+| sinus      | `$08-$0C`             |
+| greets     | `$80-$8F`, `$20-$27`  |
+| coda       | `$08-$0F`, `$20-$37`  |
+| end        | `$30-$44`             |
+
+Coda reuses the same `$0800` pages sinus claimed earlier in the chain
+— sinus is long gone by the time coda loads, so the bytes are free
+to repurpose. Greets' sprite font at `$2000-$27FF` and coda's Kloot
+sprite shapes at `$2000-$37FF` both overlap the area intro used for
+its bitmap; intro is also gone by then. Coda also claims `$30-$37`
+which overlaps with end's `$30-$44` — end runs strictly after coda,
+so pefchain defers ~2 KB of end's payload to a post-coda load chunk
+(visible as ~0.5 s gap at the coda → end transition).
 
 The Kloot-star shapes don't live in coda's `.prg` (which would force
-a contiguous KA PRG spanning the `$0C00-$27FF` zero-padding gap and
-collide with greets' pages during background loading). Instead the
-binary `parts/coda/kloot_star.bin` is passed to `mkpef` as a second
-data file at address `$2800` (see `build.sh`). The 1 KB chunk becomes
-its own pefchain payload entry alongside coda's main `.efo`.
+a contiguous KA PRG spanning the `$0E00-$1FFF` zero-padding gap and
+collide with intro's inherited music tables at `$1000-$125D`).
+Instead `parts/coda/kloot_star_{tr,tl,bl,br}.bin` are each passed to
+`mkpef` as separate data files (`,2000`, `,2600`, `,2c00`, `,3200`)
+in `build.sh`. Each 1.5 KB chunk becomes its own pefchain payload
+entry alongside coda's main `.efo`.
+
+**Stage F note** (2026-05-21): coda's `.align 256` directives on
+`col_tab` and `sin_tab` are load-bearing — `sin_tab` MUST end
+before `$1000` or it stomps the inherited music tables. The size
+diet in PR #33 (sprite-pointer loop refactor) was specifically to
+fit Stage F's ping-pong logic back inside the 8-page claim. If you
+grow coda's code, watch `parts/coda/coda.sym` for `sin_tab=$1000+`
+— that's the symptom.
 
 ### Zero-page
 

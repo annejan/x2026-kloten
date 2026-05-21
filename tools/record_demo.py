@@ -40,6 +40,23 @@ DEFAULT_CRF = 20
 DEFAULT_AUDIO_BITRATE = "192k"
 DEFAULT_OUTPUT = "/tmp/outline64_demo.mp4"
 
+# Approximate part boundaries in seconds from autostart.
+# These follow the actual pefchain transition timing as of 2026-05-21.
+# Refresh when part durations change (greets / interlude in particular
+# have been moving). Tolerance ~1 s; the per-part recording uses a
+# small lead-in margin so you don't clip the opening transition.
+PART_OFFSETS = {
+    # name       (start_s, end_s)
+    "screenfill": (0,   5),
+    "intro":      (5,   110),
+    "interlude":  (110, 118),   # post-8ed0777 timing (~7.7 s)
+    "sinus":      (118, 128),
+    "greets":     (128, 207),   # post-#32 timing (~77 s)
+    "coda":       (207, 218),
+    "end":        (218, 280),   # loops forever; record 1+ full music cycle
+}
+PART_LEAD_S = 1.0   # extra seconds added before/after to avoid clipping
+
 
 def mcp_call(url: str, name: str, **args) -> dict:
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -105,7 +122,23 @@ def main() -> int:
     p.add_argument("--no-reset", action="store_true",
                    help="skip the VICE reset+autostart (record whatever's "
                         "already running)")
+    p.add_argument("--part", choices=sorted(PART_OFFSETS),
+                   help="record only one named part. Resets, then waits "
+                        "in real-time until just before the part starts, "
+                        "then records for the part's duration plus a "
+                        f"{PART_LEAD_S:.0f}s lead-in / tail-out. Overrides "
+                        "--duration. Boundaries approximate — see "
+                        "PART_OFFSETS in this script.")
     args = p.parse_args()
+
+    # --part: compute start delay + override duration
+    part_skip = 0.0
+    if args.part:
+        start, end = PART_OFFSETS[args.part]
+        part_skip = max(0, start - PART_LEAD_S)
+        args.duration = (end - start) + 2 * PART_LEAD_S
+        print(f"--part {args.part}: skip {part_skip:.0f}s, record "
+              f"{args.duration}s", file=sys.stderr)
 
     x, y, w, h = find_window(args.window)
     audio_src = find_speaker_monitor()
@@ -119,6 +152,11 @@ def main() -> int:
         mcp_call(args.mcp_url, "vice.machine.reset", mode="hard")
         time.sleep(0.3)
         mcp_call(args.mcp_url, "vice.autostart", path=args.d64)
+
+    if part_skip > 0:
+        print(f"sleeping {part_skip:.0f}s for --part {args.part} skip...",
+              file=sys.stderr)
+        time.sleep(part_skip)
 
     ffmpeg_cmd = [
         "ffmpeg", "-y",

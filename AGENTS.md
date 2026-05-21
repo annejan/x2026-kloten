@@ -300,6 +300,67 @@ Use `'I', $10, $12` (etc.) to tell pefchain: "these pages contain data
 from a *previous* part that I need to preserve." Without it, pefchain
 will load freely over your inherited region.
 
+### `.align 256` + 'P'-claim collision (Stage F coda incident, 2026-05-21)
+
+`.align 256` is great for performance — `lda table,y` never crosses a
+page boundary, saving 1 cycle per indexed read. But the alignment
+directive **doesn't know about your EFO `'P'` claim**. It just bumps
+PC to the next 256-byte boundary regardless.
+
+Concrete symptom from coda: `'P', $08, $0F` claimed 8 pages. Code +
+state grew by ~20 bytes past `$0DFF`. The `.align 256` before
+`col_tab` jumped to `$0F00`; `.align 256` before `sin_tab` then
+jumped to `$1000`, dropping `sin_tab` into chargen-ROM page `$10` —
+which coda *inherits* from intro's music tables (`'I', $10, $12`).
+Build output: `pefchain: Increase MAXEFFECTS!` plus repeated
+`'(blank)' and 'coda' share pages 10` warnings as pefchain
+desperately inserted filler trying to resolve the conflict.
+
+**When you `.align 256` data inside a 'P' claim, check that the
+table can't overflow past your claim end.** Either size your code to
+leave headroom, or place the table explicitly via `* = $XX00` so it
+errors at assembly time when there's not enough room rather than
+silently spilling into the next page.
+
+---
+
+## DYCP / sprite-font gotchas
+
+### Always fill EVERY pointer slot referenced by the lookup table
+
+If you use a `ptr_lookup` table to map char codes → sprite-shape
+pointer values (greets pattern), make sure **every distinct pointer
+value in that table corresponds to actual emitted glyph data**.
+Spaces, punctuation, digits — anything you map to a "blank" slot —
+needs an explicit `.fill 64, 0` (or whatever blank-tile content you
+want) at that pointer's address.
+
+Concrete symptom from greets: `ptr_lookup` mapped every char outside
+A-Z to slot `$9A` (= `font_data + 26*64`). `font_data` only emitted
+26 A-Z glyphs and no padding, so slot `$9A` read whatever RAM
+happened to sit there at boot — random bytes from the loader, the
+previous part, whatever. The "blank" sprite rendered as scrambled
+pixels, and any message containing spaces / `.` / digits read as
+"letters popping in" (= readable letters interleaved with garbage).
+Fix was one line: `.fill 64, 0` after the A-Z loop.
+
+### Absolute-Y addressing reach is 256 bytes
+
+`lda message,y` loads from `message + Y` where `Y` is 8-bit, so the
+reachable window is exactly 256 bytes. If your message / lookup
+table is larger, `scroll_pos` capped at ~248 silently — the scroller
+appeared to "advance" but `update_sprite_ptrs` was reading the same
+8-char window forever past offset 255.
+
+Solutions, in order of pain:
+- **Self-modify the LDA's address operand**: compute
+  `message + scroll_pos` (16-bit add via carry), patch the operand
+  bytes once per `update_sprite_ptrs` call, run the inner loop with
+  `Y = 0..N` against the patched instruction. Pattern in
+  `parts/greets/greets.asm:update_sprite_ptrs`.
+- ZP indirect: `lda (ptr),y` — requires 2 ZP bytes per pointer.
+- Multiple 256-byte chunks with selector code — usually worse.
+
 ---
 
 ## C64 / VIC gotchas (recurring)
