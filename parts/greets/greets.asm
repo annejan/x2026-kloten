@@ -903,10 +903,20 @@ font_data:
 //   $D800-$DBE7  per-cell c3 colour (copied from koala_color at setup).
 //   $D021        global background colour c0 (loaded from koala_bg).
 //
-// To swap the backdrop: edit parts/greets/backdrop.png and re-run
-// tools/png_to_koala.py to regenerate the .kla, then point the path
-// below at the new file. Defaults to ../intro/defeest.kla so an
-// initial build works without you having to convert anything first.
+// To swap the backdrop: just edit parts/greets/backdrop.kla directly
+// with a C64-native paint tool — MultiPaint is the recommended one:
+//   http://multipaint.kameli.net/
+// It shows the per-cell colour-budget constraints live as you paint,
+// so you can't accidentally exceed MCM's 4-colours-per-cell limit.
+// Save → overwrites backdrop.kla → ./build.sh and you're done.
+//
+// If you'd rather work in a general PNG editor, the round-trip is:
+//   1. edit parts/greets/backdrop.png (320×200 indexed PNG)
+//   2. python3 tools/png_to_koala.py parts/greets/backdrop.png \
+//          parts/greets/backdrop.kla
+//   3. ./build.sh
+// See tools/make_greets_backdrop.py for the placeholder generator
+// that produced the initial peephole image.
 //==================================================================
 .var backdrop = LoadBinary("backdrop.kla", BF_KOALA)
 
