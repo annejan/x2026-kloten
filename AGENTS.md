@@ -40,7 +40,7 @@ Seven parts loaded by Spindle's pefchain framework:
 |---|-----|------|----------------|
 | 1 | `parts/screenfill/`  | Loading screen — radial DEFEEST bloom + water ripple + fade-to-black | `$06 = $00` (HOLDCNT drained) |
 | 2 | `parts/intro/`       | Logo bounce, scroller, rasterbars, 8 sprites, 3-voice SID + K-S-K-S kit | `$F6 = $F0` (`zp_outro` hits `T_OUTRO_DONE`) |
-| 3 | `parts/interlude/`   | Plasma + bars-on-buildup, typewriter "FOR YEARS…" + sprite-letter "SPARKED" drop with white-border flash, LP V1+V2 filter sweep | `$F6 = $0A` (~10 beats ≈ 7.7 s) |
+| 3 | `parts/interlude/`   | Plasma + bars-on-buildup, typewriter "FOR YEARS…" + sprite-letter "SPARKED" drop with white-border flash, LP V1+V2 filter sweep | `$F6 = $10` (~16 beats ≈ 7.7 s) |
 | 4 | `parts/sinus/`       | Comedown: sine-wobble DEFEEST + colour cycling + LP filter close on V1+V2; drums silent | `$F6 = $30` (frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: 16-bit DYCP sprite-font scroller (~77 s, lunchbox greets), fade-then-settle landing on "KLOOT", drums returning, V2 LP "wah" | `$F6 = $A0` (160 beats ≈ 77 s) |
 | 6 | `parts/coda/`        | "KLOTEN MET DE BROODTROMMEL / A DIGITAL LUNCH EXPERIENCE", twin brown+cyan Kloot stars (Stage F ping-pong zoom breath) orbiting on sine paths, alternating priority + in/out of title plane, 32-star 4-tier parallax PETSCII starfield, sparse 60-BPM kick on V3 | `$F6 = $30` |

@@ -316,7 +316,7 @@ at `setup` / `interrupt` / `fadeout` routines plus memory-page tags.
 ```
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
-parts/interlude/interlude.pef       f6 = 0a
+parts/interlude/interlude.pef       f6 = 10
 parts/sinus/sinus.pef               f6 = 30
 parts/greets/greets.pef             f6 = a0
 parts/coda/coda.pef                 f6 = 30
@@ -334,9 +334,8 @@ Each condition tells pefchain when to advance:
 
 - `06 = 00` — wait for zero-page `$06` (= screenfill's HOLDCNT) to hit 0.
 - `f6 = f0` — wait for `$f6` (= intro's `zp_outro`) to reach `T_OUTRO_DONE`.
-- `f6 = 0a` — wait for `$f6` (= interlude's beat counter) to reach 10
-  (~7.7 s after the interlude breathing-room rework). Reset to 0 by
-  interlude's setup.
+- `f6 = 10` — wait for `$f6` (= interlude's beat counter) to reach 16
+  (~7.7 s, `TRANSITION_BEAT` in code). Reset to 0 by interlude's setup.
 - `f6 = 30` — wait for `$f6` (= sinus' transition byte) to be set to
   $30 by sinus once `$fc` (the actual frame counter, off-music-clobber)
   hits 250. Sinus's setup resets `$f6` to 0.

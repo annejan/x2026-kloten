@@ -21,7 +21,7 @@ screenfill ──5.6s──→ intro ──73s──→ interlude ──7.7s─�
 |------|----------|------------|---------------|---------|
 | screenfill | 5.6 s | 5.6 s | `$06` (HOLDCNT) | `06 = 00` |
 | intro | 73.3 s | 78.9 s | `$F6` (zp_outro) | `F6 = F0` |
-| interlude | 7.7 s | 86.6 s | `$F6` (zp_beat_count) | `F6 = 0a` |
+| interlude | 7.7 s | 86.6 s | `$F6` (zp_beat_count) | `F6 = 10` |
 | sinus | 5.0 s | 91.6 s | `$F6` (zp_timer) | `F6 = 30` |
 | greets | 76.8 s | 168.4 s | `$F6` (zp_beat_count) | `F6 = a0` |
 | coda | 10.0 s | 178.4 s | `$F6` (zp_timer) | `F6 = 30` |
