@@ -110,7 +110,7 @@ Per-frame: plasma (half rows updated), music, beat phase, raster bars, border fl
 | Frame | Time | Event |
 |-------|------|-------|
 | 0 | 0 s | Setup: text mode, chargen ROM at $1000, screen $0400, border black. |
-| 0 | 0 s | Screen filled with repeating "DEFEEST" (1024 cells via `defeest_codes` table). Colour RAM = light cyan ($03). |
+| 0 | 0 s | Screen filled with repeating "DEFEEST" (40-char row pattern × 25 rows). Colour RAM per-row stripe palette for banded wobble. |
 | 0→249 | 0→5.0 s | Per-scanline `$D016` fine scroll wobble (sine table 0–7 px, OR'd with `$08` to preserve CSEL). Border + bg colour cycling per scanline. |
 | 0→199 | 0→4.0 s | LP filter sweep: cutoff $70→$08 over 200 frames. Re-asserted after each `my_music_play`. |
 | 200→249 | 4.0→5.0 s | Volume fade: SID vol $0F→$00 over last 50 frames. Border/bg also snap to black. |

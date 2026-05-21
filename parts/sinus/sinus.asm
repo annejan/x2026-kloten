@@ -1,13 +1,13 @@
 //==================================================================
-// outline-64 — Sinus part: checker-field wobble + colour cycle.
+// outline-64 — Sinus part: the breath.
 //
-// Dual-axis sine wobble (horizontal $D016 + vertical $D011) on a
-// screen of alternating S-space characters. Colour cycling on
-// border + bg sweeps through blues/cyan. LP filter closes + volume
-// fades toward the end.
+// A hypnotic field of repeating "DEFEEST" text gently wobbling on a
+// dual-axis sine, colour cycling through breadbin blues, LP filter
+// closing on bass + lead until they are a muffled warm hum. Drums
+// stop. Volume fades. The eye of the storm before greets.
 //
 // After ~5 seconds the visual fades out and $f6 = $30 triggers the
-// pefchain transition to end.
+// pefchain transition to greets.
 //
 // Memory:
 //   $0800-$0CFF  code + tables
@@ -67,23 +67,36 @@ setup:
         lda #$00
         sta $d015
 
-        // Fill screen RAM with spaces ($20) — a clean canvas for the
-        // wobble + colour cycling to animate.
-        ldx #0
-        lda #$20
-!f:     sta SCREEN,x
-        sta SCREEN + $100,x
-        sta SCREEN + $200,x
-        sta SCREEN + $300,x
-        inx
-        bne !f-
+        // Fill screen with repeating "DEFEEST" — a hypnotic text field
+        // that echoes the screenfill bloom. Each row is the same 40-char
+        // pattern of D/E/F/E/E/S/T, creating a woven grid for the
+        // wobble + colour banding to sweep through.
+        lda #<SCREEN
+        sta $fb                     // ptr lo (zp_line, safe in setup)
+        lda #>SCREEN
+        sta $fc                     // ptr hi (zp_frame, safe in setup)
+        ldx #25                     // 25 rows
+!row:
+        ldy #0
+!cell:
+        lda defeest_row,y
+        sta ($fb),y
+        iny
+        cpy #40
+        bne !cell-
+        clc
+        lda $fb
+        adc #40
+        sta $fb
+        bcc !+
+        inc $fc
+!:
+        dex
+        bne !row-
 
         // Colour RAM — per-row stripe palette. Each row gets a single
-        // colour from row_palette; text on that row inherits its row's
-        // colour, giving a banded blue/cyan field for the wobble to
-        // sweep through. zp $f7/$f8 are overloaded as a 16-bit pointer
-        // here (only used in setup; the IRQ reuses $f7 as zp_tmp once
-        // it starts).
+        // colour from row_palette; text on that row picks up its row's
+        // colour, giving banded blue/cyan bands for the wobble sweep.
         ldx #0
 !srow:
         lda col_row_lo,x
@@ -98,77 +111,6 @@ setup:
         inx
         cpx #25
         bne !srow-
-
-        // Narrative text — sinus is the demo's story moment. Ten
-        // fragments scattered across the screen, lowercase chargen so
-        // they read as thinking/remembering rather than announcing.
-        // Tells the whole arc: gap → catalyst → partnership →
-        // discovery (sid / vic / open borders) → resolution → cast
-        // + dedication. Wobble + colour stripes let it drift in and
-        // out as the bg cycles through its palette.
-        //
-        // Row 2 col 5: "years went by"
-        ldx #12
-!t1:    lda text_years,x
-        sta $0455,x
-        dex
-        bpl !t1-
-        // Row 4 col 5: "no time for breadbin code"
-        ldx #24
-!t2:    lda text_no_time,x
-        sta $04A5,x
-        dex
-        bpl !t2-
-        // Row 7 col 10: "kloot forked process" — the catalyst, echoes
-        // the interlude plasma's "KLOOT FORKED PROCESS" tease.
-        ldx #19
-!t3:    lda text_kloot_forked,x
-        sta $0522,x
-        dex
-        bpl !t3-
-        // Row 10 col 11: "patient pair coder"
-        ldx #17
-!t4:    lda text_pair,x
-        sta $059B,x
-        dex
-        bpl !t4-
-        // Row 13 col 5: "sid voices"  — the discovery beat: anus
-        // re-learns demo coding alongside kloot, one chip at a time
-        ldx #9
-!t5:    lda text_sid,x
-        sta $060D,x
-        dex
-        bpl !t5-
-        // Row 14 col 5: "vic rasters"
-        ldx #10
-!t6:    lda text_vic,x
-        sta $0635,x
-        dex
-        bpl !t6-
-        // Row 15 col 5: "open borders"
-        ldx #11
-!t7:    lda text_borders,x
-        sta $065D,x
-        dex
-        bpl !t7-
-        // Row 18 col 11: "curiosity returned" — the resolution
-        ldx #17
-!t8:    lda text_curiosity,x
-        sta $06DB,x
-        dex
-        bpl !t8-
-        // Row 21 col 5: cast
-        ldx #27
-!t9:    lda text_cast,x
-        sta $074D,x
-        dex
-        bpl !t9-
-        // Row 23 col 11: dedication
-        ldx #16
-!t10:   lda text_credits,x
-        sta $07A3,x
-        dex
-        bpl !t10-
 
         // Init SID — LP filter on, V1 (bass) + V2 (lead) routed through it.
         // $D418 bit 4 = LP mode; volume in low nibble.
@@ -187,8 +129,8 @@ setup:
         sta SID_FILT_CUT_LO
 
         // Text mode, ROM chargen at $1800 (lowercase set), no MCM.
-        // Lowercase chargen makes the narrative fragments read as
-        // thinking-out-loud rather than headline announcements.
+        // Lowercase keeps the DEFEEST text field soft — screen filler
+        // rather than headlines.
         // YSCROLL=0 initially — vertical wobble in IRQ sets it per frame.
         lda #$18                        // DEN=1, RSEL=1, YSCROLL=0
         sta VIC_CTRL1
@@ -347,40 +289,16 @@ bg_tab:
 
 
 //==================================================================
-// Narrative text fragments — screen codes for lowercase chargen at
-// $1800 (a=$01, b=$02, ..., z=$1A; space=$20; digits=$30..$39).
-//
-// The story: years passed without breadbin code; then kloot forked
-// process; result is this demo, dedicated to X2026.
+// DEFEEST row pattern — "DEFEEST" repeating across 40 columns.
+// Precomputed at assembly time; 40 bytes = one screen row.
 //==================================================================
-text_years:        // "years went by" — 13 chars
-        .byte $19, $05, $01, $12, $13, $20, $17, $05, $0E, $14, $20, $02, $19
-text_no_time:      // "no time for breadbin code" — 25 chars
-        .byte $0E, $0F, $20, $14, $09, $0D, $05, $20, $06, $0F, $12, $20
-        .byte $02, $12, $05, $01, $04, $02, $09, $0E, $20, $03, $0F, $04, $05
-text_kloot_forked: // "kloot forked process" — 20 chars (catalyst,
-                   // echoes interlude bass-return)
-        .byte $0B, $0C, $0F, $0F, $14, $20, $06, $0F, $12, $0B
-        .byte $05, $04, $20, $10, $12, $0F, $03, $05, $13, $13
-text_pair:         // "patient pair coder" — 18 chars
-        .byte $10, $01, $14, $09, $05, $0E, $14, $20, $10, $01, $09, $12
-        .byte $20, $03, $0F, $04, $05, $12
-text_sid:          // "sid voices" — 10 chars (discovery beat 1)
-        .byte $13, $09, $04, $20, $16, $0F, $09, $03, $05, $13
-text_vic:          // "vic rasters" — 11 chars (discovery beat 2)
-        .byte $16, $09, $03, $20, $12, $01, $13, $14, $05, $12, $13
-text_borders:      // "open borders" — 12 chars (discovery beat 3)
-        .byte $0F, $10, $05, $0E, $20, $02, $0F, $12, $04, $05, $12, $13
-text_curiosity:    // "curiosity returned" — 18 chars (resolution)
-        .byte $03, $15, $12, $09, $0F, $13, $09, $14, $19
-        .byte $20, $12, $05, $14, $15, $12, $0E, $05, $04
-text_cast:         // "anus  kloot  ranzbak  cinder" — 28 chars
-        .byte $01, $0E, $15, $13, $20, $20, $0B, $0C, $0F, $0F, $14, $20, $20
-        .byte $12, $01, $0E, $1A, $02, $01, $0B, $20, $20, $03, $09, $0E, $04, $05, $12
-text_credits:      // "defeest for X2026" — 17 chars (capital X = $58
-                   // in lowercase chargen)
-        .byte $04, $05, $06, $05, $05, $13, $14, $20, $06, $0F, $12, $20
-        .byte $58, $32, $30, $32, $36
+defeest_row:
+        .byte $04, $05, $06, $05, $05, $13, $14   // D E F E E S T
+        .byte $04, $05, $06, $05, $05, $13, $14
+        .byte $04, $05, $06, $05, $05, $13, $14
+        .byte $04, $05, $06, $05, $05, $13, $14
+        .byte $04, $05, $06, $05, $05, $13, $14
+        .byte $04, $05, $06, $05, $05            // D E F E E (40th col)
 
 
 //==================================================================

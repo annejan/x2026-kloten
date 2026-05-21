@@ -549,9 +549,9 @@ stocktake + recommended focus plan for the X2026 runup.
 - **Real-hardware verification — never done.** Two weeks out from
   X2026. VICE is generous; real PAL C64 can break on IRQ timing,
   `$D012` race conditions, DMA stretching. Highest-priority item.
-- **Sinus** — *"weird"* per user feedback (2026-05-20), never
+- ~~**Sinus** — *"weird"* per user feedback (2026-05-20), never
   diagnosed in detail. Filter routing was fixed but the visual /
-  audio character still doesn't land. Most overdue named item.
+  audio character still doesn't land. Most overdue named item.~~
 - **End-credits clean↔dark slow-sine modulation** — documented as
   future polish in [`docs/sound-arc.md`](./docs/sound-arc.md) under
   "End-credits darkening". Sketch implementation ready; not built.
@@ -585,6 +585,9 @@ stocktake + recommended focus plan for the X2026 runup.
   blank-glyph trap, 8-bit `,Y` reach limit; `tools/where-am-i.sh`;
   `tools/record_demo.py --part`.
 - **`docs/two-weeks-out.md`** (PR #36) — stocktake + focus plan.
+- **Sinus rework as the breath** (commit 9d9f851) — story text fragments
+  replaced with hypnotic repeating DEFEEST field; woven grid + colour
+  banding; net −82 lines.
 
 See [`docs/timing.md`](./docs/timing.md) for the current frame-by-frame
 event timeline.
