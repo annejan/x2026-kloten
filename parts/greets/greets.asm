@@ -220,7 +220,7 @@ interrupt:
         // From FADE_BEAT_START up to SETTLE_BEAT, ramp `zp_damp_shift`
         // from 0 → 5 in steps of 1 every 4 beats. The DYCP/DXCP code
         // below applies that many arithmetic-shift-rights to each
-        // sine sample, so the wobble amplitude shrinks 3 → 1 → 0 px.
+        // sine sample, so the wobble amplitude shrinks 2 → 1 → 0 px.
         // The scroll tick reads its delay from `SCROLL_DELAY_TABLE`
         // indexed by the same shift, so the scroller also slows
         // progressively. By SETTLE_BEAT the world is already standing
@@ -329,7 +329,7 @@ interrupt:
         clc
         adc zp_wobble_pos
         tay
-        lda sine_table,y           // signed -3..+3
+        lda sine_table,y           // signed -2..+2
         // Sign-preserving arithmetic shift right, zp_damp_shift times.
         // shift 0 = full amplitude; shift 5 = effectively 0.
         ldy zp_damp_shift
@@ -356,7 +356,7 @@ interrupt:
         bpl !dycp-
 
         // ----- DXCP — per-sprite X bob, 90° out of phase with Y -----
-        // X = sprite_x_table[N] + sine_table_x[phase + 64]   (amplitude ±2)
+        // X = sprite_x_table[N] + sine_table_x[phase + 64]   (amplitude ±1)
         // write to $D000 + N*2 (the X register of sprite N).
         ldx #7
 !dxcp:
@@ -371,7 +371,7 @@ interrupt:
         clc
         adc #64                    // +64 = 90° phase shift vs DYCP
         tay
-        lda sine_table_x,y         // signed -2..+2
+        lda sine_table_x,y         // signed -1..+1
         // Same damp ramp as DYCP — ASR sign-preserving.
         ldy zp_damp_shift
         beq !x_no_damp+
@@ -597,16 +597,21 @@ colour_cycle:
 .byte $09, $0a, $0c, $0e, $01, $01, $01, $07
 
 sine_table:
-// Amplitude 3 for visible wave (±3 px). X wobble uses 90° phase shift
-// (offset +64) for a circular bob combined with Y.
+// Amplitude 2 for visible-but-readable wave (±2 px). Was ±3 px which
+// made the text noticeably swim during the main scroll — letters
+// were never standing still long enough for the eye to lock onto a
+// word. ±2 keeps the demoscene "DYCP is alive" feel without
+// sabotaging readability.
 .for (var i = 0; i < 256; i++) {
-        .byte floor(3 * sin(i * 2 * PI / 256) + 0.5)
+        .byte floor(2 * sin(i * 2 * PI / 256) + 0.5)
 }
 
 sine_table_x:
-// Amplitude 2 for horizontal bob (±2 px), used with 90° phase offset.
+// Amplitude 1 for horizontal bob (±1 px), used with 90° phase offset.
+// Was ±2 px. Combined with the Y change above, the per-sprite bobble
+// is roughly half as wide as it used to be — much easier to read.
 .for (var i = 0; i < 256; i++) {
-        .byte floor(2 * sin(i * 2 * PI / 256) + 0.5)
+        .byte floor(1 * sin(i * 2 * PI / 256) + 0.5)
 }
 
 
