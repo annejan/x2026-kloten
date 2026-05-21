@@ -103,10 +103,30 @@
 // approach had (each quadrant's star centre lives at a different
 // corner, so stacking them looks like a 4-cornered cross).
 //
-// Single counter `kloot_shape` (0..23) walks the sequence. After
-// frame 23 it wraps to frame 8 — zoom plays once, rotation loops
-// forever from there. 12-fold star symmetry + continuous rotation
-// step across both phases makes the loop seamless.
+// Stage F — PING-PONG ("breath"). Stage E played the 8 zoom frames
+// once and then wrapped to the rotation segment forever, so the
+// zoom-in only happened at the very start of the part and the cyan
+// star (which started at frame 8) never showed the zoom at all.
+//
+// Now each star's `kloot_shape_N` counter walks 0..23..0 in a true
+// ping-pong, using a per-star direction byte (`kloot_dir_N`). The
+// breath cycle is:
+//
+//   frames  0 → 7    zoom in   (small dot → full burst)
+//   frames  7 → 23   rotate    (full size, lobes turning)
+//   frames 23 → 7    rotate    (reverse direction)
+//   frames  7 → 0    zoom out  (full burst → small dot)
+//   ...repeats forever
+//
+// Star 1 (brown) starts at shape=0 dir=forward → opens with the
+// zoom-in. Star 2 (cyan) starts at shape=KLOOT_FRAMES_TOTAL-1
+// dir=backward → opens with a zoom-OUT, so the two stars naturally
+// run out of phase: one is shrinking while the other is growing.
+//
+// Reversing the rotation segment is visually invisible because the
+// star has 12-fold symmetry and the rotation step is continuous —
+// playing those 16 frames forward or backward looks like rotation
+// either way.
 //
 // Pointer values (sprite block = byte address / 64). Stride 24 per
 // quadrant = $18 → each quadrant's 24 pointers span its 1.5 KB:
@@ -119,7 +139,9 @@
 .const KLOOT_SHAPE_BASE_BL = $b0      // $2C00 / 64 — spr 2 (BL)
 .const KLOOT_SHAPE_BASE_BR = $c8      // $3200 / 64 — spr 3 (BR)
 .const KLOOT_FRAMES_TOTAL  = 24       // 8 zoom + 16 rotation
-.const KLOOT_FRAMES_ZOOM   = 8        // zoom plays once, then wrap-to-8
+.const KLOOT_FRAMES_ZOOM   = 8        // (no longer used post Stage F —
+                                      //  see ping-pong comment above)
+.const KLOOT_FRAME_LAST    = KLOOT_FRAMES_TOTAL - 1   // 23 — ping-pong top
 
 // Sprite position registers ($D000/$D001 etc.) use VIC's native raster
 // coordinate system, NOT 0-indexed display-pixel rows/cols:
@@ -333,10 +355,20 @@ setup:
         lda #KLOOT_SHAPE_BASE_BR + 8
         sta $07ff                       // spr 7 = BR
 
+        // Star 1: starts at frame 0, ping-pong direction = forward →
+        // the part opens with star 1 zooming IN from a small dot.
         lda #$00
-        sta kloot_shape_1               // star 1 counter 0..23
-        lda #KLOOT_FRAMES_ZOOM          // star 2 starts at rotation frame 0
-        sta kloot_shape_2               // (= frame 8 in 24-frame sequence)
+        sta kloot_shape_1
+        sta kloot_dir_1                 // 0 = forward, $ff = backward
+        // Star 2: starts at the LAST frame (23) with direction =
+        // backward → opens with a zoom-OUT, so the two stars are
+        // immediately out of phase. By the time star 1 finishes its
+        // first zoom-in and starts rotating, star 2 has zoomed out
+        // and is heading back the other way.
+        lda #KLOOT_FRAME_LAST
+        sta kloot_shape_2
+        lda #$ff
+        sta kloot_dir_2
         lda #SHAPE_DIV_1
         sta shape_div1                  // init divider so first tick fires
         lda #SHAPE_DIV_2
@@ -528,104 +560,61 @@ interrupt:
 !half_rate:
         inc zp_frame
         // Advance shape counters via independent dividers so each star
-        // rotates at a fundamentally different speed (/3 vs /2).
+        // rotates at a fundamentally different speed (/3 vs /2). Each
+        // counter ping-pongs 0 → 23 → 0 (see Stage F comment up top);
+        // the actual step lives in `kloot_advance` called with X=star
+        // index (0 or 1). Subroutine call costs cycles but saves
+        // ~30 B vs duplicating the ping-pong logic per star, which
+        // was bumping the .align 256'd col_tab/sin_tab into the
+        // inherited intro music page $10.
         dec shape_div1
         bne !skip1+
-        inc kloot_shape_1
-        lda kloot_shape_1
-        cmp #KLOOT_FRAMES_TOTAL
-        bne !no_wrap1+
-        lda #KLOOT_FRAMES_ZOOM
-        sta kloot_shape_1
-!no_wrap1:
+        ldx #0
+        jsr kloot_advance
         lda #SHAPE_DIV_1
         sta shape_div1
 !skip1:
         dec shape_div2
         bne !skip2+
-        inc kloot_shape_2
-        lda kloot_shape_2
-        cmp #KLOOT_FRAMES_TOTAL
-        bne !no_wrap2+
-        lda #KLOOT_FRAMES_ZOOM
-        sta kloot_shape_2
-!no_wrap2:
+        ldx #1
+        jsr kloot_advance
         lda #SHAPE_DIV_2
         sta shape_div2
 !skip2:
         // ---- Write sprite pointers — conditional on swap_flag ----
-        // swap_flag=0: star 1 (brown) → sprites 0-3, star 2 (cyan) → 4-7
-        // swap_flag=1: star 2 (cyan)  → sprites 0-3, star 1 (brown) → 4-7
+        // swap_flag=0: star 1 → sprites 0-3, star 2 → sprites 4-7
+        // swap_flag=1: star 2 → sprites 0-3, star 1 → sprites 4-7
+        // Each pointer = shape_counter + sprite_bases[quadrant].
+        // Looping over the 4 quadrants saves ~100 B vs the previous
+        // unrolled blocks — and that ~100 B was exactly what pushed
+        // the .align 256'd col_tab into chargen-ROM page $10 when
+        // Stage F's ping-pong code joined in.
         lda swap_flag
         beq !normal_ptr+
-        // Swapped: spr 0-3 = star2, spr 4-7 = star1
+        ldy #3
+!sp_sw: clc
         lda kloot_shape_2
+        adc sprite_bases,y
+        sta $07f8,y                     // spr 0..3 = star 2
         clc
-        adc #KLOOT_SHAPE_BASE_TR
-        sta $07f8
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_TL
-        sta $07f9
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_BL
-        sta $07fa
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_BR
-        sta $07fb
         lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_TR
-        sta $07fc
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_TL
-        sta $07fd
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_BL
-        sta $07fe
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_BR
-        sta $07ff
+        adc sprite_bases,y
+        sta $07fc,y                     // spr 4..7 = star 1
+        dey
+        bpl !sp_sw-
         jmp !done_ptr+
 !normal_ptr:
-        // Normal order: star1 → sprites 0-3, star2 → sprites 4-7
+        ldy #3
+!sp_no: clc
         lda kloot_shape_1
+        adc sprite_bases,y
+        sta $07f8,y                     // spr 0..3 = star 1
         clc
-        adc #KLOOT_SHAPE_BASE_TR
-        sta $07f8
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_TL
-        sta $07f9
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_BL
-        sta $07fa
-        lda kloot_shape_1
-        clc
-        adc #KLOOT_SHAPE_BASE_BR
-        sta $07fb
         lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_TR
-        sta $07fc
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_TL
-        sta $07fd
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_BL
-        sta $07fe
-        lda kloot_shape_2
-        clc
-        adc #KLOOT_SHAPE_BASE_BR
-        sta $07ff
+        adc sprite_bases,y
+        sta $07fc,y                     // spr 4..7 = star 2
+        dey
+        bpl !sp_no-
 !done_ptr:
 !skip_inc:
 
@@ -894,17 +883,61 @@ kick_freq:
         .byte 0
 
 
-// Kloot star shape counters (0..23) — independent per star so lobe
-// angles drift apart. Lives in code RAM, not zp.
-kloot_shape_1:
-        .byte 0
-kloot_shape_2:
-        .byte 0
+// Kloot star shape state — 2-byte arrays so kloot_advance can index
+// either star via X = 0 or 1. Separate `_1` / `_2` labels alias the
+// individual bytes so the IRQ-body sprite-pointer code reads them
+// directly without reloading X each time.
+kloot_shape:
+kloot_shape_1:  .byte 0
+kloot_shape_2:  .byte 0
+
+// Ping-pong direction per star: 0 = forward (counter is being
+// incremented), $FF = backward (decremented). Flipped at the
+// boundaries 0 and KLOOT_FRAME_LAST. See Stage F comment block.
+kloot_dir:
+kloot_dir_1:    .byte 0
+kloot_dir_2:    .byte $ff
 
 // Shape advance dividers — decremented each half-rate tick; when 0
 // the corresponding shape counter advances and the divider reloads.
 shape_div1:     .byte 0
 shape_div2:     .byte 0
+
+// Sprite-pointer base per quadrant (Y indexes TR/TL/BL/BR in the
+// order $07F8..$07FB and $07FC..$07FF). Pointer = shape + base.
+sprite_bases:
+        .byte KLOOT_SHAPE_BASE_TR       // Y=0 → spr 0 / spr 4 (TR)
+        .byte KLOOT_SHAPE_BASE_TL       // Y=1 → spr 1 / spr 5 (TL)
+        .byte KLOOT_SHAPE_BASE_BL       // Y=2 → spr 2 / spr 6 (BL)
+        .byte KLOOT_SHAPE_BASE_BR       // Y=3 → spr 3 / spr 7 (BR)
+
+
+//==================================================================
+// kloot_advance — single step of the ping-pong shape counter for
+// star X (0 or 1). Forward: inc; clamp at KLOOT_FRAME_LAST and
+// reverse. Backward: dec; clamp at 0 and reverse.
+//==================================================================
+kloot_advance:
+        lda kloot_dir,x
+        bne !back+
+        // forward step
+        inc kloot_shape,x
+        lda kloot_shape,x
+        cmp #KLOOT_FRAMES_TOTAL
+        bcc !done+
+        dec kloot_shape,x               // clamp 24 → 23
+        lda #$ff
+        sta kloot_dir,x                 // flip to backward
+        rts
+!back:
+        // backward step
+        dec kloot_shape,x
+        bpl !done+
+        inc kloot_shape,x               // clamp $FF → 0
+        lda #0
+        sta kloot_dir,x                 // flip to forward
+!done:
+        rts
 
 // Orbital phase (0..255) — advances at ORBIT_SPEED per frame.
 star1_orbit_phase:  .byte 0
@@ -1076,6 +1109,8 @@ title_sub:
 //==================================================================
 // Border colour table — 256-entry slow sine through a calm palette
 // (mostly blues / cyans, no harsh contrasts — this is the breather).
+// Page-aligned so `lda col_tab,y` never crosses a page (1 cycle
+// saved on the 50 Hz border-cycle read).
 //==================================================================
 .align 256
 col_tab:
@@ -1093,7 +1128,8 @@ col_tab:
 //==================================================================
 // Sine table for twin-star orbital motion — 256 entries covering a
 // full cycle, each entry = floor(ORBIT_RADIUS * sin(angle)). Page-
-// aligned at $0B00 so indexed reads never cross a page boundary.
+// aligned so `lda sin_tab,y` is single-cycle. MUST end before $1000
+// or it stomps coda's inherited intro music tables at $1000-$125D.
 //==================================================================
 .align 256
 sin_tab:
