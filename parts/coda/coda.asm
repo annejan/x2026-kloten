@@ -581,25 +581,25 @@ interrupt:
         lda #SHAPE_DIV_2
         sta shape_div2
 !skip2:
-        // ---- Write sprite pointers — conditional on swap_flag ----
+!skip_inc:
+
+        // ---- Write sprite pointers (50 Hz) — NMI-safe every frame ----
+        // Spindle's background loader fires NMIs that clobber $07F8-$07FF.
+        // Writing every frame (not just half-rate) prevents 1-frame shape
+        // glitches that read as jitter (same fix as greets' update_sprite_ptrs).
         // swap_flag=0: star 1 → sprites 0-3, star 2 → sprites 4-7
         // swap_flag=1: star 2 → sprites 0-3, star 1 → sprites 4-7
-        // Each pointer = shape_counter + sprite_bases[quadrant].
-        // Looping over the 4 quadrants saves ~100 B vs the previous
-        // unrolled blocks — and that ~100 B was exactly what pushed
-        // the .align 256'd col_tab into chargen-ROM page $10 when
-        // Stage F's ping-pong code joined in.
         lda swap_flag
         beq !normal_ptr+
         ldy #3
 !sp_sw: clc
         lda kloot_shape_2
         adc sprite_bases,y
-        sta $07f8,y                     // spr 0..3 = star 2
+        sta $07f8,y
         clc
         lda kloot_shape_1
         adc sprite_bases,y
-        sta $07fc,y                     // spr 4..7 = star 1
+        sta $07fc,y
         dey
         bpl !sp_sw-
         jmp !done_ptr+
@@ -608,15 +608,14 @@ interrupt:
 !sp_no: clc
         lda kloot_shape_1
         adc sprite_bases,y
-        sta $07f8,y                     // spr 0..3 = star 1
+        sta $07f8,y
         clc
         lda kloot_shape_2
         adc sprite_bases,y
-        sta $07fc,y                     // spr 4..7 = star 2
+        sta $07fc,y
         dey
         bpl !sp_no-
 !done_ptr:
-!skip_inc:
 
         // ---- Orbital motion (50 Hz) — both stars drift on sine paths ----
         // Star 1: advance phase, read X/Y offsets from sine table.
