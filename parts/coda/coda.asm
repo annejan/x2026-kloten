@@ -819,20 +819,18 @@ interrupt:
         lda #$1f
         sta SID_VOL
 
-        // ---- $D417 filter routing inherits from greets ($42) ----
-        // greets ends with $D417 = $42 (V2 routed through LP, res 4)
-        // for its slow "wah" on the lead. We INTENTIONALLY do NOT clear
-        // that here — the V2-through-LP timbre is what gives greets
-        // its "flowing musical" feel, and coda continuing it keeps the
-        // sonic identity intact across the transition. The cutoff is
-        // frozen at greets' last value (no wobble modulation in coda)
-        // which is fine because V2 freq still walks through lead_pattern
-        // and the static cutoff just shapes the timbre, not the motion.
-        //
-        // V1's drum-bleed N_C1 sub-thump is INHERITED from intro's
-        // my_music_play unchanged. greets has the same sub-thump on
-        // every drum hit and the user reports greets as flowing nicely,
-        // so coda continuing it is consistent.
+        // ---- Filter routing: all 3 voices through LP, res 4 ----
+        // Greets ends with $D417 = $42 (V2 only). Coda opens it to all
+        // voices so the bass-bleed sub-thump and triangle arp sit in the
+        // same filtered space as the lead — no timbral disconnect.
+        // Cutoff breathes gently via sin_tab[zp_frame] over ~10 s.
+        lda #$47
+        sta $d417
+        ldy zp_frame
+        lda sin_tab,y
+        clc
+        adc #$60
+        sta $d416
 
         jsr star_field
         // coda_kick used to fire here as a dedicated sparse V3 thump.

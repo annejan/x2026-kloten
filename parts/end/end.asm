@@ -941,8 +941,9 @@ end_music_init:
         lda #$f8                  // sustain=15, release=8
         sta $d414
 
-        // Filter: all 3 voices routed, low resonance
-        lda #%00000111
+        // Filter: V2+V3 routed, V1 bass clean (so the low end stays
+        // solid through the mood LFO sweep instead of phasing along).
+        lda #%00000110
         sta $d417
         // Cutoff mid-range; static (no sweep needed for pad)
         lda #$00
