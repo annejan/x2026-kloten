@@ -25,15 +25,17 @@ re-init SID for a slow 4× tempo pad reprise, no drums, lunch is over.
 
 | # | Part | Time | Trigger out | What plays musically |
 |---|------|------|-------------|----------------------|
-| 1 | screenfill | ~3 s | `$06 == 0` (HOLDCNT drained) | **silence** — SID untouched |
-| 2 | intro | ~30 s | `$f6 == $F0` (zp_outro saturated) | full mix builds: arp → +lead → +bass → +drums |
-| 3 | interlude | ~7.7 s | `$f6 == $10` (16 beats × 24 frames) | pad-only ~2.9 s, buildup ~4.8 s with LP sweep |
+| 1 | screenfill | ~5 s | `$06 == 0` (HOLDCNT drained) | **silence** — SID untouched |
+| 2 | intro | ~57 s | `$f6 == $F0` (zp_outro saturated) | full mix builds: arp → +lead → +bass → +drums |
+| 3 | interlude | ~7.7 s + ~11 s blank-filler load gap | `$f6 == $10` (16 beats × 24 frames) | V3-off solo lead pad (PWM phaser) ~2.9 s, buildup ~4.8 s slamming V3 + bass + LP sweep back in on SPARKED drop |
 | 4 | sinus | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes, drums silent, vol fades |
 | 5 | greets | ~50 s | `$f6 == $82` (scroll-driven KLOTEN snap) | climax: full mix + V2-filtered "wah" on lead, koala backdrop |
 | 6 | coda | ~32 s | `$f6 == $30` (32-s timer) | triumphant: full mix held, twin stars dance |
 | 7 | end | forever | (none — `stay`) | own player, 4× slower pad reprise + LP mood LFO |
 
-Total intro→coda is ~155 s; end then loops the credit roll forever.
+Total runtime: ~2:55 from boot to end-credits-loop. Music stays
+continuous through every part-to-part blank-filler load gap via
+Spindle's `'M'` install + `bit $0000` callmusic placeholders.
 
 ## Harmonic skeleton
 
@@ -115,12 +117,13 @@ cutoff hi = $71 (modulated by zp_wobble_pos, "wah")
 
 ### Coda (mu_step ~114, late phrase 4)
 ```
-V1 = 177 Hz (F3 pulse)
-V2 = 266 Hz (C4 pulse)   ← routed through LP
-V3 = 89 Hz  (F2 triangle)
-$D417 = $42 inherited from greets   $D418 = $1F
-cutoff hi = $4c (FROZEN, no wobble in coda)
-$F8 = $80 (gates V1/V2 on, V3 stays triangle)
+V1 = 177 Hz (F3 pulse)   ← walks bass_pattern
+V2 = 266 Hz (C4 pulse)   ← lead_pattern, all routed through LP
+V3 = 89 Hz  (F2 triangle) ← arp between K-S-K-S kit hits
+$D417 = $47 (all 3 voices routed, res 4)   $D418 = $1F
+cutoff hi modulated by sin_tab[zp_frame] + $a0 (~$4a..$d8, ~10 s LFO)
+$F6 = $01 (drum gate ON — K-S-K-S kit + V1 bass-bleed sub-thump fire)
+$F8 = $80 (gates V1/V2 freq writes on, V3 stays triangle)
 ```
 
 ### End credits (own player, separate config)
@@ -128,7 +131,7 @@ $F8 = $80 (gates V1/V2 on, V3 stays triangle)
 V1: pad ADSR $71/$fa (A=7 slow attack, S=15, R=10)
 V2: pad ADSR $51/$f9
 V3: ADSR $11/$f8 (fast attack arp)
-$D417 = $07 (V1+V2+V3 all routed)   $D418 = $1F (LP on)
+$D417 = $06 (V2+V3 routed, V1 bass clean)   $D418 = $1F (LP on)
 cutoff sweep: amp × wave + offset = $60..$8A clean
               $59..$83 dark (modulated by 20-s mood LFO)
 END_STEP_FRAMES = 24 (4× slower than intro)
@@ -157,12 +160,12 @@ END_STEP_FRAMES = 24 (4× slower than intro)
 |------|-------|---------|--------------|-------|-----------|------------|
 | screenfill | — | — | — | — | — | (SID off) |
 | intro | $00 | off | — | enter at zp_outro | pulse | saturates 0→$FF |
-| interlude pad | $00 | on | $00 | continues | pulse → triangle | reset to 0, ticks up |
-| interlude build | $23 (V1+V2) | on | $40→$FF sweep | continues | triangle | ticks up |
+| interlude pad | $00 | on, V3 OFF (bit 7) | $00 | gated by $F6 (zeroed in setup, ticks up) | (V3 off — no arp, no drums) | reset to 0, ticks up |
+| interlude build | $23 (V1+V2) | on, V3 ON | $70→$FF sweep | K-S-K-S kit slams back in | triangle | ticks up |
 | sinus | $23 (V1+V2) | on | $70→$08 close | OFF | triangle | inherited |
 | greets | $42 (V2) | on | wobble_pos\|$40 (~$40..$FF wah) | on | triangle | ~$89 inherited |
-| coda | $42 inherited | on | frozen at greets' last value | on | triangle | $80 (deliberate) |
-| end | $07 (all 3) | on | mood-LFO $60..$8A baseline | OFF | pulse | own player |
+| coda | $47 (V1+V2+V3) | on | sin_tab[zp_frame]+$a0 (~$4a..$d8, ~10 s LFO) | on (F6=$01) | triangle | $80 (deliberate) |
+| end | $06 (V2+V3, V1 clean) | on | mood-LFO $60..$8A baseline | OFF | pulse | own player |
 
 ## What's working well
 

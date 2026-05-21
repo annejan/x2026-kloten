@@ -65,10 +65,16 @@ top of it:
   above + below the centred title.
 
 IRQ ordering inside coda's `interrupt`:
-`jsr my_music_play → jsr star_field → jsr coda_kick → half-rate
-state advance (`kloot_advance` called twice with X=0, X=1) →
-sprite-pointer loop → priority-swap detect → orbital motion math →
-sprite position writes`.
+`orbital motion math → priority-swap detect → sprite position
+writes (FIRST so VIC's per-raster sprite-Y check sees the new
+positions before raster 52) → jsr my_music_play (now via the
+`bit $0000` callmusic placeholder) → re-assert $D418 = $1F →
+$D417 = $47 all-voice LP routing → $D416 sin-LFO cutoff →
+jsr star_field → half-rate state advance (`kloot_advance` called
+twice with X=0, X=1) → sprite-pointer loop`.
+
+(The dedicated `coda_kick` routine was removed when coda switched
+to the resident K-S-K-S kit — see `docs/sid-drums.md`.)
 
 EFO claims: `'P', $08, $0F` for code + state + col_tab + sin_tab
 (8 pages), `'P', $20, $37` for the 6 KB Kloot-star shape data,
