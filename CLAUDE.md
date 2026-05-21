@@ -12,6 +12,14 @@ The deeper guides live under [`docs/`](./docs/):
 - [`docs/sound-arc.md`](./docs/sound-arc.md) — how music flows from
   intro's resident tables through interlude / sinus / greets into end, and
   the SID-volume + filter-mode pitfalls that come with that design.
+- [`docs/music-theory.md`](./docs/music-theory.md) — the actual theory:
+  Aeolian, the i-v-VI-VII loop, voice voicings, ADSR per voice, lead
+  phrasing, and the `zp_intro` thresholds that control V3's timbre.
+- [`docs/score-baseline.md`](./docs/score-baseline.md) — 2026-05-21
+  snapshot of the entire score as it currently plays, with measured
+  SID state per part, timing facts, and a list of "more epic" levers
+  we could pull. Reach for this when discussing the music with someone
+  who knows music, or when planning audio polish.
 - [`docs/pefchain-notes.md`](./docs/pefchain-notes.md) — Spindle 3.1
   specifics: EFO header tags, transition conditions, segment-size
   traps, load-gap analysis.

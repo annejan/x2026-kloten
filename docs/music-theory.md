@@ -171,7 +171,7 @@ falls silent. The rests dominate — three full beats of silence before
 the next chord. By the end of the G bar, the lead has retreated to G3
 (lowest note in the lead range), ready for phrase 1 to restart.
 
-### V3 — Arpeggio (pulse wave, 25% duty, gated by intro's `T_SCROLLER`)
+### V3 — Arpeggio (pulse OR triangle, gated by intro's `T_SCROLLER`)
 
 ADSR: A=0, D=0, S=F, R=0 (instant full volume, sustain pinned at peak,
 no release). Because the gate stays ON continuously, V3's envelope
@@ -180,8 +180,33 @@ pitch changes on every frame.
 
 The arp cycles root → 3rd → 5th → octave at 50 Hz. Perceptual result:
 a shimmering chord pad with an upward-pitch "shimmer" that blurs the
-harmonic boundaries. The 25% duty gives a hollow, clean tone — this is
-the "breadbin organ" sound.
+harmonic boundaries.
+
+#### V3 timbre is controlled by `zp_intro` (subtle but important)
+
+`my_music_play` re-writes V3's control register to **pulse + gate**
+(`$41`) every frame ONLY if `zp_intro >= T_SCROLLER` (240). When that
+re-write is skipped, V3's control register holds whatever the last
+write left it at — which is **always `$11` (triangle + gate)** because
+the drum_tick block writes the final drum body row to V3 every kick
+and snare hit. The result:
+
+| `zp_intro` value | V3 timbre during arp | Where you hear it |
+|-------------------|---------------------|---------------------|
+| `>= 240` (T_SCROLLER) | **Pulse 25%** — clean, harmonically rich, "organ" | Intro (`zp_intro` saturates at `$FF`) |
+| `< 240` but `>= 120` (T_BARS) | **Triangle** — mellow, hollow flute-like | Greets, coda |
+| `< 120` (T_BARS) | Same as above PLUS V1 bass freq writes skip | Side effect of low `$F8` |
+| `< 40` (T_BALLS) | Above PLUS V2 lead freq writes skip → stuck note | What coda accidentally had before 2026-05-21 |
+
+The triangle/pulse swap is the single biggest timbre control in the
+demo. Greets sounds "flowing and musical" largely because V3 plays as
+mellow triangle (`zp_intro` ≈ `$89` from interlude's `zp_plasma_tgl`
+residue). Coda sets `zp_intro = $80` to inherit that triangle arp
+while still letting V1 bass + V2 lead walk through their patterns.
+
+See [`docs/sound-arc.md`](./sound-arc.md) for the full filter +
+routing trace; see [`docs/sid-drums.md`](./sid-drums.md) for the
+drum_tick code that leaves V3 as triangle.
 
 ### Drum voice — V3 timesharing + V1 bass-bleed layer
 
@@ -212,12 +237,20 @@ After each drum window (4 frames ≈ 80 ms), `my_music_play`'s next
 chord-step write puts V3 back to pulse waveform at the next arp pitch
 with gate held on → no envelope retrigger, no audible seam.
 
-**Coda exception:** Coda owns V3 outright. Intro's `my_music_play`
-still writes the arp, but coda's per-frame IRQ overwrites V3 with its
-own hard-restart kick state machine — the arp never sounds. Coda uses
-triangle wave (not noise) for a softer sub-bass thump, pre-loads
-ADSR=`$08`/`$00` (A=0, D=8, S=0, R=0), and performs a true gate
-off→on transition for a clean envelope reset.
+**Coda — full K-S-K-S kit + bass-bleed.** Coda enables drums via
+`$F6 = $01` in setup so intro's resident kit fires throughout the
+held title. The earlier dedicated V3 kick state machine (a hard-restart
+pitch-slam at ~60 BPM) was pulled in favour of the K-S-K-S kit because
+the kit's kick IS a V3 triangle pitch-slam and the V1 bass-bleed IS
+the sub body — separate machines were redundant.
+
+Coda also sets `$F8 = $80` (not `$FF`) so the V3 arp stays as triangle
+between drum hits (see the "V3 timbre" table above). The combined mix
+under the held title:
+- **V1**: walking bass_pattern + N_C1 sub-thump on every drum
+- **V2**: lead_pattern through LP filter (inherited V2-routed `$D417=$42` from greets)
+- **V3**: triangle arp between drums, triangle pitch-slam kick / low-noise + triangle snare during hits
+- **Filter**: cutoff frozen at greets' last value (no wobble modulation)
 
 ## Filter / volume arc across parts
 
@@ -229,16 +262,19 @@ sinus:     vol=$1F (LP mode), V1+V2 filtered ($D417=$23, res $2),
            cutoff $70→$08 over duration, vol fades $0F→$00 over last 50 frames
 greets:    vol=$1F (LP mode), V2 filtered ($D417=$42, res $4),
            cutoff modulated by `zp_wobble_pos | $40` for slow "wah"
-coda:      vol=$1F, LP mode on, no cutoff sweep
-end:       vol ramps $00→$0F over 2 s, LP filter on throughout
+coda:      vol=$1F, LP mode on, $D417=$42 inherited (V2 still filtered),
+           cutoff FROZEN at greets' last value (no wobble in coda)
+end:       vol ramps $00→$0F over 2 s, V1+V2+V3 all filtered ($D417=$07),
+           cutoff baseline $60 with mood-LFO breathing clean↔dark
 ```
 
 The filter arc is the long-form emotional contour: dry (intro) →
 opens up with bass + lead (interlude build) → closes both (sinus
-breakdown) → wah on the lead (greets climax) → **back to dry, full
-mix held aloft (coda — the triumphant trophy)** → fading PWM+LP
-reprise (end — back into the minor flow). Coda is the loudest
-moment by design; end is the closing breath.
+breakdown) → wah on the lead (greets climax) → **frozen lead-wah +
+full drums + walking bass under the title (coda — the triumphant
+trophy)** → all-voice LP reprise with slow PWM and mood breath
+(end — back into the minor flow). Coda is the loudest moment by
+design; end is the closing breath.
 
 **Target SID chip: 8580** — picked over 6581 because the 8580's
 digital filter has no per-unit cutoff drift, so the cutoff values
@@ -262,13 +298,15 @@ voice-routing bits in `$D417` when adding filter work to a part.
    — it ends with credits and a "see you at Evoke," not a button.
 
 2. **Static harmony, dynamic arrangement.** The chord progression never
-   changes for ~80 seconds. All musical interest comes from:
-   - Lead melody cycling through 4 different phrases
+   changes for ~130 seconds. All musical interest comes from:
+   - Lead melody cycling through 4 different phrases (15-s phrases × 4)
    - Drum entrance/exit gating (intro's `zp_outro`)
    - Per-voice muting (interlude kills V1 for the first 24 beats)
-   - Filter cutoff sweeping (interlude, sinus)
+   - V3 timbre flips pulse↔triangle via the `T_SCROLLER` gate on `zp_intro`
+   - Filter routing changes (intro=off, interlude/sinus=V1+V2, greets=V2)
+   - Filter cutoff sweeping (interlude up, sinus close, greets wah)
    - Volume fade (sinus's final 50 frames)
-   - Coda's independent V3 kick layering
+   - Coda inherits greets' V2-routed filter with a frozen cutoff
 
 3. **125 BPM is the demoscene sweet spot.** Fast enough for a driving
    8th-note feel, slow enough that 24-frame beats don't feel rushed.
