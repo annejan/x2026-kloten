@@ -1758,16 +1758,15 @@ update_bmp_scroll:
 !done:
         rts
 
-// Sprite Y for top-border sprites — range 30..66. Y=30 is the first
-// raster guaranteed to render sprites reliably (25-row border ends at
-// ~30). With Y-expand the display reaches 30..91, just touching mid
-// sprite minimum (raster 90). The old floor of 14 put sprites in the
-// top border zone where VIC renders inconsistently → flicker at peak.
+// Sprite Y for top-border sprites — range 16..52. Raised floor from
+// 14→16 because Y=14 put the sprite in the top border zone where VIC
+// renders inconsistently on some frames → flicker at sine peak.
+// With Y-expand the display reaches 16..58, still well into FLD zone.
 // Phases 0/80/160 keep the 3 top sprites at different cycle points so
 // they don't all bunch into the FLD zone simultaneously.
 .align 256
 sine_top:
-        .fill 256, 30 + round(18 * (1 - cos(toRadians(i * 360 / 256))))
+        .fill 256, 16 + round(18 * (1 - cos(toRadians(i * 360 / 256))))
 
 // Sprite Y for display-area sprites — range 90..200.
 // Floor 90 keeps mid sprites out of the FLD zone ($3C..$58 max):
