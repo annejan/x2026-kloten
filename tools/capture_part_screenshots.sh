@@ -11,6 +11,17 @@
 # AND re-run the doc. The numbers below ASSUME current pefchain
 # transition triggers; if any of f6=10/30/a0 thresholds move, this
 # script captures the wrong frame for that part.
+#
+# !!! KNOWN BROKEN (2026-05-21) — see docs/submission.md
+# "Dry-run findings". Of 7 snapshots, only 02-intro and 07-end
+# landed in the right moment; the other 5 captured wrong parts /
+# black transition frames. Root causes: (1) boot_ms anchors before
+# VICE finishes booting, (2) timing.md is stale post commits
+# 736a2f9 / 8ed0777 / 9d9f851. Fix-it-right: poll $F6 via MCP and
+# anchor snapshots to part-transition events instead of wall clock.
+# Fix-it-quick: recalibrate the offsets below empirically.
+# Until either is done, hand-pick screenshots interactively via MCP
+# at submission time and drop them into the bundle dir.
 
 set -eo pipefail
 

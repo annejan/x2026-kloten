@@ -130,6 +130,58 @@ made" doc landed in `tools/`. Run via:
 (release archive). Takes ~3.5 min wall-clock because the
 screenshot pass plays the demo through to each part in real time.
 
+### Dry-run findings (2026-05-21, commit `0960a83`)
+
+End-to-end ran successfully — `.d64`, `.zip`, source archive, NFO,
+README, how-it-was-made and all 7 screenshots produced in the
+right shape. **But the screenshot timestamps are wrong** for 5 of
+7 frames. Captures vs reality:
+
+| File | Expected | Actual capture |
+|---|---|---|
+| 01-screenfill | DEFEEST bloom | black — VICE still booting at t=3 |
+| 02-intro      | mid-intro     | **correct** (logo + bars + balls) |
+| 03-interlude  | SPARKED landing | plasma chars (right part, wrong moment) |
+| 04-sinus      | DEFEEST wobble | greets "SILICON" — past sinus |
+| 05-greets     | mid-scroll    | greets "KOLOR" — right part, fine |
+| 06-coda       | KLOTEN title  | black — between coda and end |
+| 07-end        | credit roll   | **correct** (Kloot/Augurk/TL-Buis credits) |
+
+Two compounding causes:
+
+1. **`boot_ms` is anchored too early.** `capture_part_screenshots.sh`
+   reads `date +%s%N` *before* `./run-mcp.sh` returns, then adds
+   a flat `+4000` ms. Reality: VICE x64sc + autostart take ~5-7 s
+   from invocation to "demo actually plays first frame." Result:
+   the t=0 reference is ~3-5 s ahead of demo start, which
+   propagates to every snapshot.
+2. **`docs/timing.md` is now slightly stale.** After `736a2f9`
+   (shorter intro), `8ed0777` (longer interlude), and `9d9f851`
+   (sinus rework), the per-part offsets in
+   `tools/capture_part_screenshots.sh` no longer match what's
+   actually on screen at each wall-clock target. Sleep-based
+   timing can't track those drifts.
+
+### Two ways to fix
+
+**Quick** — recalibrate the offsets in
+`capture_part_screenshots.sh` to match observed reality from a
+test run, and accept that they'll need re-syncing whenever a
+part's duration changes. Cheap, brittle.
+
+**Right** — anchor each snapshot to **demo state**, not wall
+clock. Read `$F6` via MCP every ~250 ms; detect each part's
+transition (intro→interlude on `$F6=$F0`, interlude→sinus on
+`$F6=$10`, etc.); snapshot N seconds after each transition is
+seen. Robust across timing drift; no recalibration needed.
+Adds ~50 lines of bash + MCP calls.
+
+Until either is done, the script is **good enough for dogfood**:
+run it to generate everything except the screenshots, then
+hand-pick the 7 best frames via MCP screenshots taken
+interactively, and drop them into `submission/<bundle>/screenshots/`
+before re-zipping.
+
 ### Known brittleness (KEEP UPDATING)
 
 The script trusts these inputs to stay in sync with the demo:
