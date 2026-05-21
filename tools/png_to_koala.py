@@ -47,14 +47,28 @@ def main(in_path, out_path):
     # Composite onto black bg
     bg = Image.new('RGB', img.size, (0, 0, 0))
     bg.paste(img, mask=img.split()[3])
-    # Resize to fit width 160 (multicolour logical pixels), preserve aspect.
     src_w, src_h = bg.size
-    new_w = 160
-    new_h = int(src_h * new_w / src_w)
-    if new_h > 200:
-        new_h = 200
-        new_w = int(src_w * new_h / src_h)
-    resized = bg.resize((new_w, new_h), Image.LANCZOS)
+
+    # MCM bitmap mode has logical pixels that are 2 hw px wide × 1 hw
+    # tall. The koala canvas is 160 logical wide × 200 logical tall =
+    # 320 hw × 200 hw. So:
+    #   - Halve the width (every 2 hw px → 1 logical px)
+    #   - Keep the height (each row maps 1:1)
+    # NEAREST resample avoids LANCZOS averaging that would otherwise
+    # turn white-on-black edges into mid-grey, which then maps to the
+    # YELLOW slot (mid-grey is closer to yellow than to black/white in
+    # RGB distance) — the "colour bleed" you'd otherwise see on text.
+    # If the input is already 160 wide / ≤200 tall (a "native" canvas),
+    # there's no downsample; the centred paste still positions it.
+    if src_w > 320 or src_h > 200:
+        # Oversized input — fit inside the 320×200 hardware frame first.
+        scale = min(320 / src_w, 200 / src_h)
+        bg = bg.resize((int(src_w * scale), int(src_h * scale)), Image.NEAREST)
+        src_w, src_h = bg.size
+
+    new_w = max(1, src_w // 2)
+    new_h = src_h
+    resized = bg.resize((new_w, new_h), Image.NEAREST) if new_w != src_w else bg
     # Center on 160×200 canvas
     canvas = Image.new('RGB', (160, 200), (0, 0, 0))
     off_x = (160 - new_w) // 2

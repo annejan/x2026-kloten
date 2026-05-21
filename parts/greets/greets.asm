@@ -908,7 +908,7 @@ font_data:
 // below at the new file. Defaults to ../intro/defeest.kla so an
 // initial build works without you having to convert anything first.
 //==================================================================
-.var backdrop = LoadBinary("../intro/defeest.kla", BF_KOALA)
+.var backdrop = LoadBinary("backdrop.kla", BF_KOALA)
 
 .pc = $2000 "BackdropBitmap"
 .fill 8000, backdrop.getBitmap(i)
