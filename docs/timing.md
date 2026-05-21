@@ -107,16 +107,18 @@ characters; end-of-text = `$FF` triggers outro.
 
 ## Part 3 — interlude (`parts/interlude/`)
 
-16 beats × 24 frames = 384 frames = **7.68 s**.
+16 beats × 24 frames = 384 frames = **7.68 s** (loosened from 10 beats × 20).
 
 | Beat | Time | Event |
 |------|------|-------|
-| 0–7 | 0–3.8 s | Pad-only: V1 bass muted ($D404 = 0). Plasma + raster bars. |
-| 8 (BUILDUP_BEAT) | 3.8 s | V1 bass re-enabled. LP filter sweep starts at cutoff=$40. |
-| 8–15 | 3.8–7.7 s | Filter cutoff += $18 per beat: $40 → $58 → $70 → … → $FF. |
+| 0–5 | 0–2.9 s | Pad-only: V1 bass muted ($D404 = 0). Plasma + line A typewriter "FOR YEARS NO TIME FOR BREADBIN CODE" reveals over 2.8 s. |
+| 5 | 2.9 s | Line A fully revealed. ~0.1 s reading time before buildup. |
+| 6 (BUILDUP_BEAT) | 2.9 s | V1 bass re-enabled. LP filter sweep starts at cutoff=$40. Raster bars appear. SPARKED sprite letters begin fly-in. |
+| 7–15 | 3.4–7.2 s | Filter cutoff += $16 per beat: $40 → $56 → $6C → … → $FF (saturates at beat ~12). SPARKED settles at beat ~7, bounces, white border flash on landing. |
+| 15 | 7.2 s | SPARKED letters fly out. |
 | **16 (= $10)** | **7.7 s** | pefchain loads sinus. |
 
-Per-frame: plasma (half rows updated), music, beat phase, raster bars.
+Per-frame: plasma (half rows updated), music, beat phase, raster bars, border flash on SPARKED landing.
 
 ---
 

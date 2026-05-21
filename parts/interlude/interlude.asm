@@ -39,13 +39,13 @@
 
 .const INTRO_MUSIC_PLAY = $119e
 
-.const BEAT_PERIOD   = 20         // frames per beat — was 24, tightened
-.const BUILDUP_BEAT  = 4          // pad ends, bass+filter+bars in — was 8
-.const TRANSITION_BEAT = 10       // pefchain advances at zp_beat_count == this — was 16
+.const BEAT_PERIOD   = 24         // frames per beat — was 20, loosened for breathing room
+.const BUILDUP_BEAT  = 6          // pad ends, bass+filter+bars in — was 4
+.const TRANSITION_BEAT = 16       // pefchain advances at zp_beat_count == this — was 10
 .const FILT_CUT_LO   = $40
-.const FILT_CUT_STEP = $20        // steeper sweep so the shorter buildup still tops out
+.const FILT_CUT_STEP = $16        // softer sweep over more beats
 
-// Sprite-letter line B — "AI WROTE" drops in on the buildup, bounces
+// Sprite-letter line B — "SPARKED " drops in on the buildup, bounces
 // briefly, then flies up before the transition. 8 sprites, 1 char each,
 // hires, no expand. Shape pointers $80..$87 → $2000..$21C0.
 .const SPR_TARGET_Y    = 154      // raster row 13 top — letters sit above the "now AI WROTE the code" reveal
@@ -124,7 +124,7 @@ setup:
         // during the pad phase — see story_line_a section. The screen is
         // already filled with $A0 above, so row 11 starts as a wash of
         // plasma-coloured blocks; chars overwrite them as they "type".
-        // Line B is the AI WROTE sprite-letter drop (init_sprites below).
+        // Line B is the SPARKED sprite-letter drop (init_sprites below).
 
         // fill ALL 25 color RAM rows
         lda #0
@@ -263,6 +263,14 @@ interrupt:
         lda #$1f
         sta $d418
 
+        // Border flash on SPARKED landing — white top border for 3 frames
+        lda flash_cnt
+        beq !no_flash+
+        lda #$01
+        sta VIC_BORDER
+        dec flash_cnt
+!no_flash:
+
         // V1 mute / build-up
         lda zp_beat_count
         cmp #BUILDUP_BEAT
@@ -280,7 +288,7 @@ interrupt:
         sta $d417
         lda zp_filt_cut
         sta $d416
-        // Line B reveal is now the sprite-letter drop — see
+        // Line B reveal is now the SPARKED sprite-letter drop — see
         // update_sprites for the fly-in / bounce / fly-out state machine.
 !beat:
         inc zp_beat_phase
@@ -394,7 +402,7 @@ interrupt:
 // the cursor disappears and we no-op. Screen is pre-filled with $A0 in
 // setup so unrevealed cells already match the plasma backdrop.
 //==================================================================
-.const LINE_A_PERIOD = 2          // frames per char — 35 chars × 2 = 70 frames (~1.4 s) of typing
+.const LINE_A_PERIOD = 4          // frames per char — 35 chars × 4 = 140 frames (~2.8 s) of typing
 
 update_line_a:
         lda line_a_pos
@@ -508,6 +516,8 @@ sp_in:
         bcc !rts+
         lda #PHASE_BOUNCE
         sta sp_phase
+        lda #5
+        sta flash_cnt             // 5 frames of white border flash
         lda #0
         sta sp_frame
 !rts:   // also check: are we close to transition? then go straight to FLY_OUT.
@@ -775,6 +785,7 @@ bar_base_colors:
 // Work area (in code space, not ZP)
 row_base: .byte 0
 row_cnt:  .byte 0
+flash_cnt: .byte 0
 
 // Story overlay text — uppercase chargen at $1000, codes $01..$1A
 // for letters, $20 for space. 35 chars to fit centered in a 40-col
@@ -807,14 +818,11 @@ sp_frame: .byte 0
 line_a_pos:  .byte 0    // chars revealed so far (0..35)
 line_a_tick: .byte 0    // frame counter, advances pos every LINE_A_PERIOD
 
-// Horizontal positions for the 8 sprite-letters of "AI WROTE". With
-// 8-px spacing the phrase reads "AI" then a 1-letter gap then "WROTE"
-// (the gap is the SPACE glyph rendered as blanks in sprite #2).
-//
-// Sprite N at SPR_X = 152 + N*8 → covers screen cols 16..23 (= centred
-// under the row-11 line A text). All values <256 so SPR_MSB stays 0.
+// Horizontal positions for the 8 sprite-letters of "SPARKED ". With
+// 8-px spacing the phrase reads centered (trailing blank sprite #7
+// is invisible). All values <256 so SPR_MSB stays 0.
 spr_x_table:
-        .byte 152, 160, 168, 176, 184, 192, 200, 208
+        .byte 144, 152, 160, 168, 176, 184, 192, 200
 
 // Sprite colours — alternating bright pair stays legible over any
 // plasma colour the row-13 area happens to be flowing through.
@@ -874,8 +882,8 @@ fly_out_dy:
 
 * = $2000 "SpriteShapes"
 .var chargen = LoadBinary("../greets/chargen.bin")
-.var phrase_chars = List().add($01, $09, $20, $17, $12, $0F, $14, $05)
-                                          //   A    I    _    W    R    O    T    E
+.var phrase_chars = List().add($13, $10, $01, $12, $0B, $05, $04, $20)
+                                          //   S    P    A    R    K    E    D    _
 
 .function letter_sprite(code) {
         .var r = List()
