@@ -72,6 +72,7 @@
 .const MAIN_SID_FREQ_HI    = $103C
 .const MAIN_CHORD_PER_STEP = $1078
 .const MAIN_ARP_NOTES      = $1098
+.const MAIN_BASS_PATTERN   = $10A8
 .const MAIN_LEAD_PATTERN   = $10C8
 
 
@@ -970,8 +971,10 @@ end_music_init:
 // - Master volume tracks zp_fade (0 → $0f over the first ~1.2s).
 // - V3 arp: cycles through the current chord's 4 notes, changing
 //   every 4 frames inside each step (so 6 arp swaps per step).
-// - V1 bass: chord root, re-triggered each step (every END_STEP_FRAMES
-//   frames). Long release lets it bleed into the next note for pad.
+// - V1 bass: bass_pattern[mu_step & 31] — 32-entry table with octave
+//   jumps every 3rd step (e.g. Am: A2 A2 A3 A2 A2 E3 A3 A2). Walks
+//   instead of holding the chord root for 8 steps, which had read as
+//   a stuck drone. Re-triggered each step; long release bleeds notes.
 // - V2 lead: lead_pattern[mu_step], re-triggered each step. NOTE_REST
 //   in the pattern releases the gate so longer rests sound natural.
 //==================================================================
@@ -1085,14 +1088,10 @@ end_music_play:
         and #$7f                  // wrap at 128 (lead pattern length)
         sta zp_mu_step
 
-        // --- V1 bass: chord root ---
-        and #$1f                  // chord index
+        // --- V1 bass: walking bass_pattern (octave jumps every 3rd step) ---
+        and #$1f                  // bass_pattern index (32 entries)
         tax
-        lda MAIN_CHORD_PER_STEP,x
-        asl
-        asl                       // chord*4
-        tax
-        lda MAIN_ARP_NOTES,x      // root note (first arp entry of chord)
+        lda MAIN_BASS_PATTERN,x
         tay
         lda MAIN_SID_FREQ_LO,y
         sta $d400
