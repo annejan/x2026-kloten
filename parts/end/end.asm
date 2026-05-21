@@ -1172,8 +1172,8 @@ is_header:
         .byte 0,0,0         //  0..2  blank
         .byte 1             //  3     you were watching
         .byte 0             //  4     blank
-        .byte 1             //  5     Kloot and
-        .byte 0             //  6     the Breadbin
+        .byte 1             //  5     Kloten met de
+        .byte 0             //  6     Broodtrommel
         .byte 0             //  7     blank
         .byte 0             //  8     by deFEEST
         .byte 0             //  9     for X2026
@@ -1182,31 +1182,28 @@ is_header:
         .byte 0,0           // 12..13 three weeks later / this happened
         .byte 0             // 14     blank
         .byte 1             // 15     code
-        .byte 0,0,0,0       // 16..19 four code credits
-        .byte 0             // 20     blank
-        .byte 1             // 21     music
-        .byte 0,0,0         // 22..24 coded/by Anus/with help
-        .byte 0             // 25     blank
-        .byte 1             // 26     graphics
-        .byte 0,0           // 27..28 defeest.nl / pixeled with love
-        .byte 0             // 29     blank
-        .byte 1             // 30     tools
-        .byte 0,0,0,0,0     // 31..35 five tools
-        .byte 0             // 36     blank
-        .byte 1             // 37     documentation
-        .byte 0,0,0,0       // 38..41 codebase / spindle / every demo / before this
-        .byte 0             // 42     blank
-        .byte 1             // 43     greetings
-        .byte 0,0,0,0,0     // 44..48 five greet lines
-        .byte 0             // 49     blank
-        .byte 1             // 50     thanks
-        .byte 0,0           // 51..52 dutch lines
+        .byte 0,0,0,0,0,0   // 16..21 six code credits (Kloot/Anus/Augurk/TL-Buis/Ranzbak/Cinder)
+        .byte 0             // 22     blank
+        .byte 1             // 23     music
+        .byte 0,0,0         // 24..26 coded/by Anus/with help
+        .byte 0             // 27     blank
+        .byte 1             // 28     graphics
+        .byte 0,0           // 29..30 defeest.nl / pixeled with love
+        .byte 0             // 31     blank
+        .byte 1             // 32     tools
+        .byte 0,0,0,0,0,0   // 33..38 six tools (claude/opencode/kickass/spindle/vice/multipaint)
+        .byte 0             // 39     blank
+        .byte 1             // 40     documentation
+        .byte 0,0,0,0       // 41..44 codebase / spindle manual / every demo / before this
+        .byte 0             // 45     blank
+        .byte 1             // 46     thanks (merged: people + dutch)
+        .byte 0,0,0,0,0,0   // 47..52 Linus / Mads / everyone / breadbin / kloot voor / dutch
         .byte 0             // 53     blank
         .byte 1             // 54     and one last thought
-        .byte 0,0,0         // 55..57 forty years / breadbin / and so do we
-        .byte 0             // 58     blank
-        .byte 0,0,0         // 59..61 thank you / from anus / see you
-        .byte 0,0,0,0,0,0   // 62..67 blank tail
+        .byte 0,0,0,0,0     // 55..59 the breadbin / has been waiting / for forty years / kloot finally / got me here
+        .byte 0             // 60     blank
+        .byte 0,0,0         // 61..63 thank you / from anus / see you at evoke
+        .byte 0,0,0,0       // 64..67 blank tail
 
 
 //==================================================================
@@ -1228,8 +1225,8 @@ credit_text:
         row("                                        ")
         row("              you were watching         ")
         row("                                        ")
-        row("           Kloot and                    ")
-        row("              the Breadbin              ")
+        row("           Kloten met de                ")
+        row("              Broodtrommel              ")
         row("                                        ")
         row("              by deFEEST                ")
         row("               for X2026                ")
@@ -1261,6 +1258,7 @@ credit_text:
         row("              kickassembler             ")
         row("              spindle 3.1               ")
         row("              vice-mcp                  ")
+        row("              multipaint                ")
         row("                                        ")
         row("           documentation                ")
         row("              codebase.c64.org          ")
@@ -1268,8 +1266,7 @@ credit_text:
         row("              every demo that came      ")
         row("              before this one           ")
         row("                                        ")
-        row("           greetings                    ")
-        row("              outline 2026 crew         ")
+        row("           thanks                       ")
         // "Linus Åkesson" — manually assembled because screencode_mixed
         // doesn't know Å. $5b is the custom Å glyph in the font.
         .text "              Linus "
@@ -1278,8 +1275,6 @@ credit_text:
         row("              Mads Nielsen              ")
         row("              everyone keeping the      ")
         row("              breadbin singing          ")
-        row("                                        ")
-        row("           thanks                       ")
         row("              kloot voor de fouten      ")
         row("              en meer slechte ideeen    ")
         row("                                        ")
