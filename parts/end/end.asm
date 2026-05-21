@@ -1239,7 +1239,7 @@ credit_text:
         row("              Kloot/deFEEST             ")
         row("              Anus/deFEEST              ")
         row("              Augurk/deFEEST            ")
-        row("              TL-Balk/deFEEST           ")
+        row("              TL-Buis/deFEEST           ")
         row("              Ranzbak/deFEEST           ")
         row("              Cinder/deFEEST            ")
         row("                                        ")
