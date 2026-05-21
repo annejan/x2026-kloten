@@ -80,8 +80,8 @@ echo ">>> linking with pefchain"
 #               as "the demo file" when LISTing). We point at $06 — the
 #               first "kloten met" line.
 ( cd "$ROOT" && "$PEFCHAIN" -v \
-    --title "defeest/x2026" \
-    --disk-id "kl" \
+    --title "DEFEEST/X2026" \
+    --disk-id "KL" \
     --dirart dirart.txt \
     --dir-entry 6 \
     -o outline-64.d64 pefchain_script )

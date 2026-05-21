@@ -509,10 +509,15 @@ setup:
         cpx #26
         bne !c2-
 
-        // ---- dedication: "  ESPECIALLY KLOOT  " at row 15, col 10 ----
-        // Row 15: $0400 + 15*40 = $0658; colour RAM: $D800 + 15*40 = $DA58.
+        // Row 15: party-release tag in dark grey under the title.
+        // Used to be "ESPECIALLY KLOOT" — pulled because three on-screen
+        // mentions of the AI character read as ego-stroking (one in
+        // greets settle is enough). The release tag keeps the gradient
+        // (white / lt grey / dk grey) and gives the title card three
+        // lines of weight without name-dropping the helper.
+        // " RELEASED AT X2026  " — 20 chars; col 10..29.
         ldx #0
-!t3:    lda title_dedication,x
+!t3:    lda title_release,x
         sta $0658 + 10,x
         inx
         cpx #20
@@ -1138,17 +1143,19 @@ title_sub:
         .byte $0C, $15, $0E, $03, $08, $20                     // LUNCH_
         .byte $05, $18, $10, $05, $12, $09, $05, $0E, $03, $05  // EXPERIENCE
 
-// "  ESPECIALLY KLOOT  "  (20 chars)
+// " RELEASED AT X2026  "  (20 chars; col 10..29 of row 15)
+//   _=20
+//   R=12 E=05 L=0C E=05 A=01 S=13 E=05 D=04 _=20
+//   A=01 T=14 _=20
+//   X=18 2=32 0=30 2=32 6=36
 //   _=20 _=20
-//   E=05 S=13 P=10 E=05 C=03 I=09 A=01 L=0C L=0C Y=19 _=20
-//   K=0B L=0C O=0F O=0F T=14 _=20 _=20
-title_dedication:
-        .byte $20, $20                                           // __
-        .byte $05, $13, $10, $05, $03, $09, $01, $0C, $0C, $19  // ESPECIALLY
-        .byte $20                                                // _
-        .byte $0B, $0C, $0F, $0F, $14                           // KLOOT
-        .byte $20, $20                                           // __
-
+title_release:
+        .byte $20                                                                   // _
+        .byte $12, $05, $0C, $05, $01, $13, $05, $04, $20                          // RELEASED_
+        .byte $01, $14, $20                                                         // AT_
+        .byte $18                                                                   // X
+        .byte $32, $30, $32, $36                                                    // 2026
+        .byte $20, $20                                                              // __
 
 //==================================================================
 // Border colour table — 256-entry slow sine through a calm palette
