@@ -261,7 +261,7 @@ musichook:
 
         lda zp_frame
         cmp #FADE_START
-        bcc !ack+
+        bcc !raster_bars+
         sec
         sbc #FADE_START
         lsr
@@ -273,6 +273,59 @@ musichook:
         lda #0
 !vol:   ora #$10
         sta SID_VOL
+
+!raster_bars:
+        // Skip bars on the swap frame so the 1-frame white border
+        // flash stays visible across the full frame (otherwise the
+        // bar loop overwrites $D020 immediately).
+        lda zp_frame
+        cmp #SWAP_FRAME
+        beq !ack+
+
+        // Open-bar / TechTech raster work over the 200 visible
+        // scanlines. One $D016 + $D020 + $D021 write per line, indexed
+        // by Y = (zp_frame + line_count) mod 200 so the entire
+        // pattern flows downward as frames advance.
+        //
+        //   $D016 = (sine_tab[Y] & 7) | $08    horizontal TechTech
+        //                                       wave — each scanline
+        //                                       shifts by 0-7 pixels.
+        //   $D020 = col_tab[Y]                 border raster bar
+        //   $D021 = bg_tab[Y]                  background raster bar
+        //
+        // Synced via $D012 polling between lines — slight drift but
+        // honest 50 Hz per-frame bar flow. Loop wraps Y at 200
+        // because col_tab/bg_tab are 200 entries.
+        lda #$33
+!w_top: cmp $d012
+        bne !w_top-
+        ldy zp_frame
+        cpy #200
+        bcc !y_ok+
+        ldy #0
+!y_ok:  ldx #0
+!barloop:
+        lda sine_tab,y
+        and #$07
+        ora #$08
+        sta VIC_CTRL2           // $D016 xscroll = TechTech
+        lda col_tab,y
+        sta VIC_BORDER          // $D020 border bar
+        lda bg_tab,y
+        sta VIC_BG              // $D021 bg bar
+        iny
+        cpy #200
+        bne !no_wrap+
+        ldy #0
+!no_wrap:
+        inx
+        cpx #200
+        beq !ack+
+        lda $d012
+!w_line:
+        cmp $d012
+        beq !w_line-
+        jmp !barloop-
 
 !ack:
         lda #$ff
