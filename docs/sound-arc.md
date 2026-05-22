@@ -29,7 +29,7 @@ overlays** on top of that continuous music.
 | interlude   | Pad-only first ~2.9 s: V1 muted, V3 muted via `$D418` bit 7 ("V3 off"), so ONLY V2 lead is audible while line A "FOR YEARS…" types out over 2.8 s — music-box pad under the typewriter confession. `mu_step` forced to 32 in setup so the lead is in phrase 2 ("active 8ths") for movement. V2 PWM modulates via `zp_xphase` for a slow phaser feel. Last ~4.8 s buildup: V3-off bit clears so the K-S-K-S kit + arp slam back in, V1 returns, LP cutoff ramps from `$70` upward with V1+V2 routed through the filter (res $2), sprite-letter "SPARKED" drops with white-border flash. |
 | sinus       | **Breakdown.** LP filter closes — and now actually closes audibly because V1 + V2 are routed through it ($D417 = $23, res $2). Cutoff ramps $70 → $08 over the duration; vol fades over the last 50 frames. Drums silent (sinus zeros `$F6 = zp_outro` — the gating byte). The eye of the storm before the drop. |
 | greets      | **Climax / drop.** Drums return (greets' setup re-arms `$F6`), full mix + lead + arp. V2 (lead) routed through LP filter ($D417 = $42, res $4) with a slow cutoff "wah" — `zp_wobble_pos` OR'd with $40 ramps $40..$FF over 5 s breathing the melody. DYCP scroller tells the personal arc on top of the loudest moment. |
-| coda        | **The trophy — triumphant.** Setup sets `$F6 = $01` so the K-S-K-S drum kit from intro's `my_music_play` keeps firing through the whole part (kick + snare alternating on V3, V1 bass-bleed sub-thump on every hit). Setup ALSO sets `$F8 = $80` to restore intro's `zp_intro` after interlude's `zp_plasma_tgl` clobber — high enough that V1 bass and V2 lead freq writes fire (T_BARS=120) but low enough that V3 ctrl is NOT re-gated to pulse every frame (T_SCROLLER=240), so V3 keeps the **mellow triangle arp timbre** that drum_tick left behind. `$D417 = $47` (all 3 voices routed through LP, res 4) overrides greets' V2-only routing — bass-bleed + triangle arp + lead all sit in the same filtered space, no timbral disconnect. `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s for a slow breathing motion under the held title. This is the LOUDEST moment of the demo — full mix held aloft for ~32 s while the twin Kloot stars dance behind the title. (Earlier coda had a dedicated sparse V3 thump at ~60 BPM, but the K-S-K-S kick already IS a triangle pitch-slam thump and the bass-bleed already IS the sub body, so the dedicated layer was redundant — pulled.) |
+| coda        | **The trophy — triumphant.** Setup sets `$F6 = $01` so the K-S-K-S drum kit from intro's `my_music_play` keeps firing through the whole part (kick + snare alternating on V3, V1 bass-bleed sub-thump on every hit). Setup ALSO sets `$F8 = $80` to restore intro's `zp_intro` after interlude's `zp_plasma_tgl` clobber — high enough that V1 bass and V2 lead freq writes fire (T_BARS=120) but low enough that V3 ctrl is NOT re-gated to pulse every frame (T_SCROLLER=240), so V3 keeps the **mellow triangle arp timbre** that drum_tick left behind. `$D417 = $26` (V2+V3 routed through LP, res 2) — V1 bass-bleed kept clean because routing the sub-thump through LP + resonance caused audible filter-clap crunch per beat. `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s for a slow breathing motion under the held title. This is the LOUDEST moment of the demo — full mix held aloft for ~32 s while the twin Kloot stars dance behind the title. |
 | end         | `end_music_init` re-inits SID for slow chord/lead reprise: V2+V3 routed through LP filter ($D417=$06, V1 bass clean so it doesn't phase along with the mood LFO sweep), V1 walks bass_pattern at END_STEP_FRAMES=24 (4× slower than intro's 6), V2 plays lead_pattern at the same slow tempo, V3 arps within the current chord changing every 4 frames. Cutoff baseline $60 (raised from $30 for a brighter, more ethereal feel) with a slow mood LFO breathing between "clean" and "dark" filter sweeps. No drums. The credit-roll outro. |
 
 ## Why my_music_play is special
@@ -349,7 +349,7 @@ The "feeling of transition" is carried by:
   Visually: twin Kloot stars dancing on wide orbits + parallax
   PETSCII starfield + title held steady. Loudest moment of the
   demo, by design — the audience hears, sees, *gets it*.
-- **end's own `music_init` re-init** with PWM + filter sweep for the
+- **end's own `music_init` re-init** with triangle arp + filter sweep for the
   credit roll reprise — quiet, no drums, settles to the title card.
   Lunch is over.
 
@@ -357,60 +357,23 @@ If you're tweaking the score, work WITHIN this rhythm rather than
 adding hard cuts. Volume drops anywhere on the resident path leak
 into every later part.
 
-## End-credits darkening (post 2026-05-21, PR #31)
+## End-credits audio
 
-Before PR #31 (coda parallax starfield), the end credits read as
-*clear, calm, perfect* — V3 PWM (pulse hi 4..11) and LP filter
-cutoff sweep ($20..$58, 90° out of phase) doing the "gentle phaser
-tone on the arp" that end.asm:983-985 documents intentionally.
+`end_music_play` runs its own SID engine (not intro's `my_music_play`)
+at 4× slower tempo (`END_STEP_FRAMES=24`). V1 walks `bass_pattern`
+with octave jumps every 3rd step, V2 plays `lead_pattern`, V3 arps
+through the current chord changing every 4 frames.
 
-After PR #31 lands, the **same end.asm code** plays noticeably
-darker / more flanger-y — the gentle phaser turns into something
-closer to a chorus or detuned-doubling effect. A/B comparison
-(`/tmp/outline-64-main.d64` vs `/tmp/outline-64-parallax.d64`,
-2026-05-21) confirms the difference is real and reproducible.
+Filter routing: `$D417 = $06` (V2+V3 through LP, V1 bass clean).
+Cutoff baseline $60 with a ~20 s mood LFO cycling the filter between
+clean (~$60) and dark (~$8A). V3 arp uses triangle + sustain $90
+(no pulse-width sensitivity) so the filter sweep shapes timbre
+without a volume wobble. No drums.
 
-**Root cause is not in end.asm itself.** `end_music_init` does a
-full SID-register clear at lines 911-915 before any play, so no
-voice state can leak in from coda. The change must come from
-upstream pefchain load order or RAM contents the player reads
-indirectly. The two things PR #31 changed that could plausibly
-ripple this far:
+### V1 bass walks `bass_pattern`
 
-- **Coda's `'P'` tag widened from $08-$0B to $08-$0F**, honestly
-  claiming the 8 pages it actually uses (the old narrower claim was
-  a latent bug — pefchain had been silently overwriting $0C-$0E
-  during coda). Pefchain's load schedule for end's payload very
-  likely shifts as a result, which can change which page-fragments
-  of end's data are streamed in vs already-resident when end's
-  setup runs.
-- **Coda's IRQ now writes screen RAM every half-rate tick** (parallax
-  star erase + redraw) instead of only colour RAM (the old static
-  twinkle). This in itself shouldn't reach end's audio path, but
-  the combined IRQ-cycle-budget shift may affect Spindle's
-  background-load progress at the coda → end handoff.
-
-### Mood LFO — clean↔dark breath (shipped 2026-05-21)
-
-The polish from the bullet list below has been built. `end_music_play`
-now:
-
-- Maintains a `mood_phase` byte incremented at frame/4 (~12.5 Hz tick)
-- Reads `wave_xscroll[mood_phase + $C0]` so phase 0 lands at the
-  sine trough → depth 0 → credits **start fully clean** for the first
-  few seconds before drifting toward dark
-- Scales the filter cutoff sweep amplitude: `amp = 4 + (depth >> 1)`
-  (4..7) and the offset `$60 - depth` ($60..$59 — bumped from the
-  original $30 baseline to $60 on 2026-05-21 for a brighter, more
-  ethereal credit roll). The result is a slow ~20 s breath between
-  the clean and dark filter moods.
-
-### V1 walks `bass_pattern` (shipped 2026-05-21)
-
-`end_music_play`'s V1 freq write used to read the chord root from
-`arp_notes[chord*4]`, so the bass camped on one pitch for the 8 step
-boundaries each chord held — read as a stuck single-note drone.
-Switching to `bass_pattern[mu_step & 31]` (32-entry table with octave
-jumps every 3rd step, e.g. Am: `A2 A2 A3 A2 A2 E3 A3 A2`) gives the
-bass natural motion every step (~480 ms) without becoming busy. Same
-fix as intro's bass; just at end's 4× slower tempo.
+`end_music_play`'s V1 freq write reads `bass_pattern[mu_step & 31]`
+(32-entry table with octave jumps every 3rd step, e.g. Am:
+`A2 A2 A3 A2 A2 E3 A3 A2`) for natural motion every step (~480 ms)
+without becoming busy. Same pattern as intro's bass; at end's 4×
+slower tempo.

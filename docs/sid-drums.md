@@ -319,9 +319,10 @@ The triumphant coda config (since 2026-05-21):
   as triangle (= whatever the drum_tick last wrote = mellow arp
   between drum hits). Triangle arp pairs with the LP-filtered V2
   lead for the cohesive "trophy" mix.
-- `$D417 = $47` (all 3 voices routed through LP, res 4) → the
-  bass-bleed sub + triangle arp + filtered lead all sit in the same
-  filtered space.
+- `$D417 = $26` (V2+V3 routed through LP, res 2) → the
+  triangle arp + filtered lead sit in the same space while V1's
+  bass-bleed sub-thump stays clean (LP + resonance on the heavy
+  low-end kick caused audible filter-clap crunch per beat).
 - `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s
   for a slow breathing motion under the held title.
 

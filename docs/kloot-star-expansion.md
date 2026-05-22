@@ -69,7 +69,7 @@ IRQ ordering inside coda's `interrupt`:
 writes (FIRST so VIC's per-raster sprite-Y check sees the new
 positions before raster 52) → jsr my_music_play (now via the
 `bit $0000` callmusic placeholder) → re-assert $D418 = $1F →
-$D417 = $47 all-voice LP routing → $D416 sin-LFO cutoff →
+$D417 = $26 V2+V3 LP routing (V1 clean, res 2) → $D416 sin-LFO cutoff →
 jsr star_field → half-rate state advance (`kloot_advance` called
 twice with X=0, X=1) → sprite-pointer loop`.
 

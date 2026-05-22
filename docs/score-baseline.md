@@ -120,8 +120,8 @@ cutoff hi = $71 (modulated by zp_wobble_pos, "wah")
 V1 = 177 Hz (F3 pulse)   ← walks bass_pattern
 V2 = 266 Hz (C4 pulse)   ← lead_pattern, all routed through LP
 V3 = 89 Hz  (F2 triangle) ← arp between K-S-K-S kit hits
-$D417 = $47 (all 3 voices routed, res 4)   $D418 = $1F
-cutoff hi modulated by sin_tab[zp_frame] + $a0 (~$4a..$d8, ~10 s LFO)
+$D417 = $26 (V2+V3 routed, res 2, V1 clean)   $D418 = $1F
+cutoff hi modulated by sin_tab[zp_frame] + $60 (~$4b..$75, ~10 s LFO)
 $F6 = $01 (drum gate ON — K-S-K-S kit + V1 bass-bleed sub-thump fire)
 $F8 = $80 (gates V1/V2 freq writes on, V3 stays triangle)
 ```
@@ -164,8 +164,8 @@ END_STEP_FRAMES = 24 (4× slower than intro)
 | interlude build | $23 (V1+V2) | on, V3 ON | $70→$FF sweep | K-S-K-S kit slams back in | triangle | ticks up |
 | sinus | $23 (V1+V2) | on | $70→$08 close | OFF | triangle | inherited |
 | greets | $42 (V2) | on | wobble_pos\|$40 (~$40..$FF wah) | on | triangle | ~$89 inherited |
-| coda | $47 (V1+V2+V3) | on | sin_tab[zp_frame]+$a0 (~$4a..$d8, ~10 s LFO) | on (F6=$01) | triangle | $80 (deliberate) |
-| end | $06 (V2+V3, V1 clean) | on | mood-LFO $60..$8A baseline | OFF | pulse | own player |
+| coda | $26 (V2+V3, res 2) | on | sin_tab[zp_frame]+$60 (~$4b..$75, ~10 s LFO) | on (F6=$01) | triangle | $80 (deliberate) |
+| end | $06 (V2+V3, V1 clean) | on | mood-LFO $60..$8A baseline | OFF | triangle | own player |
 
 ## What's working well
 
@@ -177,8 +177,9 @@ END_STEP_FRAMES = 24 (4× slower than intro)
    drum_tick + `T_SCROLLER` gate interact.
 4. **Drum entrance at intro's outro** maps perfectly onto the visual
    cascade of sprites despawning.
-5. **End credits feel different** (own player, slower tempo, all-voice
-   LP) so it reads as a clear "outro" musically, not just "loop again".
+5. **End credits feel different** (own player, slower tempo, V2+V3
+    LP with V1 clean) so it reads as a clear "outro" musically, not
+    just "loop again".
 
 ## Known weaknesses / room for "more epic"
 
@@ -197,12 +198,7 @@ END_STEP_FRAMES = 24 (4× slower than intro)
    - Drop drums for 4 beats before SPARKED reveal (interlude)
    - Half-time feel in coda (kick on 1, snare on 3) for "stadium" weight
 
-3. **Coda's cutoff is frozen.** Currently inherits greets' last value.
-   Could add a SLOW wobble (much slower than greets', e.g. 32 s
-   cycle to match the part length) so the lead breathes during the
-   long title hold without being busy.
-
-4. **Lead phrase 4 is mostly rests.** Intentional ("the melody gives
+3. **Lead phrase 4 is mostly rests.** Intentional ("the melody gives
    up"), but for coda we cycle through this phrase too — the trophy
    moment shouldn't feel sparse. Options:
    - Force coda to phase-lock onto phrase 2 or 3 (active 8ths / high
