@@ -57,9 +57,6 @@
 .const zp_mu_frame   = $f3       // within-step frame counter, 0..END_STEP_FRAMES-1
 .const END_STEP_FRAMES = 24      // 4× slower than intro's 6 — chord lasts ~3.8s, full progression ~15s
 
-// Mood LFO offset: `wave_xscroll[192]` lands on the sine trough (= 0),
-// so depth starts at 0 → credits always open clean.
-.const MOOD_PHASE_TROUGH = $c0
 .const NOTE_REST     = $FF
 
 // Music data lives in intro.asm's $1000-$125D segment which is still
@@ -908,7 +905,7 @@ push_next_credit_row:
 
 
 //==================================================================
-// end_music_init — soft pad sound, LP filter on V2+V3 (V1 clean).
+// end_music_init — soft pad sound, LP filter on all 3 voices.
 // V1/V2 triangle for warm pad, V3 pulse for arp shimmer.
 //==================================================================
 end_music_init:
@@ -944,9 +941,11 @@ end_music_init:
         lda #$f8                  // sustain=15, release=8
         sta $d414
 
-        // Filter: V2+V3 routed, V1 bass clean (so the low end stays
-        // solid through the mood LFO sweep instead of phasing along).
-        lda #%00000110
+        // Filter: all 3 voices routed, low resonance — matches the
+        // b5f888c "awesome" outro that MCP-measured live at $D417=$07.
+        // V1 going through the LP gives the bass the same warm rolloff
+        // as V2/V3, so the whole mix breathes together as one pad.
+        lda #%00000111
         sta $d417
         // Cutoff mid-range; static (no sweep needed for pad)
         lda #$00
@@ -958,13 +957,10 @@ end_music_init:
         lda #$10
         sta $d418
 
-        // Reset music step counters + mood LFO (depth starts at 0 →
-        // credits open in the clean, narrow-sweep filter mood).
+        // Reset music step counters
         lda #0
         sta zp_mu_step
         sta zp_mu_frame
-        sta mood_phase
-        sta mood_depth
         rts
 
 
@@ -993,62 +989,31 @@ end_music_play:
 !vol_ok:ora #$10                  // bit 4 = LP filter on
         sta $d418
 
-        // --- Mood LFO — credits open clean, breathe to dark, back ---
-        // Offset MOOD_PHASE_TROUGH puts wave_xscroll's sine trough at
-        // phase 0 so depth starts at 0 every time end_music_init runs.
-        lda zp_frame
-        and #$03                  // /4 prescaler — reuses free-running zp_frame
-        bne !mood_keep+
-        inc mood_phase
-!mood_keep:
-        lda mood_phase
-        clc
-        adc #MOOD_PHASE_TROUGH
-        tax
-        lda wave_xscroll,x
-        sta mood_depth
-
-        // V3 PWM — walks the pulse-width HIGH byte $04..$0B (25%..68%
-        // duty). Reads as a gentle phaser shimmer on the arp.
+        // --- V3 arp shimmer: PWM + gentle filter cutoff sweep ---
+        // PWM walks the pulse-width HIGH byte $04..$0B (25%..68% duty)
+        // over a 5.12s sine cycle for a gentle phaser tone on the arp.
+        // Filter cutoff cycles 90° out of phase across a narrow $20..$58
+        // band so the pad "breathes" without losing its soft character.
+        // Both values match the b5f888c "awesome" outro live-measured
+        // via MCP — that revision is the reference for this sound.
         ldx zp_frame
-        lda wave_xscroll,x
+        lda wave_xscroll,x        // 0..7
         clc
         adc #$04                  // 4..11
         and #$0f
-        sta $d411
+        sta $d411                 // V3 pulse hi nibble
 
-        // cutoff = wave * amp + offset
-        //   amp    = 4 + (depth >> 1)   → 4 (clean) .. 7 (dark)
-        //   offset = $60 - depth        → $60 (clean) .. $59 (dark)
-        // Raised from $30 → $60 for a brighter, more ethereal credit
-        // roll — V2 lead and V3 arp shine through the filter instead
-        // of getting rolled off into a low drone.
-        // Multiply is repeat-add: amp ∈ 4..7, max 7×7=49, no overflow.
         txa
         clc
-        adc #$40                  // 90° phase on the filter wave
+        adc #$40                  // 90° phase offset
         tax
-        lda wave_xscroll,x
-        sta zp_tmp
-
-        lda mood_depth
-        lsr
+        lda wave_xscroll,x        // 0..7
+        asl
+        asl
+        asl                       // *8 → 0..56
         clc
-        adc #$04
-        tay                       // amp
-
-        lda #$00
-!mul_loop:
-        clc
-        adc zp_tmp
-        dey
-        bne !mul_loop-
-
-        clc
-        adc #$60
-        sec
-        sbc mood_depth
-        sta $d416
+        adc #$20                  // baseline → $20..$58
+        sta $d416                 // filter cutoff hi
 
         // --- V3 arp: change freq every 4 frames within step ---
         lda zp_mu_frame
@@ -1141,11 +1106,6 @@ end_music_play:
 wave_xscroll:
         .fill 256, round(3.5 + 3.5 * sin(toRadians(i * 360 / 256)))
 
-
-// Mood LFO — slow filter-sweep modulation for the credit roll. See
-// end_music_play for the math and sound-arc.md for the design intent.
-mood_phase:     .byte 0
-mood_depth:     .byte 0
 
 //==================================================================
 // row_colour — 25-entry cool gradient (light-blue → cyan → light-
