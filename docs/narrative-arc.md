@@ -15,7 +15,7 @@ That's the whole thing. Seven parts carry it.
 [01] screenfill   the disk loads          — DEFEEST bloom
 [02] intro       the cracktro arrives    — deFEEST presents…
 [03] interlude   the confession           — FOR YEARS NO TIME / SPARKED
-[04] sinus       the breath                — quiet, breadbin-blue wobble
+[04] sinus       the manifesto             — accusation → answer, dual-phase
 [05] greets      the party                  — lunchbased lifeforms, shoutouts
 [06] coda        the trophy                  — KLOTEN MET DE BROODTROMMEL
 [07] end         the bow                    — credits roll, lunch is over
@@ -63,14 +63,31 @@ It's a joke. It's the truth. It's the whole demo in two lines. AI
 doesn't walk; it sparks. The line lands, the energy lifts, the
 party isn't quite here yet — but the bass is coming back.
 
-### 4. The breath (sinus)
+### 4. The manifesto (sinus — story line 2)
 
-Sinus is the breath after the joke. A field of repeating "DEFEEST"
-text gently wobbling on a sine, colour cycling through breadbin
-blues, LP filter closing on bass + lead until they're a muffled
-warm hum. Drums stop. Volume fades. The eye of the storm. About 5
-seconds where the audience can absorb what just happened and
-anticipate what's next.
+What was once a quiet "breath" beat became the demo's actual
+thesis statement. Two phases, ~5 seconds total, both wobbling on
+sine over a "deFEEST" wallpaper:
+
+**Phase 1 (~2.4 s, red palette, full wobble) — the accusation:**
+
+```
+THEY SAID AI DESTROYS CREATIVITY
+KILLING JOY AND NUMBING OUR MINDS
+```
+
+**Phase 2 (~2.6 s, cyan palette, halved wobble) — the answer:**
+
+```
+WE FOUND THE OPPOSITE
+NOT A THREAT BUT A TOOL
+```
+
+White border flash on the swap. Audio is still doing its breath
+job underneath (LP filter closing on V1+V2, drums silent, volume
+fading) — so the visual reads as "calm but assertive" rather than
+"empty space". SPARKED was the spark (emotion); sinus is the
+argument (reason). Together they're the demo's full thesis.
 
 ### 5. The greets (greets — community)
 
@@ -141,16 +158,17 @@ Lunch was served.
 ## The two arcs locking in
 
 ```
-beat:    quiet  →  build  →  confess  →  breathe  →  drop  →  settle  →  bow
-visual:  load   →  intro   →  text drop →  wobble  →  greetz →  twin star → credits
-story:   --     →  hello   →  SPARKED   →  --       →  --     →  trophy + party tag → credits
+beat:    quiet  →  build  →  confess  →  argue   →  drop  →  settle  →  bow
+visual:  load   →  intro   →  text drop →  swap   →  greetz →  twin star → credits
+story:   --     →  hello   →  SPARKED   →  THESIS  →  --     →  trophy + party tag → credits
 music:   silent →  drums in→  filter rise→ filter close→full kit→ slow kick→ chord reprise
 ```
 
-The story lands in two places: interlude (FOR YEARS NO TIME →
-SPARKED) tells the confession; coda lands the trophy with the
-title + the X2026 release tag, while the greets settle on `KLOTEN`
-gives the AI-character one subtle nod. Greets itself is the
+The story lands in three places: interlude (FOR YEARS NO TIME →
+SPARKED) tells the confession; sinus (accusation → answer) makes
+the argument explicit; coda lands the trophy with the title + the
+X2026 release tag, while the greets settle on `KLOTEN` gives the
+AI-character one subtle nod. Greets itself is the
 party — no story, just community shoutouts. When the SPARKED letters drop, the bass returns and the
 filter opens. When the sinus filter closes, the drums stop. When
 the greets drums come back, the lead's wah kicks in. When the coda

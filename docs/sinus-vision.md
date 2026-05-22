@@ -1,9 +1,41 @@
-# Sinus — the breath that doesn't land yet
+# Sinus — vision archive
 
-> Vision + options doc for fixing the part 4 / sinus beat.
-> 2026-05-22 — Companion to [`narrative-arc.md`](./narrative-arc.md)
-> and [`sound-arc.md`](./sound-arc.md). No code yet — this is "what
-> are we even trying to say here".
+> **Shipped: Option D — the manifesto.** Implemented in commit
+> `cff79d1` (rewrite) + `f1779de` (chargen fix) + `48b3330`
+> (byte-order fix). See [`narrative-arc.md §4`](./narrative-arc.md)
+> for the live description of what plays.
+>
+> 2026-05-22 — Originally written as an options doc before any code
+> landed. Kept as an archive of the design space we considered and
+> the rationale for picking what we picked. No further sinus
+> implementation here — this is "what we thought about" / "what we
+> went with".
+
+## What shipped
+
+Dual-phase text beat, ~5 seconds total at 50 Hz:
+
+| Frames | Time | Text on rows 10-11 | Palette | Wobble |
+|--------|------|--------------------|---------|--------|
+| 0-119 | 0 → 2.4 s | `THEY SAID AI DESTROYS CREATIVITY` / `KILLING JOY AND NUMBING OUR MINDS` | red tones | full sine amplitude |
+| 120 | swap | (1-frame white border flash) | — | — |
+| 120-249 | 2.4 → 5.0 s | `WE FOUND THE OPPOSITE` / `NOT A THREAT BUT A TOOL` | cyan tones | half amplitude |
+
+The rest of the screen (rows 0-9 and 12-24) wallpapers with
+"deFEEST" repeating, dim-blue gradient. Audio continues its breath
+job underneath (LP close on V1+V2, drums silent, vol fade over
+last second). White border flash highlights the swap.
+
+This is **Option D below** (manifesto / accusation → answer) which
+the original doc didn't enumerate — added after the fact.
+
+## Original options considered
+
+> The doc below is what was on the table before implementation
+> started. Kept verbatim for archaeological value.
+
+---
+
 
 ## Where sinus sits in the arc
 
