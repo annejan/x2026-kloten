@@ -938,8 +938,9 @@ end_music_init:
         sta $d411                 // pulse hi (~25%)
         lda #$11                  // attack=1, decay=1
         sta $d413
-        lda #$f8                  // sustain=15, release=8
-        sta $d414
+        lda #$98                  // sustain=9, release=8 — pulled down
+        sta $d414                 // from $f8 so the arp sits under
+                                  // V1/V2 pad instead of on top.
 
         // Filter: all 3 voices routed, low resonance — matches the
         // b5f888c "awesome" outro that MCP-measured live at $D417=$07.
