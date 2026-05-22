@@ -1220,6 +1220,31 @@ pending_odd:
 text_ptr_odd:
         .word 0
 
+// Mode-2 (zig-zag split) mid-scroll pause: freezes the scroll for
+// ~0.6 s when the on-screen content of even and odd rows aligns to
+// the SAME source chars — that's the "lines up" moment where the
+// zig-zag visually resolves into the same message on both halves.
+//
+// Pointer math: at char-step K, even shows source[K-40..K-1] in
+// cells 0..39; odd shows source[L-K..L-K+39]. Identical iff K-40 =
+// L-K → K = (L+40)/2 (= 54 for block 3's L=68). At that K the
+// pointer diff (zp_text_ptr - text_ptr_odd) = 2K + 2 - L. For K=54
+// and L=68 → diff = 42. SPLIT_MEET_OFFSET ENCODES THE TUNING:
+//   42 → both halves perfectly aligned (cell-by-cell same char)
+//   0  → pointers just crossed (no overlap yet, looks scrambled)
+//   80 → too late, alignment broken by further scrolling
+// Tune ±2 (= ±1 char-step) per visual taste.
+//
+// Armed once per run. State:
+//   split_pause_ctr   = remaining freeze frames (0 = scroll active)
+//   split_pause_armed = 0 until alignment detected once,
+//                       prevents re-triggering if scan wobbles.
+.const SPLIT_PAUSE_FRAMES = 40   // ~0.8 s at 50 Hz
+.const SPLIT_MEET_OFFSET  = 40   // pointer-diff threshold (K=54 of 68);
+                                 // each ±2 here = ±1 char-step earlier/later
+split_pause_ctr:    .byte 0
+split_pause_armed:  .byte 0
+
 
 //==================================================================
 // copy_chargen — bank CHARGEN ROM in, copy MIXED-case set ($D800-$DFFF)
@@ -1374,6 +1399,8 @@ init_bmp_scroll:
         lda #0
         sta zp_smooth
         sta zp_scroll_mode      // start in mode 0 (left scroll)
+        sta split_pause_ctr     // mode-2 mid-meet pause: idle on entry
+        sta split_pause_armed   // and unfired so the cross can trigger
 
         // Clear 320 bytes of bitmap row 23
         ldx #0
@@ -1449,7 +1476,16 @@ update_scroll_colors:
 //       Source pointers walk independently from the two ends of block 3
 //       toward each other.
 // Mode advances at $fe sentinel bytes in scroll_text and wraps after mode 2.
+// While split_pause_ctr is non-zero, skip the entire frame — both the
+// pixel-level ROL/ROR chains AND the char-step advance — so the screen
+// freezes mid-zig-zag for SPLIT_PAUSE_FRAMES frames after the pointers
+// cross in block 3 (the moment both halves of the line are on screen).
 update_bmp_scroll:
+        lda split_pause_ctr
+        beq !run_scroll+
+        dec split_pause_ctr
+        rts
+!run_scroll:
         ldx #0
 !rowloop:
         // Dispatch on scroll mode → ROL/ROR per row.
@@ -1615,6 +1651,47 @@ update_bmp_scroll:
 !no_borrow_o:
         dec text_ptr_odd
 !skip_odd_dec:
+        // After both mode-2 pointers move, check if (zp_text_ptr -
+        // text_ptr_odd) >= SPLIT_MEET_OFFSET. This needs a proper
+        // 16-bit SIGNED compare because for the first half of mode 2
+        // zp_text_ptr is BELOW text_ptr_odd (they start at opposite
+        // ends of block 3 and walk toward each other); an 8-bit
+        // unsigned compare on the low byte alone gives a huge
+        // wrap-around value pre-cross and false-triggers immediately.
+        //
+        // Strategy: 16-bit subtract via low-then-high SBC chain. The
+        // high-byte SBC result + carry tells us the sign:
+        //   bmi → result negative   → still pre-cross, skip
+        //   bne → result ≥ +256     → way past, definitely trigger
+        //   else (hi byte = 0)      → low byte is the unsigned diff;
+        //                              compare to SPLIT_MEET_OFFSET.
+        lda zp_scroll_mode
+        cmp #2
+        bne !no_meet_check+
+        lda split_pause_armed
+        bne !no_meet_check+
+        lda zp_text_ptr
+        sec
+        sbc text_ptr_odd
+        pha                          // save diff low byte
+        lda zp_text_ptr+1
+        sbc text_ptr_odd+1
+        bmi !no_meet_pop+            // signed negative → pre-cross
+        bne !meet_pop+               // hi byte > 0 → diff >= 256, past
+        pla                          // hi byte = 0: A = diff low
+        cmp #SPLIT_MEET_OFFSET
+        bcc !no_meet_check+
+        jmp !meet+
+!no_meet_pop:
+        pla
+        jmp !no_meet_check+
+!meet_pop:
+        pla
+!meet:
+        inc split_pause_armed
+        lda #SPLIT_PAUSE_FRAMES
+        sta split_pause_ctr
+!no_meet_check:
         jmp !recheck+
 !back:
         // If ptr == block2_start we've just displayed the first source
