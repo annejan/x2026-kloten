@@ -130,7 +130,7 @@ $F8 = $80 (gates V1/V2 freq writes on, V3 stays triangle)
 ```
 V1: pad ADSR $71/$fa (A=7 slow attack, S=15, R=10)
 V2: pad ADSR $51/$f9
-V3: ADSR $11/$f8 (fast attack arp)
+V3: ADSR $11/$f8 (fast attack arp), pulse 25% w/ PWM-hi walk $04..$0B
 $D417 = $06 (V2+V3 routed, V1 bass clean)   $D418 = $1F (LP on)
 cutoff sweep: amp × wave + offset = $60..$8A clean
               $59..$83 dark (modulated by 20-s mood LFO)
@@ -165,7 +165,7 @@ END_STEP_FRAMES = 24 (4× slower than intro)
 | sinus | $23 (V1+V2) | on | $70→$08 close | OFF | triangle | inherited |
 | greets | $42 (V2) | on | wobble_pos\|$40 (~$40..$FF wah) | on | triangle | ~$89 inherited |
 | coda | $26 (V2+V3, res 2) | on | sin_tab[zp_frame]+$60 (~$4b..$75, ~10 s LFO) | on (F6=$01) | triangle | $80 (deliberate) |
-| end | $06 (V2+V3, V1 clean) | on | mood-LFO $60..$8A baseline | OFF | triangle | own player |
+| end | $06 (V2+V3, V1 clean) | on | mood-LFO $60..$8A baseline | OFF | pulse (PWM-hi $04..$0B) | own player |
 
 ## What's working well
 

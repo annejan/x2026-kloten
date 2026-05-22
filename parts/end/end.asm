@@ -908,8 +908,8 @@ push_next_credit_row:
 
 
 //==================================================================
-// end_music_init — soft pad sound, LP filter, all 3 voices routed.
-// V1/V2 triangle for warm pad, V3 triangle for soft arp.
+// end_music_init — soft pad sound, LP filter on V2+V3 (V1 clean).
+// V1/V2 triangle for warm pad, V3 pulse for arp shimmer.
 //==================================================================
 end_music_init:
         // Clear SID
@@ -931,11 +931,18 @@ end_music_init:
         lda #$f9                  // sustain=15, release=9
         sta $d40d
 
-        // V3 (arp): triangle, gentle attack, moderate sustain
-        lda #$21                  // attack=2, decay=1
+        // V3 (arp): pulse 25%, quick attack. PWM walks $04..$0B in the
+        // high byte (25%..68% duty) per frame — that subtle phaser is
+        // the nostalgic shimmer; softening it to triangle removed the
+        // character entirely. Never crosses zero, so no silence artifacts.
+        lda #$00
+        sta $d410                 // pulse lo
+        lda #$04
+        sta $d411                 // pulse hi (~25%)
+        lda #$11                  // attack=1, decay=1
         sta $d413
-        lda #$90                  // sustain=9, release=0 (fast release
-        sta $d414                 // so each arp note decays quickly)
+        lda #$f8                  // sustain=15, release=8
+        sta $d414
 
         // Filter: V2+V3 routed, V1 bass clean (so the low end stays
         // solid through the mood LFO sweep instead of phasing along).
@@ -1001,9 +1008,8 @@ end_music_play:
         lda wave_xscroll,x
         sta mood_depth
 
-        // V3 is triangle so pulse-width writes are harmless; the LFO
-        // only modulates the filter sweep amplitude — that's where
-        // the audible clean ↔ dark difference lives.
+        // V3 PWM — walks the pulse-width HIGH byte $04..$0B (25%..68%
+        // duty). Reads as a gentle phaser shimmer on the arp.
         ldx zp_frame
         lda wave_xscroll,x
         clc
@@ -1072,7 +1078,7 @@ end_music_play:
         sta $d40e
         lda MAIN_SID_FREQ_HI,y
         sta $d40f
-        lda #$11                  // triangle + gate (idempotent re-arm)
+        lda #$41                  // pulse + gate (idempotent re-arm)
         sta $d412
 !no_arp:
 

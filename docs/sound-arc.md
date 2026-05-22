@@ -349,7 +349,7 @@ The "feeling of transition" is carried by:
   Visually: twin Kloot stars dancing on wide orbits + parallax
   PETSCII starfield + title held steady. Loudest moment of the
   demo, by design — the audience hears, sees, *gets it*.
-- **end's own `music_init` re-init** with triangle arp + filter sweep for the
+- **end's own `music_init` re-init** with PWM-shimmer pulse arp + filter sweep for the
   credit roll reprise — quiet, no drums, settles to the title card.
   Lunch is over.
 
@@ -366,9 +366,9 @@ through the current chord changing every 4 frames.
 
 Filter routing: `$D417 = $06` (V2+V3 through LP, V1 bass clean).
 Cutoff baseline $60 with a ~20 s mood LFO cycling the filter between
-clean (~$60) and dark (~$8A). V3 arp uses triangle + sustain $90
-(no pulse-width sensitivity) so the filter sweep shapes timbre
-without a volume wobble. No drums.
+clean (~$60) and dark (~$8A). V3 arp is pulse with PWM walking the
+high byte $04..$0B (25%..68% duty) per frame — a gentle phaser
+shimmer that gives the credit roll its nostalgic character. No drums.
 
 ### V1 bass walks `bass_pattern`
 
