@@ -748,11 +748,20 @@ copy_font:
 ptr_lookup:
 // Sprite pointer values for each input char. Font slots live at
 // $0800-$0FFF (32 slots × 64 B), so ptr = $20 + slot. A-Z → slots
-// 0..25, blank → slot 26, hyphen → slot 27.
+// 0..25, blank → slot 26 ($3A default), hyphen → slot 27 ($3B),
+// then the four digits used in the greetings text live in the last
+// 4 slots ($3C..$3F). Add a digit here only if there's a free slot
+// AND its glyph is added to font_data below in the matching order.
 .for (var i = 0; i < 256; i++) {
         .if (i >= $41 && i <= $5A) { .byte $20 + i - $41 }    // A-Z   → $20..$39
         .if (i == $2D)             { .byte $3B }              // '-'   → hyphen
-        .if (i != $2D && (i < $41 || i > $5A)) { .byte $3A }  // other → blank
+        .if (i == $30)             { .byte $3C }              // '0'   → digit 0
+        .if (i == $31)             { .byte $3D }              // '1'   → digit 1
+        .if (i == $32)             { .byte $3E }              // '2'   → digit 2
+        .if (i == $35)             { .byte $3F }              // '5'   → digit 5
+        // default for everything else — blank slot $3A.
+        .if (i != $2D && i != $30 && i != $31 && i != $32 && i != $35
+             && (i < $41 || i > $5A)) { .byte $3A }
 }
 
 sprite_x_table:
@@ -917,21 +926,25 @@ font_data:
 // as soon as it picked up chars like 'BROODJEKAAS.EXE' or 'X2026'.
 .fill 64, 0
 
-// Hyphen glyph for ptr_lookup's $9B slot — chargen ROM `-` at code
+// Hyphen glyph for ptr_lookup's $3B slot — chargen ROM `-` at code
 // $2D, scaled to 24×21 the same way A-Z are. Lets NAH-KOLOR and
 // POO-BRAIN render correctly instead of becoming NAH KOLOR / POO BRAIN.
 .var g_hyphen = glyph_data_21x24($2D)
 .for (var i = 0; i < g_hyphen.size(); i++) {
         .byte g_hyphen.get(i)
 }
-// space (blank)
-.for (var i = 0; i < 64; i++) {
-        .byte 0
-}
-// unused slots (32 - 27 = 5)
-.for (var s = 0; s < 5; s++) {
-        .for (var i = 0; i < 64; i++) {
-                .byte 0
+// Digit glyphs for slots $3C..$3F — only the 4 digits that appear
+// in the current greetings text (0, 1, 2, 5 for "WGI2015") fit in
+// the remaining sprite-shape slots; the copy_font routine only
+// streams 2048 bytes ($0800-$0FFF). If the message text grows to
+// need more digits, free up another slot first (or merge two
+// near-identical letter glyphs) — there's no spare room.
+.for (var d = $30; d <= $35; d++) {
+        .if (d == $30 || d == $31 || d == $32 || d == $35) {
+                .var g_d = glyph_data_21x24(d)
+                .for (var i = 0; i < g_d.size(); i++) {
+                        .byte g_d.get(i)
+                }
         }
 }
 
