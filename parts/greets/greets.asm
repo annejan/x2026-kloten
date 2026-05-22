@@ -867,86 +867,124 @@ settle_text:
 
 
 //==================================================================
-// Font data — 26 letters (A-Z) + space + 5 unused slots
-// Generated from the C64 chargen ROM at build time.
+// Font data — 32 glyph slots × 64 bytes = 2048-byte sprite-shape blob.
+//
+// Source of truth: parts/greets/font.bin. Edit individual glyphs in
+// any sprite editor that takes a raw 32-frame hi-res .bin
+// (Spritemate https://www.spritemate.com/ or SubChrist SpritePad) —
+// load font.bin, edit, export raw, save back. Then ./build.sh.
+//
+// To regenerate font.bin from chargen.bin via the EPX-3 upscaler:
+//     python3 tools/gen_font.py
+//
+// The asm-time chargen+EPX implementation below is currently UNUSED;
+// kept for reference because the Python tool mirrors its algorithm
+// 1:1. To revert to asm-time generation, swap `font_data: .fill ...`
+// for the per-slot generation block immediately below.
 //==================================================================
+.var font_blob = LoadBinary("font.bin")
+font_data:
+.fill font_blob.getSize(), font_blob.get(i)
+
+// ---- asm-time fallback (unused) — same EPX algorithm as gen_font.py
 .var chargen = LoadBinary("chargen.bin")
 
+// EPX-3 (Eric's Pixel Expansion, 3× variant) upscaler: each source
+// pixel becomes a 3×3 output block, but the 4 corner pixels of each
+// block get smoothed by examining the source's vertical+horizontal
+// neighbours. Where two adjacent neighbours agree on a value
+// different from the centre pixel, the corner inherits the neighbour
+// value — which rounds outer corners of filled regions and fills
+// inner corners of "L"-shaped joins. The cardinal-direction edges
+// (top-centre, middle-row, bottom-centre) of each 3×3 block stay
+// equal to the centre pixel so strokes don't get thinned.
+//
+// Net effect: chargen's 8×8 staircases become smooth 24×21 slopes
+// instead of chunky 3-pixel-wide steps. The original cell drop —
+// removing one sub-row at src-rows 2/5/7 to fit 21 output rows in
+// the 64-byte sprite slot — is unchanged.
 .function glyph_data_21x24(code) {
         .var base = $0800 + code * 8
+
+        // Unpack source 8×8 into a flat 64-entry list of {0,1}.
+        .var src = List()
+        .for (var y = 0; y < 8; y++) {
+                .var rowByte = chargen.get(base + y)
+                .for (var x = 0; x < 8; x++) {
+                        .eval src.add((rowByte >> (7 - x)) & 1)
+                }
+        }
+
+        // EPX-3 expand into a 24×24 binary buffer.
+        .var out = List()
+        .for (var i = 0; i < 24*24; i++) { .eval out.add(0) }
+        .for (var sy = 0; sy < 8; sy++) {
+                .for (var sx = 0; sx < 8; sx++) {
+                        .var P = src.get(sy * 8 + sx)
+                        .var N = 0
+                        .if (sy > 0) { .eval N = src.get((sy-1) * 8 + sx) }
+                        .var S = 0
+                        .if (sy < 7) { .eval S = src.get((sy+1) * 8 + sx) }
+                        .var W = 0
+                        .if (sx > 0) { .eval W = src.get(sy * 8 + sx - 1) }
+                        .var E = 0
+                        .if (sx < 7) { .eval E = src.get(sy * 8 + sx + 1) }
+                        // Corners default to P, override on neighbour agreement.
+                        .var nw = P
+                        .if (N == W && N != P) { .eval nw = N }
+                        .var ne = P
+                        .if (N == E && N != P) { .eval ne = N }
+                        .var sw = P
+                        .if (S == W && S != P) { .eval sw = S }
+                        .var se = P
+                        .if (S == E && S != P) { .eval se = S }
+                        .var ox = sx * 3
+                        .var oy = sy * 3
+                        .eval out.set(oy * 24 + ox,         nw)
+                        .eval out.set(oy * 24 + ox + 1,     P)
+                        .eval out.set(oy * 24 + ox + 2,     ne)
+                        .eval out.set((oy+1) * 24 + ox,     P)
+                        .eval out.set((oy+1) * 24 + ox + 1, P)
+                        .eval out.set((oy+1) * 24 + ox + 2, P)
+                        .eval out.set((oy+2) * 24 + ox,     sw)
+                        .eval out.set((oy+2) * 24 + ox + 1, P)
+                        .eval out.set((oy+2) * 24 + ox + 2, se)
+                }
+        }
+
+        // Pack 24×24 → 21 output rows of 3 bytes each. The same drop
+        // policy as before (skip 1 sub-row in src-rows 2/5/7) keeps
+        // the visual proportions and totals 63 bytes + 1 pad.
         .var result = List()
-        // Each source pixel → 3×3 block (integer 3× scale).
-        // 8 rows × 3 = 24 output rows; drop 3 to fit 64-byte sprite slot
-        // (21 rows × 3 bytes = 63 + 1 pad). Rows 2, 5, 7 get 2 rows instead of 3.
-        .var outRow = 0
         .for (var srcRow = 0; srcRow < 8; srcRow++) {
-                .var srcByte = chargen.get(base + srcRow)
-                // 3 sub-rows per source row, except rows 2/5/7 which get 2
                 .var maxSub = 3
                 .if (srcRow == 2 || srcRow == 5 || srcRow == 7) { .eval maxSub = 2 }
                 .for (var subRow = 0; subRow < maxSub; subRow++) {
+                        .var y = srcRow * 3 + subRow
                         .var b0 = 0
                         .var b1 = 0
                         .var b2 = 0
-                        // Each source column → 3 output columns
-                        .for (var srcCol = 0; srcCol < 8; srcCol++) {
-                                .if (((srcByte >> (7 - srcCol)) & 1) != 0) {
-                                        .for (var dx = 0; dx < 3; dx++) {
-                                                .var col = srcCol * 3 + dx
-                                                .var byteIdx = floor(col / 8)
-                                                .var bitIdx = col - byteIdx * 8
-                                                .if (byteIdx == 0) { .eval b0 = b0 | (1 << (7 - bitIdx)) }
-                                                .if (byteIdx == 1) { .eval b1 = b1 | (1 << (7 - bitIdx)) }
-                                                .if (byteIdx == 2) { .eval b2 = b2 | (1 << (7 - bitIdx)) }
-                                        }
+                        .for (var col = 0; col < 24; col++) {
+                                .if (out.get(y * 24 + col) != 0) {
+                                        .var byteIdx = floor(col / 8)
+                                        .var bitIdx = col - byteIdx * 8
+                                        .if (byteIdx == 0) { .eval b0 = b0 | (1 << (7 - bitIdx)) }
+                                        .if (byteIdx == 1) { .eval b1 = b1 | (1 << (7 - bitIdx)) }
+                                        .if (byteIdx == 2) { .eval b2 = b2 | (1 << (7 - bitIdx)) }
                                 }
                         }
                         .eval result.add(b0)
                         .eval result.add(b1)
                         .eval result.add(b2)
-                        .eval outRow++
                 }
         }
         .eval result.add(0)
         .return result
 }
 
-font_data:
-// A-Z
-.for (var c = $41; c <= $5A; c++) {
-        .var g = glyph_data_21x24(c)
-        .for (var i = 0; i < g.size(); i++) {
-                .byte g.get(i)
-        }
-}
-// Blank glyph for ptr_lookup's $9A slot — every char outside A-Z
-// (spaces, '.', digits, etc.) gets mapped here. Without this explicit
-// fill the slot reads uninitialised RAM and the "blanks" between words
-// render as random pixels, which made the new message look glitched
-// as soon as it picked up chars like 'BROODJEKAAS.EXE' or 'X2026'.
-.fill 64, 0
-
-// Hyphen glyph for ptr_lookup's $3B slot — chargen ROM `-` at code
-// $2D, scaled to 24×21 the same way A-Z are. Lets NAH-KOLOR and
-// POO-BRAIN render correctly instead of becoming NAH KOLOR / POO BRAIN.
-.var g_hyphen = glyph_data_21x24($2D)
-.for (var i = 0; i < g_hyphen.size(); i++) {
-        .byte g_hyphen.get(i)
-}
-// Digit glyphs for slots $3C..$3F — only the 4 digits that appear
-// in the current greetings text (0, 1, 2, 5 for "WGI2015") fit in
-// the remaining sprite-shape slots; the copy_font routine only
-// streams 2048 bytes ($0800-$0FFF). If the message text grows to
-// need more digits, free up another slot first (or merge two
-// near-identical letter glyphs) — there's no spare room.
-.for (var d = $30; d <= $35; d++) {
-        .if (d == $30 || d == $31 || d == $32 || d == $35) {
-                .var g_d = glyph_data_21x24(d)
-                .for (var i = 0; i < g_d.size(); i++) {
-                        .byte g_d.get(i)
-                }
-        }
-}
+// (No second font_data here — `font_data:` is now bound to the
+//  LoadBinary blob above. The per-slot generators that used to live
+//  at this spot have moved to tools/gen_font.py.)
 
 
 //==================================================================
