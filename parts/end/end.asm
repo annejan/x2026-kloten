@@ -791,7 +791,8 @@ interrupt:
         // --- SID: slow chord/melody progression (volume + voices) ---
         jsr end_music_play
 
-        // --- Text wave: $D016 xscroll wobble (single write per frame) ---
+        // --- Default $D016 wobble: applies on wrap frames + as the
+        //     fallback before the cycle-exact loop overwrites it.
         ldy zp_frame
         lda wave_xscroll,y
         ora #$08
@@ -802,38 +803,111 @@ interrupt:
         beq !skip_wrap+
         jsr scroll_rows_up
         jsr push_next_credit_row
-        // Skip the colour-RAM rotation on wrap frames — no budget
-        // after scroll_rows_up.
-        jmp !rasterbars_done+
+        jmp !raster_done+
 !skip_wrap:
 
-        // --- Per-frame colour-RAM rotation: rasterbars on letters ---
-        // Repaint all 24 rows of colour RAM each frame with a colour
-        // from flowing_gradient indexed by (row + zp_frame). Each row
-        // gets a different colour and the whole pattern advances by
-        // 1 phase step per frame, so the text reads as a rainbow
-        // cascade flowing through the credits. ~10K cycles — fits on
-        // non-wrap frames.
+        // ================================================================
+        // Cycle-perfect per-scanline $D016 wave (the "demoscene" version)
+        // ================================================================
+        // Plan, with PAL cycle accounting:
+        //   Non-badline scanline: 63 CPU cycles
+        //   Badline scanline:     12 cy (cy 0-11) + 8 cy (cy 55-62) = 20 CPU cy
+        //                         (VIC steals cycles 12-54 = 43 cy)
+        //   8-line character row: 7×63 + 20 = 461 CPU cy, 504 wall cy
+        //
+        // Per scanline iter:
+        //   lda wave_xscroll,y    4 cy  (cy 0-3)
+        //   sta $d016             4 cy  (cy 4-7)  — write before badline cy 12
+        //   iny                   2 cy  (cy 8-9)
+        //   = 10 cy of work, write completes by cy 8
+        //
+        // Non-badline iter: 10 cy work + 53 cy pad = 63 cy
+        //                   (25 NOPs × 2 cy + 1 nop-zp × 3 cy = 53)
+        // Last non-badline of block (with dex+bne taken):
+        //                   10 + 48 (24 NOPs) + dex(2) + bne(3) = 63 cy
+        // Badline iter:     10 work + 2 cy pad (cy 10-11) + 43 cy steal +
+        //                   8 cy pad (cy 55-62, 4 NOPs) = 63 wall cy
+        //
+        // Outer loop: 24 iters × 504 wall cy = 12096 wall cy = 192 raster
+        // lines = exactly the visible area.
+        //
+        // Entry sync: badline position within a character row depends on
+        // yscroll. First badline in visible area = $33 + ((yscroll-3) & 7).
+        // We poll for raster = (first_badline - 1), then enter the loop
+        // expecting the badline iter first.
+
         lda zp_fade
         cmp #TEXT_REVEAL
-        bcs !do_rasterbars+
-        jmp !rasterbars_done+
-!do_rasterbars:
+        bcs !do_raster+
+        jmp !raster_done+
+!do_raster:
 
-        ldx zp_frame              // phase
-        .for (var r = 0; r < 24; r++) {
-                txa
-                clc
-                adc #r
-                and #$1f
-                tay
-                lda flowing_gradient,y
-                ldy #39
-        !fl:    sta COLRAM + r*40, y
-                dey
-                bpl !fl-
+        // Compute first badline raster value, then -1 for the polling
+        // target (we want to enter the unrolled block at cy 0 of the
+        // badline = cy 63 of the line before).
+        lda zp_yscroll
+        sec
+        sbc #3
+        and #$07
+        clc
+        adc #$33                  // first badline
+        sec
+        sbc #1                    // first_badline - 1 = poll target
+        sta zp_tmp
+
+        // Polling exit jitter is up to ~7 cy. We absorb it with NOP
+        // padding so the first iter's sta $d016 lands close to cy 4
+        // of the badline.
+!w_sync:
+        cmp $d012
+        bne !w_sync-              // raster < target → spin
+
+        ldy zp_frame              // 3 cy
+        ldx #24                   // 2 cy
+        // After bne not taken (2 cy) + ldy + ldx = ~7 cy past exit.
+        // Pad to cy 63 of (first_badline - 1) ≈ ~56 more cy.
+        // 28 NOPs = 56 cy. The first iter's lda lands ~at cy 63 of the
+        // pre-line = cy 0 of first_badline (within a couple cy).
+        .fill 28, $ea
+
+!block_start:
+        // ---- Badline line (entry into each 8-line block) ----
+        lda wave_xscroll,y        // 4 cy (cy 0-3)
+        sta VIC_CTRL2             // 4 cy (cy 4-7)
+        iny                       // 2 cy (cy 8-9)
+        nop                       // 2 cy (cy 10-11) — last instr before steal
+        // cy 12-54: VIC steals
+        // cy 55-62: 8 cy available
+        nop                       // 2 cy
+        nop                       // 2 cy
+        nop                       // 2 cy
+        nop                       // 2 cy = 4 NOPs filling cy 55-62
+
+        // ---- 6 × non-badline iters (lines 1..6 of block) ----
+        .for (var line = 0; line < 6; line++) {
+                lda wave_xscroll,y    // 4 cy
+                sta VIC_CTRL2         // 4 cy
+                iny                   // 2 cy
+                // 53 cy padding = 25 NOPs (50 cy) + 1 nop-zp (3 cy)
+                .fill 25, $ea
+                .byte $04, $00        // nop zp ($04) = 3 cy
         }
-!rasterbars_done:
+
+        // ---- Line 7 of block: last non-badline, contains exit check ----
+        // bne can't reach !block_start- across the 250-byte unrolled
+        // body, so we use beq forward (1-byte branch) + jmp back.
+        // dex(2) + beq_nt(2) + jmp(3) = 7 cy on continuing iters,
+        // dex(2) + beq_t(3) = 5 cy on the final iter.
+        lda wave_xscroll,y        // 4 cy
+        sta VIC_CTRL2             // 4 cy
+        iny                       // 2 cy
+        // 46 cy padding + dex(2) + beq_nt(2) + jmp(3) = 53 cy → 63 cy
+        .fill 23, $ea             // 46 cy
+        dex                       // 2 cy
+        beq !raster_done+         // 2 cy not taken / 3 cy taken
+        jmp !block_start-         // 3 cy
+
+!raster_done:
 
         // Re-arm raster IRQ for line $00 of next frame (we are the only IRQ).
         lda #$00
