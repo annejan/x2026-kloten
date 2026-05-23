@@ -158,6 +158,27 @@ setup:
         sta VIC_BORDER
         sta VIC_BG
 
+        // Map col_tab + bg_tab through fire_pal so the raster bar loop
+        // gets fire colours without paying a lookup cycle per scanline.
+        ldx #0
+!map_c:
+        lda col_tab,x
+        tay
+        lda fire_pal,y
+        sta col_tab,x
+        inx
+        cpx #200
+        bne !map_c-
+        ldx #0
+!map_b:
+        lda bg_tab,x
+        tay
+        lda fire_pal,y
+        sta bg_tab,x
+        inx
+        cpx #200
+        bne !map_b-
+
         lda VIC_CTRL1
         and #%01111111
         sta VIC_CTRL1
@@ -301,9 +322,9 @@ musichook:
         // already handles horizontal scroll. Writing $D016 per scanline
         // would override it, killing the visible sine movement.
         lda col_tab,y
-        sta VIC_BORDER          // $D020 border bar
+        sta VIC_BORDER          // $D020 border bar — fire-colour mapped at table-gen time
         lda bg_tab,y
-        sta VIC_BG              // $D021 bg bar
+        sta VIC_BG              // $D021 bg bar — fire-colour mapped at table-gen time
         iny
         cpy #200
         bne !no_wrap+
@@ -336,14 +357,16 @@ sine_tab:
 .align 256
 col_tab:
 .for (var i = 0; i < 200; i++) {
-        .byte floor(3.5 + 3.5 * sin(i * 4 * PI / 200))
+    .byte floor(3.5 + 3.5 * sin(i * 4 * PI / 200))
 }
 
-.align 256
 bg_tab:
 .for (var i = 0; i < 200; i++) {
-        .byte floor(4.5 + 3.5 * sin(i * 3 * PI / 200 + 0.5))
+    .byte floor(4.5 + 3.5 * sin(i * 3 * PI / 200 + 0.5))
 }
+
+fire_pal:
+    .byte $00, $02, $08, $07, $01, $07, $08, $02
 
 msg_phase1:
         .byte $54, $48, $45, $59, $20, $53, $41, $49, $44, $20
@@ -368,22 +391,22 @@ msg_phase2:
 swap_flag:      .byte 0
 
 pal_phase1:
-        .byte $06, $06, $06, $06, $06
-        .byte $0E, $0E, $0E, $0E, $0E
-        .byte $02, $0E
-        .byte $06
-        .byte $0E, $0E, $0E, $0E, $0E
-        .byte $06, $06, $06, $06, $06
-        .byte $0E
+        .byte $00, $00, $00, $00, $00
+        .byte $02, $02, $02, $02, $02
+        .byte $07, $08
+        .byte $02
+        .byte $02, $02, $02, $02, $02
+        .byte $00, $00, $00, $00, $00
+        .byte $00
 
 pal_phase2:
-        .byte $06, $06, $06, $06, $06
-        .byte $0E, $0E, $0E, $0E, $0E
-        .byte $03, $0E
+        .byte $00, $00, $00, $00, $00
+        .byte $02, $02, $02, $02, $02
+        .byte $01, $07
         .byte $00
-        .byte $0E, $0E, $0E, $0E, $0E
-        .byte $06, $06, $06, $06, $06
-        .byte $0E
+        .byte $02, $02, $02, $02, $02
+        .byte $00, $00, $00, $00, $00
+        .byte $00
 
 // Wallpaper row: "deFEEST" — lowercase d/e, uppercase FEEST.
 defeest_row:

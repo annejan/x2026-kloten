@@ -22,7 +22,7 @@
         //   narrative text  @ $0Cxx (story fragments, ~100 bytes)
         //   stripe palette  @ $0Dxx (col-RAM address tables + row colours)
         //   driver          @ $0Dxx (Spindle-appended)
-        .byte 'P', $08, $0D
+        .byte 'P', $08, $0E
         // Inherit intro's music tables
         .byte 'I', $10, $12
         // Zero-page: $f6-timer/transition, $f7-tmp, $fb-line, $fc-frame.

@@ -754,10 +754,21 @@ interrupt:
 
         inc zp_frame
 
-        // --- yscroll: tick + write VIC_CTRL1 before anything display-
-        // related runs. CTRL1 must be stable for the entire frame
-        // (badlines start at scanline $30); the upper-border raster
-        // loop hogs ~48 scanlines, so run this first.
+        // --- Fade-in counter: saturates at FADE_DONE (99 frames ~2s) ---
+        lda zp_fade
+        cmp #FADE_DONE
+        beq !fade_done+
+        inc zp_fade
+        lda zp_fade
+        cmp #TEXT_REVEAL
+        bne !fade_done+
+        jsr reveal_text
+!fade_done:
+
+        // --- yscroll: tick on every (SCROLL_TICK_MASK+1)th frame. ---
+        // CTRL1 is always written before display so badlines stay
+        // stable for the entire frame; the SCROLL_TICK_MASK gate just
+        // controls how often we DEC yscroll (slows the credit roll).
         ldx #0
         stx zp_wrap_pending     // default no wrap this frame
         lda zp_frame
@@ -776,39 +787,6 @@ interrupt:
         lda zp_yscroll
         ora #$18                // DEN + RSEL + BMM=0 + ECM=0 + yscroll
         sta VIC_CTRL1
-
-        // --- Upper-border per-scanline $D020 rainbow bars ---
-        // 38-col mode leaves 8-pixel side strips filled with $D020.
-        // Writing $D020 every scanline through the upper border makes
-        // those strips glow per-scanline. Index into flowing_gradient
-        // with (zp_frame + line), so the whole pattern shifts down.
-        ldx #48                 // ~50 lines of upper border  
-        stx zp_tmp              // line counter in ZP
-!ubar:
-        lda zp_frame
-        clc
-        adc zp_tmp
-        and #$1f
-        tay
-        lda flowing_gradient,y
-        sta VIC_BORDER
-        dec zp_tmp
-!w:     lda VIC_RASTER
-        cmp VIC_RASTER
-        beq !w-
-        ldx zp_tmp
-        bne !ubar-
-
-        // --- Fade-in counter: saturates at FADE_DONE (99 frames ~2s) ---
-        lda zp_fade
-        cmp #FADE_DONE
-        beq !fade_done+
-        inc zp_fade
-        lda zp_fade
-        cmp #TEXT_REVEAL
-        bne !fade_done+
-        jsr reveal_text
-!fade_done:
 
         // --- SID: slow chord/melody progression (volume + voices) ---
         jsr end_music_play
@@ -859,24 +837,6 @@ interrupt:
                 bpl !fl-
         }
 !rasterbars_done:
-
-        // --- Per-scanline $D020 rainbow for lower border + remaining visible
-        // side strips. Each scanline gets flowing_gradient[(zp_frame + X) & 31]
-        // where X counts down from 105, so the pattern flows down.
-        ldx #105                // covers rest of frame safely
-!lbar:
-        txa
-        clc
-        adc zp_frame
-        and #$1f
-        tay
-        lda flowing_gradient,y
-        sta VIC_BORDER
-!lw:    lda VIC_RASTER
-        cmp VIC_RASTER
-        beq !lw-
-        dex
-        bne !lbar-
 
         // Re-arm raster IRQ for line $00 of next frame (we are the only IRQ).
         lda #$00
