@@ -754,6 +754,29 @@ interrupt:
 
         inc zp_frame
 
+        // --- yscroll: tick + write VIC_CTRL1 before anything display-
+        // related runs. CTRL1 must be stable for the entire frame
+        // (badlines start at scanline $30); the upper-border raster
+        // loop hogs ~48 scanlines, so run this first.
+        ldx #0
+        stx zp_wrap_pending     // default no wrap this frame
+        lda zp_frame
+        and #SCROLL_TICK_MASK
+        bne !skip_tick+
+        lda zp_yscroll
+        sec
+        sbc #1
+        bpl !y_ok+
+        // wrap
+        ldx #1
+        stx zp_wrap_pending
+        lda #7
+!y_ok:  sta zp_yscroll
+!skip_tick:
+        lda zp_yscroll
+        ora #$18                // DEN + RSEL + BMM=0 + ECM=0 + yscroll
+        sta VIC_CTRL1
+
         // --- Upper-border per-scanline $D020 rainbow bars ---
         // 38-col mode leaves 8-pixel side strips filled with $D020.
         // Writing $D020 every scanline through the upper border makes
@@ -786,29 +809,6 @@ interrupt:
         bne !fade_done+
         jsr reveal_text
 !fade_done:
-
-        // --- yscroll: tick on every (SCROLL_TICK_MASK+1)th frame. ---
-        // CTRL1 is always written before display so badlines stay
-        // stable for the entire frame; the SCROLL_TICK_MASK gate just
-        // controls how often we DEC yscroll (slows the credit roll).
-        ldx #0
-        stx zp_wrap_pending     // default no wrap this frame
-        lda zp_frame
-        and #SCROLL_TICK_MASK
-        bne !skip_tick+
-        lda zp_yscroll
-        sec
-        sbc #1
-        bpl !y_ok+
-        // wrap
-        ldx #1
-        stx zp_wrap_pending
-        lda #7
-!y_ok:  sta zp_yscroll
-!skip_tick:
-        lda zp_yscroll
-        ora #$18                // DEN + RSEL + BMM=0 + ECM=0 + yscroll
-        sta VIC_CTRL1
 
         // --- SID: slow chord/melody progression (volume + voices) ---
         jsr end_music_play
