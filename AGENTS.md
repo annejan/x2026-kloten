@@ -185,9 +185,9 @@ For the full per-part / per-page table see
 | `$0300-$03FF`  | Spindle loader buffer                              |
 | `$0400-$07FF`  | Screen RAM (intro: bitmap colour-info; others: text) |
 | `$0800-$5BBC`  | intro code + bitmap colour info + sprite shapes + scroller |
-| `$0800-$0CE7`  | sinus code + sine_tab + col_tab + bg_tab (during sinus) |
+| `$0800-$0CE7`  | hush code + sine_tab + col_tab + bg_tab (during hush) |
 | `$0800-$0FFF`  | coda code + state + col_tab + sin_tab (8 pages) (during coda) |
-| `$1000-$125D`  | **intro's resident music** — tables + my_music_play (inherited by interlude / sinus / greets / coda) |
+| `$1000-$125D`  | **intro's resident music** — tables + my_music_play (inherited by interlude / hush / greets / coda) |
 | `$2000-$27FF`  | greets sprite font (during greets) / coda Kloot TR+TL sprite shapes (during coda) |
 | `$2C00-$37FF`  | coda Kloot BL+BR sprite shapes (4 quadrants × 24 frames × 64 B; sprite-pointer bases `$80/$98/$B0/$C8`) |
 | `$3000-$444F`  | end font + code                                    |
@@ -200,9 +200,9 @@ For the full per-part / per-page table see
   bytes in this range in the EFO header's `'Z'` tag.
 - `$F6` doubles as the inter-part **transition condition** for several
   parts (intro's `zp_outro`, interlude's beat counter, greets' beat
-  counter, sinus' `zp_timer`). When a new part starts, its setup must
+  counter, hush' `zp_timer`). When a new part starts, its setup must
   reset `$F6` to a value that won't immediately trigger the next condition.
-- `$F7` (zp_tmp), `$F8` (zp_line), `$F9` (zp_frame) used by sinus.
+- `$F7` (zp_tmp), `$F8` (zp_line), `$F9` (zp_frame) used by hush.
 - `$06` is screenfill's `HOLDCNT` — `06 = 00` in the pefchain script.
 
 ---
@@ -227,7 +227,7 @@ If a part needs LP filter mode (`$D418` bit 4 = `$10`), it must
 re-write `$D418 = $1F` AFTER each call to `my_music_play`, otherwise
 the music routine's vol-only write (`$0F`) clobbers the filter bit
 every frame. See `parts/interlude/interlude.asm` and
-`parts/sinus/sinus.asm`.
+`parts/hush/hush.asm`.
 
 ---
 
@@ -270,9 +270,9 @@ an IRQ. Either put `.align` after `rts` or fill with `$EA` (NOP).
 
 ### ⚠️ Claim ALL pages your part actually spans
 
-Sinus once shipped with `'P', $08, $08` but spans `$0800-$0CE7` (5
+Hush once shipped with `'P', $08, $08` but spans `$0800-$0CE7` (5
 pages). Pefchain put its driver wait-loop in `$09-$0C`, overwriting
-sinus's `sine_tab`/`col_tab`/`bg_tab` — VIC then read CPU opcodes
+hush's `sine_tab`/`col_tab`/`bg_tab` — VIC then read CPU opcodes
 as colours, AND `irq_top`'s write of `$30` to `$F6` actually went
 into the wait-loop code instead of `$F6` itself, so the transition
 never fired. **Always claim every page your code + tables occupy.**
@@ -462,7 +462,7 @@ disassembly of the label after patching.
 `$D418` bit 4 turns LP filter mode ON, but the filter only
 affects voices whose corresponding bit is set in `$D417` (bits 0-2
 = V1/V2/V3, bit 3 = external in). If you set LP mode but no voices
-are routed, the cutoff sweep does nothing audibly. Sinus shipped
+are routed, the cutoff sweep does nothing audibly. Hush shipped
 silent filter sweeps for weeks because `$D417 = $10` (resonance $1
 but no voice routing). Always set BOTH together. See
 `docs/music-theory.md` "Critical pitfall" section.
@@ -540,7 +540,7 @@ In rough order of likelihood:
    bytes in `parts/<x>/<x>.prg`. If bytes don't match, suspect
    self-modifying code that ran out of bounds (see the `>char_table`
    KA precedence trap).
-3. **Audio silent in interlude/greets/sinus?** Someone reintroduced the
+3. **Audio silent in interlude/greets/hush?** Someone reintroduced the
    `vol_out` subtraction in `my_music_play`, or forgot to re-assert
    `$D418` after `INTRO_MUSIC_PLAY` in a part that needs LP filter
    mode.
@@ -586,7 +586,7 @@ stocktake + recommended focus plan for the X2026 runup.
 - **Real-hardware verification — never done.** Two weeks out from
   X2026. VICE is generous; real PAL C64 can break on IRQ timing,
   `$D012` race conditions, DMA stretching. Highest-priority item.
-- ~~**Sinus** — dual-phase accusation→answer rewrite done (commit `cff79d1`).~~
+- ~~**Hush** — dual-phase accusation→answer rewrite done (commit `cff79d1`).~~
 - **End-credits clean↔dark slow-sine modulation** — documented as
   future polish in [`docs/sound-arc.md`](./docs/sound-arc.md) under
   "End-credits darkening". Sketch implementation ready; not built.
@@ -597,7 +597,7 @@ stocktake + recommended focus plan for the X2026 runup.
 
 **What's DONE since the docs were last refreshed (2026-05-20 → 22):**
 
-- **Sinus epic rewrite** (commit `cff79d1`) — dual-phase accusation→answer
+- **Hush epic rewrite** (commit `cff79d1`) — dual-phase accusation→answer
   text. Phase 1 (frames 0-119): accusation "they said ai destroys creativity /
   killing joy and numbing our minds" in red tones (`$02`/`$0E` row palette),
   full-amplitude wobble. Phase 2 (frames 120-249): answer "we found the
@@ -626,7 +626,7 @@ stocktake + recommended focus plan for the X2026 runup.
 - **AGENTS.md gotcha additions + memory-layout refresh + tools
   helpers** (PR #35).
 - **`docs/two-weeks-out.md`** (PR #36) — stocktake + focus plan.
-- **Sinus vision doc** (commit `0926851`) — `docs/sinus-vision.md` naming
+- **Hush vision doc** (commit `0926851`) — `docs/hush-vision.md` naming
   the gap with three effect directions (Option A/C recommended). Written by
   Kloot/deFEEST; superseded by my accusation→answer rewrite.
 

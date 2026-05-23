@@ -74,7 +74,7 @@ boot_ms=$((boot_ms + 4000))   # account for the settle delay
 snapshot "01-screenfill"  3      # radial bloom mid-reveal
 snapshot "02-intro"       30     # logo + bars + balls, mid-act
 snapshot "03-interlude"   83     # SPARKED sprite letters landed
-snapshot "04-sinus"       88     # DEFEEST wobble in motion
+snapshot "04-hush"       88     # DEFEEST wobble in motion
 snapshot "05-greets"      130    # mid-scroll, multiple groups visible
 snapshot "06-coda"        175    # KLOTEN title card + twin stars
 snapshot "07-end"         200    # credit roll mid-scroll

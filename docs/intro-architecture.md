@@ -122,7 +122,7 @@ my_music_play             (at $119e, called by inheritor parts)
    Dispatcher. Byte-for-byte identical to the old monolith.
 ```
 
-Inheritor parts (`interlude`, `sinus`, `greets`, `coda`) call
+Inheritor parts (`interlude`, `hush`, `greets`, `coda`) call
 `INTRO_MUSIC_PLAY = $119e` once per frame and get the monolithic
 behaviour unchanged. The `.pc = $119e "MusicDispatch"` anchor in
 `intro.asm` keeps that address stable across future reorderings of

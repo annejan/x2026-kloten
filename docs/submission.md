@@ -34,7 +34,7 @@ submission/
         │   ├── 01-screenfill.png
         │   ├── 02-intro.png
         │   ├── 03-interlude.png
-        │   ├── 04-sinus.png
+        │   ├── 04-hush.png
         │   ├── 05-greets.png
         │   ├── 06-coda.png
         │   └── 07-end.png
@@ -74,7 +74,7 @@ Timestamps from `docs/timing.md` (currently):
 | 01 | `01-screenfill.png` | screenfill | 3 s | radial bloom mid-reveal |
 | 02 | `02-intro.png` | intro | 10 s | bars + balls + logo bouncing |
 | 03 | `03-interlude.png` | interlude | 83 s | SPARKED letters landing |
-| 04 | `04-sinus.png` | sinus | 88 s | DEFEEST sine wobble live |
+| 04 | `04-hush.png` | hush | 88 s | DEFEEST sine wobble live |
 | 05 | `05-greets.png` | greets | 120 s | mid-scroll, several groups visible |
 | 06 | `06-coda.png` | coda | 175 s | KLOTEN MET DE BROODTROMMEL title + twin stars |
 | 07 | `07-end.png` | end | 200 s | credit roll mid-scroll |
@@ -142,7 +142,7 @@ right shape. **But the screenshot timestamps are wrong** for 5 of
 | 01-screenfill | DEFEEST bloom | black — VICE still booting at t=3 |
 | 02-intro      | mid-intro     | **correct** (logo + bars + balls) |
 | 03-interlude  | SPARKED landing | plasma chars (right part, wrong moment) |
-| 04-sinus      | DEFEEST wobble | greets "SILICON" — past sinus |
+| 04-hush      | DEFEEST wobble | greets "SILICON" — past hush |
 | 05-greets     | mid-scroll    | greets "KOLOR" — right part, fine |
 | 06-coda       | KLOTEN title  | black — between coda and end |
 | 07-end        | credit roll   | **correct** (Kloot/Augurk/TL-Buis credits) |
@@ -157,7 +157,7 @@ Two compounding causes:
    propagates to every snapshot.
 2. **`docs/timing.md` is now slightly stale.** After `736a2f9`
    (shorter intro), `8ed0777` (longer interlude), and `9d9f851`
-   (sinus rework), the per-part offsets in
+   (hush rework), the per-part offsets in
    `tools/capture_part_screenshots.sh` no longer match what's
    actually on screen at each wall-clock target. Sleep-based
    timing can't track those drifts.
@@ -171,7 +171,7 @@ part's duration changes. Cheap, brittle.
 
 **Right** — anchor each snapshot to **demo state**, not wall
 clock. Read `$F6` via MCP every ~250 ms; detect each part's
-transition (intro→interlude on `$F6=$F0`, interlude→sinus on
+transition (intro→interlude on `$F6=$F0`, interlude→hush on
 `$F6=$10`, etc.); snapshot N seconds after each transition is
 seen. Robust across timing drift; no recalibration needed.
 Adds ~50 lines of bash + MCP calls.
@@ -230,7 +230,7 @@ The script trusts these inputs to stay in sync with the demo:
 
 | Input | What drifts | Where to update |
 |---|---|---|
-| Per-part screenshot timestamps | If a part's duration changes (greets/interlude/sinus most likely) | `tools/capture_part_screenshots.sh` `snapshot ... NN` lines |
+| Per-part screenshot timestamps | If a part's duration changes (greets/interlude/hush most likely) | `tools/capture_part_screenshots.sh` `snapshot ... NN` lines |
 | `DURATION` in NFO + bundle README | Same — total runtime | `tools/bundle_submission.sh` config block |
 | Credits, story note, tools list, AI authorship note | Anytime team / tools / collaboration model shifts | `tools/nfo_template.txt` + `tools/how_it_was_made.md` |
 | SID preference (8580) | If we ever re-tune for 6581 | `tools/bundle_submission.sh` + NFO + how-it-was-made |

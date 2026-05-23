@@ -94,7 +94,7 @@ The `pefchain_script` is a sequence of `<pef-file> <condition>` lines:
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
 parts/interlude/interlude.pef       f6 = 20
-parts/sinus/sinus.pef               f6 = 30
+parts/hush/hush.pef               f6 = 30
 parts/greets/greets.pef             f6 = 20
 parts/coda/coda.pef                 f6 = 30
 parts/end/end.pef                   stay
@@ -107,27 +107,27 @@ fadeout returns with carry set, pefchain loads the next part.
 ### Reusing the same byte across parts
 
 We reuse `$F6` for five different transitions (intro → interlude →
-sinus → greets → coda → end). This is fine because **each part's setup
+hush → greets → coda → end). This is fine because **each part's setup
 resets the byte to a value that doesn't satisfy the next condition**:
 
 - intro's `zp_outro` ticks from `0` to `$F0` (transition: `f6 = f0`)
 - interlude's setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
-- sinus' setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
+- hush' setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
   `$FC` (the actual frame counter — `$F9` is unsafe, see below) ≥
   N_FRAMES (~5 s). Transition: `f6 = 30`.
 - greets' setup resets `$F6 = 0`, then beat counter ticks to `$20`
   (transition: `f6 = 20`)
 - coda's setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
   `$FC` (half-rate frame counter) ≥ N_FRAMES (~10 s). Same trigger
-  value as sinus, fine because they're not adjacent in the chain.
+  value as hush, fine because they're not adjacent in the chain.
   Transition: `f6 = 30`.
 
 #### Watch out: `$F9` and `$FA` are clobbered every `my_music_play`
 
 Intro's `my_music_play` (still resident, called from every later part
 via `$119E`) uses `$F9` and `$FA` as its internal scratch bytes
-(`zp_tmp`, `zp_msb`). Every JSR overwrites them. Sinus originally
+(`zp_tmp`, `zp_msb`). Every JSR overwrites them. Hush originally
 parked its frame counter at `$F9` and the part never transitioned —
 each increment was silently wiped on the next music call. The fix:
 move it to `$FC`, which intro's namespace doesn't touch. **For any
@@ -144,11 +144,11 @@ the new part flashes for one frame and then we skip to its successor.
 The single nastiest bug we've shipped — and one of the few that
 silently produces "demo runs forever in a part without transitioning."
 
-**Sinus's EFO header originally declared `'P', $08, $08` — only ONE
+**Hush's EFO header originally declared `'P', $08, $08` — only ONE
 page.** But the actual code + sine_tab + col_tab + bg_tab span
 `$0800-$0CE7` (five pages). Pefchain saw `$09-$0C` as unclaimed and
 put its driver wait-loop there. The wait-loop opcodes happened to
-overlap sinus's per-scanline colour tables, so:
+overlap hush's per-scanline colour tables, so:
 
 - `irq_sine` reading `col_tab,y` got `$A5` (LDA), `$F6` (operand),
   `$C9` (CMP), `$30` (immediate), `$D0` (BNE), `$FA` (offset). These
@@ -157,14 +157,14 @@ overlap sinus's per-scanline colour tables, so:
 - More importantly, `irq_top` writing `$30` to `$F6` to trigger the
   transition actually wrote to the SAME memory holding the wait-loop
   code, NOT to `$F6` itself. So pefchain's `LDA $F6 / CMP #$30 / BNE`
-  loop never saw the transition value. Sinus ran forever.
+  loop never saw the transition value. Hush ran forever.
 
 **Always declare every page your code + tables actually occupy.**
 Run `./build.sh` and read the `Default-segment:` lines — every
 range needs to be covered by some `'P'` tag (or inherited via `'I'`).
 
 ```kickass
-// sinus claims all 5 pages it actually uses
+// hush claims all 5 pages it actually uses
 .byte 'P', $08, $0C
 ```
 

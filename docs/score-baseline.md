@@ -28,7 +28,7 @@ re-init SID for a slow 4× tempo pad reprise, no drums, lunch is over.
 | 1 | screenfill | ~5 s | `$06 == 0` (HOLDCNT drained) | **silence** — SID untouched |
 | 2 | intro | ~57 s | `$f6 == $F0` (zp_outro saturated) | full mix builds: arp → +lead → +bass → +drums |
 | 3 | interlude | ~7.7 s + ~11 s blank-filler load gap | `$f6 == $10` (16 beats × 24 frames) | V3-off solo lead pad (PWM phaser) ~2.9 s, buildup ~4.8 s slamming V3 + bass + LP sweep back in on SPARKED drop |
-| 4 | sinus | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes, drums silent, vol fades |
+| 4 | hush | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes, drums silent, vol fades |
 | 5 | greets | ~50 s | `$f6 == $82` (scroll-driven KLOTEN snap) | climax: full mix + V2-filtered "wah" on lead, koala backdrop |
 | 6 | coda | ~32 s | `$f6 == $30` (32-s timer) | triumphant: full mix held, twin stars dance |
 | 7 | end | forever | (none — `stay`) | own player, 4× slower pad reprise, all-voice LP w/ $20..$58 cutoff sweep |
@@ -75,7 +75,7 @@ The progression NEVER changes. All variation comes from arrangement.
 - Wave: **pulse 25% duty** OR **triangle** depending on `zp_intro`:
   - `zp_intro >= 240` → pulse (intro)
   - `zp_intro < 240` → triangle, inherited from drum_tick's last write
-    (interlude/sinus/greets/coda)
+    (interlude/hush/greets/coda)
 - ADSR: `$00 / $F0` — A=0, D=0, S=15, R=0 (peak, held forever)
 - Arp: cycles root → 3rd → 5th → octave at 50 Hz, indexed by `mu_step`
   for current chord
@@ -97,7 +97,7 @@ V3 = 168 Hz (E3 pulse)   ADSR $00/$F0   gate=1
 $D417 = $00 (no filter routing)   $D418 = $0F (no LP mode)
 ```
 
-### Interlude buildup / sinus (mu_step ~121, post-buildup)
+### Interlude buildup / hush (mu_step ~121, post-buildup)
 ```
 V1 = 99 Hz (G2 pulse)    same ADSR
 V2 = 199 Hz (G3 pulse)   gate=0 (just released)
@@ -161,7 +161,7 @@ END_STEP_FRAMES = 24 (4× slower than intro)
 | intro | $00 | off | — | enter at zp_outro | pulse | saturates 0→$FF |
 | interlude pad | $00 | on, V3 OFF (bit 7) | $00 | gated by $F6 (zeroed in setup, ticks up) | (V3 off — no arp, no drums) | reset to 0, ticks up |
 | interlude build | $23 (V1+V2) | on, V3 ON | $70→$FF sweep | K-S-K-S kit slams back in | triangle | ticks up |
-| sinus | $23 (V1+V2) | on | $70→$08 close | OFF | triangle | inherited |
+| hush | $23 (V1+V2) | on | $70→$08 close | OFF | triangle | inherited |
 | greets | $42 (V2) | on | wobble_pos\|$40 (~$40..$FF wah) | on | triangle | ~$89 inherited |
 | coda | $26 (V2+V3, res 2) | on | sin_tab[zp_frame]+$60 (~$4b..$75, ~10 s LFO) | on (F6=$01) | triangle | $80 (deliberate) |
 | end | $07 (V1+V2+V3 all routed) | on | $20..$58 sweep (90° from PWM) | OFF | pulse (PWM-hi $04..$0B) | own player |

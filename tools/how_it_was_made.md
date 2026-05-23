@@ -40,7 +40,7 @@ The AIs wrote ~95% of the .asm bytes that ended up in the released
 - **Multicolour bitmap scroller** at the top of the intro, three
   modes (left / right / zig-zag) cycling via sentinel chars
 - **Text-mode plasma + sprite-letter SPARKED drop** in interlude
-- **Dual-axis sine wobble + LP filter close** in sinus
+- **Dual-axis sine wobble + LP filter close** in hush
 - **DYCP sprite-font scroller** in greets, with 16-bit scroll
   position + per-tier wobble damping + KLOOT settle landing
 - **Twin Kloot-star quad** in coda — pre-rendered 24-frame zoom

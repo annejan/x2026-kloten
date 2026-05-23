@@ -138,7 +138,7 @@ trigger. The end card is the only "stay" loop.
   continues. V1 (bass) is muted every frame for a pad-only feel.
 - Last 8 beats: V1 re-enabled, LP filter sweep ($40→$FF) as build-up.
 - Beat counter at `$f6` ticks every 24 frames. After 16 beats (~7.5 s)
-  pefchain advances to sinus.
+  pefchain advances to hush.
 - Inherits intro's music pages (`'I', $10, $12` in the EFO header) so
   pefchain doesn't overwrite the resident tables.
 
@@ -154,14 +154,14 @@ trigger. The end card is the only "stay" loop.
   `$D418` re-asserted every frame after `my_music_play` (which would
   otherwise clobber the LP bit with a vol-only write).
 - **Volume fade-out** — SID vol $0F→$00 over the last 50 frames.
-- **No drums** — sinus's setup zeros `$F6` (its `zp_timer`), which is also
+- **No drums** — hush's setup zeros `$F6` (its `zp_timer`), which is also
   the gating byte for the percussion in `my_music_play`. Ear-cleansing
   break before the greets climax.
 - Frame counter at `$fc` reaches 250 frames (~5 s) and writes `$30`
   to `$f6`; pefchain then advances to greets. **`$fc` not `$f9`** —
   intro's `my_music_play` internally uses `$f9` as its own scratch
   byte (writes it on every JSR), which earlier silently clobbered
-  the sinus frame counter so the part never transitioned.
+  the hush frame counter so the part never transitioned.
 - Inherits intro's music pages (`'I', $10, $12`).
 - EFO claims `'P', $08, $0C` (5 pages of code + tables — earlier
   single-page claim caused pefchain to overwrite the colour/sine tables).
@@ -179,7 +179,7 @@ trigger. The end card is the only "stay" loop.
   of relying on `lda message,y`'s 8-bit Y reach.
 - **Kick drums on V3** — pitch-swept noise burst on every beat (driven
   from intro's resident `my_music_play`; gated on `zp_outro != 0` which
-  sinus resets, so drums silence in sinus and return here).
+  hush resets, so drums silence in hush and return here).
 - **Scroll-driven ending.** When `scroll_pos` reaches the start of
   `settle_text` (the " KLOTEN " punchline at the tail of the
   message), the IRQ forces `zp_beat_count = SETTLE_BEAT` so the row
@@ -342,9 +342,9 @@ Each condition tells pefchain when to advance:
 - `f6 = f0` — wait for `$f6` (= intro's `zp_outro`) to reach `T_OUTRO_DONE`.
 - `f6 = 10` — wait for `$f6` (= interlude's beat counter) to reach 16
   (~7.7 s, `TRANSITION_BEAT` in code). Reset to 0 by interlude's setup.
-- `f6 = 30` — wait for `$f6` (= sinus' transition byte) to be set to
-  $30 by sinus once `$fc` (the actual frame counter, off-music-clobber)
-  hits 250. Sinus's setup resets `$f6` to 0.
+- `f6 = 30` — wait for `$f6` (= hush' transition byte) to be set to
+  $30 by hush once `$fc` (the actual frame counter, off-music-clobber)
+  hits 250. Hush's setup resets `$f6` to 0.
 - `f6 = 82` — wait for `$f6` (= greets' beat counter) to reach `$82`.
   Greets is scroll-driven: when `scroll_pos` hits the " KLOTEN "
   punchline the IRQ forces `$f6 = SETTLE_BEAT` and 4 beats later

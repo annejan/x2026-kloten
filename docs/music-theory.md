@@ -25,7 +25,7 @@ Am       | Em       | F        | G        |
 ```
 
 One full cycle = 32 bars × 6 frames = 192 frames ≈ 3.84 s. The
-progression loops throughout the demo (intro → interlude → sinus →
+progression loops throughout the demo (intro → interlude → hush →
 greets → coda, ~80 s total = ~21 full cycles).
 
 ### Chord voicings (arpeggio tones)
@@ -258,7 +258,7 @@ under the held title:
 intro:     vol=$0F (max), no filter routing
 interlude: vol=$1F (LP mode), V1+V2 filtered ($D417=$23, res $2),
            cutoff $40→$FF during the buildup (last ~2.4 s)
-sinus:     vol=$1F (LP mode), V1+V2 filtered ($D417=$23, res $2),
+hush:     vol=$1F (LP mode), V1+V2 filtered ($D417=$23, res $2),
            cutoff $70→$08 over duration, vol fades $0F→$00 over last 50 frames
 greets:    vol=$1F (LP mode), V2 filtered ($D417=$42, res $4),
            cutoff modulated by `zp_wobble_pos | $40` for slow "wah"
@@ -269,7 +269,7 @@ end:       vol ramps $00→$0F over 2 s, V1+V2+V3 all filtered ($D417=$07),
 ```
 
 The filter arc is the long-form emotional contour: dry (intro) →
-opens up with bass + lead (interlude build) → closes both (sinus
+opens up with bass + lead (interlude build) → closes both (hush
 breakdown) → wah on the lead (greets climax) → **frozen lead-wah +
 full drums + walking bass under the title (coda — the triumphant
 trophy)** → all-voice LP reprise with slow PWM and $20..$58 cutoff
@@ -286,7 +286,7 @@ Declared in the submission NFO via `tools/bundle_submission.sh`.
 
 **Critical pitfall: $D417 voice routing.** `$D418` bit 4 sets LP
 mode, BUT the filter only affects voices whose bit is set in
-`$D417` (bits 0-2 = V1/V2/V3 routed through filter). Sinus shipped
+`$D417` (bits 0-2 = V1/V2/V3 routed through filter). Hush shipped
 for weeks with the cutoff sweep doing nothing because `$D417 = $10`
 routed no voices. Always set BOTH the mode bit in `$D418` AND the
 voice-routing bits in `$D417` when adding filter work to a part.
@@ -303,9 +303,9 @@ voice-routing bits in `$D417` when adding filter work to a part.
    - Drum entrance/exit gating (intro's `zp_outro`)
    - Per-voice muting (interlude kills V1 for the first 24 beats)
    - V3 timbre flips pulse↔triangle via the `T_SCROLLER` gate on `zp_intro`
-   - Filter routing changes (intro=off, interlude/sinus=V1+V2, greets=V2)
-   - Filter cutoff sweeping (interlude up, sinus close, greets wah)
-   - Volume fade (sinus's final 50 frames)
+   - Filter routing changes (intro=off, interlude/hush=V1+V2, greets=V2)
+   - Filter cutoff sweeping (interlude up, hush close, greets wah)
+   - Volume fade (hush's final 50 frames)
    - Coda inherits greets' V2-routed filter with a frozen cutoff
 
 3. **125 BPM is the demoscene sweet spot.** Fast enough for a driving

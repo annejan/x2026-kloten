@@ -22,15 +22,15 @@ than the part's own duration. With ~8 KB of koala bitmap to stream
 into greets, the biggest blank gap sits before greets.
 
 ```
-screenfill ─5s─→ intro ─57s─→ interlude ─~4s─→ [blank 18s] ─→ sinus ─~4s─→ greets ─50s─→ coda ─30s─→ end (loops)
+screenfill ─5s─→ intro ─57s─→ interlude ─~4s─→ [blank 18s] ─→ hush ─~4s─→ greets ─50s─→ coda ─30s─→ end (loops)
 ```
 
 | Part | Duration | Sets `$D018` | Transition trigger |
 |------|----------|--------------|---------------------|
 | screenfill | ~5 s | `$17` (lo-case ROM) | `$06 == $00` (HOLDCNT) |
 | intro | ~57 s | `$19` (bitmap mode) | `$F6 == $F0` (zp_outro saturated) |
-| interlude | ~4 s + ~11 s blank-filler before sinus | `$15` (chargen $1000) | `$F6 == $10` (16 beats) |
-| sinus | ~4 s | `$17` (lo-case ROM) | `$F6 == $30` (timer) |
+| interlude | ~4 s + ~11 s blank-filler before hush | `$15` (chargen $1000) | `$F6 == $10` (16 beats) |
+| hush | ~4 s | `$17` (lo-case ROM) | `$F6 == $30` (timer) |
 | greets | ~50 s (scroll-driven KLOTEN landing) | `$19` (bitmap mode, koala) | `$F6 == $82` |
 | coda | ~30 s | `$15` (chargen $1000) | `$F6 == $30` (timer) |
 | end | loops | `$1D` (chargen $3000) | (none — `stay`) |
@@ -119,13 +119,13 @@ characters; end-of-text = `$FF` triggers outro.
 | 6 (BUILDUP_BEAT) | 2.9 s | `$D418` bit 7 clears = V3 on (K-S-K-S kit + arp slam back in). V1 bass re-enabled. LP filter sweep starts at cutoff=$70. Raster bars appear. SPARKED sprite letters begin fly-in. |
 | 7–15 | 3.4–7.2 s | Filter cutoff += $16 per beat: $70 → $86 → $9C → … → $FF (saturates). SPARKED settles at beat ~7, bounces, white border flash on landing. PHASE_DONE freezes the sprite state once FLY_OUT completes (no second fly). |
 | 15 | 7.2 s | SPARKED letters fly out. |
-| **16 (= $10)** | **7.7 s** | pefchain loads sinus. |
+| **16 (= $10)** | **7.7 s** | pefchain loads hush. |
 
 Per-frame: plasma (half rows updated), music, beat phase, raster bars, border flash on SPARKED landing.
 
 ---
 
-## Part 4 — sinus (`parts/sinus/`)
+## Part 4 — hush (`parts/hush/`)
 
 250 frames = **5.0 s**.
 
@@ -138,16 +138,16 @@ Per-frame: plasma (half rows updated), music, beat phase, raster bars, border fl
 | 200→249 | 4.0→5.0 s | Volume fade: SID vol $0F→$00 over last 50 frames. Border/bg also snap to black. |
 | **250** | **5.0 s** | `irq_top` sets zp_timer = `$30`; pefchain's `f6 = 30` condition fires. |
 
-Per-frame: `my_music_play` (drums silent in sinus because setup
+Per-frame: `my_music_play` (drums silent in hush because setup
 zeroed `$F6` so `zp_outro` gate fails), LP filter re-assertion,
 colour cycling, sine-table application to `$D016`. The repeating
 DEFEEST text connects visually back to the screenfill bloom that
-opened the demo — a sinus-style swimming-text effect over the
+opened the demo — a hush-style swimming-text effect over the
 inherited intro chords.
 
 **EFO ownership**: `'P', $08, $0C` claims all 5 pages of code +
 sine_tab + col_tab + bg_tab. Earlier `'P', $08, $08` caused
-pefchain to overwrite sinus's tables with its driver wait-loop;
+pefchain to overwrite hush's tables with its driver wait-loop;
 see `docs/pefchain-notes.md`.
 
 ---

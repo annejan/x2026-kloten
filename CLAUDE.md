@@ -10,7 +10,7 @@ work.
 The deeper guides live under [`docs/`](./docs/):
 
 - [`docs/sound-arc.md`](./docs/sound-arc.md) — how music flows from
-  intro's resident tables through interlude / sinus / greets into end, and
+  intro's resident tables through interlude / hush / greets into end, and
   the SID-volume + filter-mode pitfalls that come with that design.
 - [`docs/music-theory.md`](./docs/music-theory.md) — the actual theory:
   Aeolian, the i-v-VI-VII loop, voice voicings, ADSR per voice, lead
@@ -40,10 +40,10 @@ The deeper guides live under [`docs/`](./docs/):
   block, symmetric-FLD wiring + first-write fix + latch pad, music
   split (`my_music_critical` / `my_music_step` / `my_music_play`
   dispatcher at $119e), wishlist for the X2026 sprint.
-- [`docs/sinus-vision.md`](./docs/sinus-vision.md) — **open
-  question, 2026-05-22**: sinus is the only part still flat;
-  options doc for the bridge beat between SPARKED and greets.
-  Read this before touching parts/sinus/.
+- [`docs/sinus-vision.md`](./docs/sinus-vision.md) — historical
+  archive: the design-space options doc for what became `parts/hush/`
+  (the part was called `sinus` while this was being written). Kept
+  as a record of what was considered before hush shipped.
 - [`docs/mcp-debugging.md`](./docs/mcp-debugging.md) — VICE-MCP
   cookbook: 70-tool catalogue, JSON-RPC wrapper gotchas (the `name`
   kwarg collision!), recipes for cycle measurement, IRQ logging,

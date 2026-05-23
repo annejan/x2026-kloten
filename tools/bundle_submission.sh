@@ -28,7 +28,7 @@
 #   * docs/timing.md                ← source of truth for the above
 #   * GROUP / DEMO_TITLE / PARTY    ← constants below
 #
-# When part durations change (especially greets / interlude / sinus),
+# When part durations change (especially greets / interlude / hush),
 # re-sync the screenshot timestamps + the duration in the NFO before
 # regenerating the bundle.
 

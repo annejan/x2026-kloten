@@ -796,7 +796,7 @@ musichook:
         // $F8 (zp_intro) every frame, which would only matter if
         // something accidentally wrote to $F8 — but it's cheap
         // belt-and-braces given coda's near-silence regression came
-        // from exactly this path. Same idiom interlude / sinus /
+        // from exactly this path. Same idiom interlude / hush /
         // greets use.
         lda #$1f
         sta SID_VOL

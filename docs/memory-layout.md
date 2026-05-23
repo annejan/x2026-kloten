@@ -62,7 +62,7 @@ This means:
   reason. Bitmap base must be `$0000` or `$2000` within a bank.
 - Conversely, **you can use the chargen ROM "for free"** by pointing
   `$D018` chargen bits at `$1000` — no need to copy it into RAM.
-  We do this in screenfill, interlude, sinus, end.
+  We do this in screenfill, interlude, hush, end.
 
 In banks 1 and 3 there's no chargen ROM in view, so you need to copy
 chargen into RAM there.
@@ -122,7 +122,7 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
 
 ### CPU view — per-part (current as of 2026-05-21)
 
-| Range          | screenfill | intro      | interlude | sinus     | greets    | coda      | end       |
+| Range          | screenfill | intro      | interlude | hush     | greets    | coda      | end       |
 |----------------|------------|------------|-----------|-----------|-----------|-----------|-----------|
 | `$0200-$03FF`  | Spindle    | Spindle    | Spindle   | Spindle   | Spindle   | Spindle   | Spindle   |
 | `$0400-$07FF`  | screen RAM | bitmap colour info | screen + plasma | screen (DEFEEST) | bitmap colour attrs (koala c1+c2) | title screen | screen + credits |
@@ -131,7 +131,7 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
 | `$0D00-$0DFF`  | —          | —          | code+     | —         | sprite font (cont.) | code (cont.) + title text | — |
 | `$0E00-$0EFF`  | —          | —          | code (interlude) | — | sprite font (cont.) | col_tab   | —         |
 | `$0F00-$0FFF`  | —          | —          | —         | —         | sprite font (cont.) | sin_tab   | —         |
-| `$1000-$125D`  | —          | **resident music tables + `my_music_play` — inherited by interlude / sinus / greets / coda; end uses its own player** ||||||
+| `$1000-$125D`  | —          | **resident music tables + `my_music_play` — inherited by interlude / hush / greets / coda; end uses its own player** ||||||
 | `$1300-$1FFF`  | —          | compact logo_rows | —    | —         | —         | —         | —         |
 | `$2000-$27FF`  | —          | logo bitmap (multicolour) | — | —    | koala bitmap (320×200 MCM) | Kloot-star TR shapes (24 frames) | — |
 | `$2800-$2BFF`  | —          | (logo bitmap continues) | — | —     | koala bitmap (cont.) | Kloot-star TL shapes (cont.) | — |
@@ -155,7 +155,7 @@ EFO `'P'` claims as of today:
 | screenfill | `$C0-$CA`                         |
 | intro      | `$04-$5B`, `$10-$12`              |
 | interlude  | `$08-$0E`                         |
-| sinus      | `$08-$0D`                         |
+| hush      | `$08-$0D`                         |
 | greets     | `$08-$0F`, `$20-$3F`, `$80-$9F`   |
 | coda       | `$08-$0F`, `$20-$37`              |
 | end        | `$30-$44`                         |
@@ -164,11 +164,11 @@ Greets has the biggest claim now — sprite font at `$08-$0F` (2 KB),
 koala bitmap at `$20-$3F` (8 KB), code + message + font_data + koala
 screen/colour buffers at `$80-$9F` (8 KB). Total ~18 KB of greets data
 needs to load before the part starts, which is why the longest blank-
-filler gap in the demo sits between sinus and greets (~11 s of
+filler gap in the demo sits between hush and greets (~11 s of
 pefchain-managed loading masked by black-screen blank effects that
 still call music via the `'M' + bit !0` mechanism).
 
-Coda reuses the same `$0800` pages sinus and greets claimed earlier
+Coda reuses the same `$0800` pages hush and greets claimed earlier
 in the chain — those parts are long gone by the time coda loads, so
 the bytes are free to repurpose. Coda also claims `$30-$37` which
 overlaps with end's `$30-$44`; end runs strictly after coda, so
@@ -198,12 +198,12 @@ grow coda's code, watch `parts/coda/coda.sym` for `sin_tab=$1000+`
 | `$02-$08` | screenfill state (CHARCNT, SCRPOS, WCNT, PHASE, HOLDCNT, RADIUS, RFRAME) | screenfill |
 | `$F4-$F8` | Spindle loader (do not touch) | always |
 | `$F4` | beat phase | interlude, greets |
-| `$F5` | filter cutoff / scratch | interlude, sinus |
+| `$F5` | filter cutoff / scratch | interlude, hush |
 | **`$F6`** | **inter-part transition condition byte** — every part either reaches a specific value here to trigger the next part, or its setup resets it to start counting | always |
-| **`$F9`, `$FA`** | **clobbered by intro's `my_music_play` on every JSR** — zp_tmp / zp_msb in intro's namespace. Any part that calls `$119E` (interlude, sinus, greets) MUST NOT park persistent state here. | every JSR `$119E` |
-| `$F7` | zp_tmp (sinus), echo / scroll counter (intro) | sinus, intro |
-| `$F8` | beat counter / scroll tick / kick state | varies per part (NOT used by sinus) |
-| `$FB`, `$FC` | sinus zp_line ($FB), zp_frame ($FC) | sinus |
+| **`$F9`, `$FA`** | **clobbered by intro's `my_music_play` on every JSR** — zp_tmp / zp_msb in intro's namespace. Any part that calls `$119E` (interlude, hush, greets) MUST NOT park persistent state here. | every JSR `$119E` |
+| `$F7` | zp_tmp (hush), echo / scroll counter (intro) | hush, intro |
+| `$F8` | beat counter / scroll tick / kick state | varies per part (NOT used by hush) |
+| `$FB`, `$FC` | hush zp_line ($FB), zp_frame ($FC) | hush |
 | `$FB-$FE` | intro text pointers / smooth scroll / frame counter | intro, end |
 
 ### Why bytes are placed where they are (concrete examples)
@@ -211,7 +211,7 @@ grow coda's code, watch `parts/coda/coda.sym` for `sin_tab=$1000+`
 - **`drum_state` lives at `$128A`** (inside intro's music segment)
   rather than zero-page, because every part that calls
   `INTRO_MUSIC_PLAY` at `$119E` sees the same address. Putting it in
-  intro's `'I',$10,$12`-protected pages means interlude / sinus /
+  intro's `'I',$10,$12`-protected pages means interlude / hush /
   greets / coda can all read and write it without needing their own
   zp declaration.
 
@@ -275,7 +275,7 @@ The most powerful pattern in this demo:
 - Intro's EFO declares `'P', $10, $12` (it OWNS those pages)
 - Every later part declares `'I', $10, $12` (it INHERITS those pages)
 
-When pefchain loads interlude / sinus / greets, it preserves the
+When pefchain loads interlude / hush / greets, it preserves the
 contents of `$10-$12` from the previous load. So intro's music
 tables — set up at `$1000-$125D` during intro's `my_music_init` —
 remain in RAM forever. Each later part can call `jsr $119E`
@@ -288,11 +288,11 @@ change to the shared routine affected every part that inherited it.
 
 ## ⚠️ The "claim every page" rule
 
-The single nastiest bug in the project's history: sinus once shipped
+The single nastiest bug in the project's history: hush once shipped
 with `'P', $08, $08` declaring ownership of only one page, but its
 code + sine_tab + col_tab + bg_tab actually spanned `$0800-$0CE7`
 (five pages). Pefchain saw `$09-$0C` as unclaimed and **put its
-driver wait-loop there**, overwriting sinus's data tables. Two
+driver wait-loop there**, overwriting hush's data tables. Two
 catastrophic consequences:
 
 1. `irq_sine` reading `col_tab,y` got CPU opcodes (`$A5`/`$F6`/`$C9`
@@ -302,7 +302,7 @@ catastrophic consequences:
 2. `irq_top`'s write of `$30` to `$F6` to trigger the transition
    actually wrote to the same MEMORY holding the wait-loop code,
    NOT to `$F6` itself. Pefchain's polling never saw the trigger.
-   Sinus ran forever.
+   Hush ran forever.
 
 **Always declare every page your code + tables occupy.** Build with
 `java -jar kickass/KickAss.jar parts/<x>/<x>.asm` and check the
@@ -310,14 +310,14 @@ Memory Map output:
 
 ```
 Default-segment:
-  $0800-$0949 Sinus
+  $0800-$0949 Hush
   $0A00-$0AFF SineTab
   $0B00-$0BC7 ColTab
   $0C00-$0CC7 BgTab
 ```
 
 Every range must be inside a `'P'` tag in the EFO header. For
-sinus that means `'P', $08, $0C` (or two tags if disjoint).
+hush that means `'P', $08, $0C` (or two tags if disjoint).
 
 ## When you grow a part past its budget
 

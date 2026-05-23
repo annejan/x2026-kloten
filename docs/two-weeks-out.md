@@ -13,7 +13,7 @@ screenfill → intro (logo + K-S-K-S kit, ~57 s)
            → interlude (V3-muted music-box pad + typewriter,
                          then SPARKED drop with V1 + drums + filter
                          sweep slamming in, ~4 s pad + ~4 s buildup)
-           → sinus (~4 s comedown)
+           → hush (~4 s comedown)
            → greets (~50 s scroll-driven, smooth-pixel DYCP scroller
                       over a multi-colour koala backdrop, KLOTEN
                       landing as the punchline)
@@ -51,7 +51,7 @@ gap via Spindle's `'M'` install + `bit $0000` callmusic placeholders
 | Item | Why it matters | Effort |
 |---|---|---|
 | **Real-hardware verification — NEVER DONE** | Two weeks out. VICE is generous; real PAL C64 can break on IRQ timing, $D012 race conditions, DMA stretching. If something fails on metal, we need debug time. | 30 min to test, then ?? to fix |
-| **Sinus** | Reworked as the breath (`9d9f851`) — repeating DEFEEST field, woven grid + colour banding, LP fade. | ✅ done |
+| **Hush** | Reworked as the breath (`9d9f851`) — repeating DEFEEST field, woven grid + colour banding, LP fade. | ✅ done |
 | **End-credits dark-phaser modulation** | Slow LFO modulates filter cutoff clean↔dark (`4d37d23`, `ba22f08`). ~20.5 s cycle, never starts dark. | ✅ done |
 | **Submission format compliance** | X2026 likely wants: specific filename, specific runtime cap, possibly a thumbnail. Unchecked. | 30 min to read rules + fix |
 | **PAL CRT preview** | Demoparties show on big CRTs / projectors. Colours read very differently from a flat-panel. Never seen on anything but VICE on a flat-panel. | 1 evening if a CRT is in reach |

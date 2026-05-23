@@ -150,7 +150,7 @@ r = call("vice.symbols.lookup", name="my_music_play")
 assert r["address"] == 0x119e, f"Music dispatcher moved to {r['address']:04x}!"
 ```
 
-The inheritor parts (interlude/sinus/greets/coda) hard-code
+The inheritor parts (interlude/hush/greets/coda) hard-code
 `INTRO_MUSIC_PLAY = $119e`. After any refactor of the music
 segment, run this check.
 

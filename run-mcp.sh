@@ -40,7 +40,7 @@ fi
 # Enable 1541 drive (the MCP build defaults to 0 = no drive) AND
 # select SID 8580 (= SidModel 1) — the demo's declared submission
 # preference. The 8580's digital filter is reproducible across
-# C64 hardware, so the filter sweeps in interlude / sinus / greets /
+# C64 hardware, so the filter sweeps in interlude / hush / greets /
 # end land identically every time. See docs/music-theory.md
 # "Target SID chip: 8580" for the rationale.
 curl -s -H "Content-Type: application/json" http://127.0.0.1:6510/mcp \
