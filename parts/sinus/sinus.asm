@@ -282,20 +282,12 @@ musichook:
         cmp #SWAP_FRAME
         beq !ack+
 
-        // Open-bar / TechTech raster work over the 200 visible
-        // scanlines. One $D016 + $D020 + $D021 write per line, indexed
-        // by Y = (zp_frame + line_count) mod 200 so the entire
-        // pattern flows downward as frames advance.
-        //
-        //   $D016 = (sine_tab[Y] & 7) | $08    horizontal TechTech
-        //                                       wave — each scanline
-        //                                       shifts by 0-7 pixels.
-        //   $D020 = col_tab[Y]                 border raster bar
-        //   $D021 = bg_tab[Y]                  background raster bar
-        //
-        // Synced via $D012 polling between lines — slight drift but
-        // honest 50 Hz per-frame bar flow. Loop wraps Y at 200
-        // because col_tab/bg_tab are 200 entries.
+        // Open-bar raster colour sweep over the 200 visible scanlines.
+        // $D020 + $D021 per scanline, indexed by Y = (zp_frame +
+        // line_count) mod 200 so the pattern flows downward as frames
+        // advance. No $D016 write (the per-frame sine wobble handles
+        // horizontal scroll). Synced via $D012 polling between lines.
+        // Loop wraps Y at 200 because col_tab/bg_tab are 200 entries.
         lda #$33
 !w_top: cmp $d012
         bne !w_top-
@@ -305,10 +297,9 @@ musichook:
         ldy #0
 !y_ok:  ldx #0
 !barloop:
-        lda sine_tab,y
-        and #$07
-        ora #$08
-        sta VIC_CTRL2           // $D016 xscroll = TechTech
+        // No $D016 write here — the per-frame sine wobble upstairs
+        // already handles horizontal scroll. Writing $D016 per scanline
+        // would override it, killing the visible sine movement.
         lda col_tab,y
         sta VIC_BORDER          // $D020 border bar
         lda bg_tab,y
