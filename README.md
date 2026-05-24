@@ -142,29 +142,40 @@ trigger. The end card is the only "stay" loop.
 - Inherits intro's music pages (`'I', $10, $12` in the EFO header) so
   pefchain doesn't overwrite the resident tables.
 
-### Part 4 — `parts/hush/hush.asm` (breather)
+### Part 4 — `parts/hush/hush.asm` (manifesto under fire)
 
-- **Char-mode sine wobble** — per-scanline `$D016` fine-scroll write from a
-  256-entry sine table (range 0–7 px, OR'd with `$08` to preserve CSEL).
-- **Repeating "deFEEST" text** filling the whole screen via ROM uppercase
-  chargen at `$1000`. Connects back to the screenfill bloom.
-- **Colour cycling** — border and background colours step through tables
-  per scanline for a flowing wave look.
-- **LP filter close** — filter cutoff sweeps from $70→$08 over 200 frames.
-  `$D418` re-asserted every frame after `my_music_play` (which would
-  otherwise clobber the LP bit with a vol-only write).
-- **Volume fade-out** — SID vol $0F→$00 over the last 50 frames.
-- **No drums** — hush's setup zeros `$F6` (its `zp_timer`), which is also
-  the gating byte for the percussion in `my_music_play`. Ear-cleansing
-  break before the greets climax.
-- Frame counter at `$fc` reaches 250 frames (~5 s) and writes `$30`
-  to `$f6`; pefchain then advances to greets. **`$fc` not `$f9`** —
-  intro's `my_music_play` internally uses `$f9` as its own scratch
-  byte (writes it on every JSR), which earlier silently clobbered
-  the hush frame counter so the part never transitioned.
+- **Colour-RAM fire engine** — standard hires text mode, every cell shows
+  char `$A0` (inverse-space solid block); the COLOUR RAM is the heat field.
+  Each frame, propagation cools cells through a 7-step fire palette chain
+  via `sbctab` (`$01 white → $07 yellow → $08 orange → $0A lt red →
+  $02 red → $09 brown → $0B dk grey → $00 black`).
+- **Drifting wave seed** — row 24 re-seeded each frame from a 16-entry
+  `wave_palette` indexed by `(col + zp_frame>>2)`, so the source pattern
+  shifts ~1 col / 4 frames. Per-cell stochastic cool (1-in-4 cells) extends
+  effective fire height to ~32 rows = full screen.
+- **Row-alternation propagation** — even/odd rows update on alternating
+  frames so propagation cost stays ~11 k cy/frame and `my_music_play`
+  keeps a clean 50 Hz tick.
+- **3-row blue banner** (rows 10-12) — solid `$A0` blocks on rows 10 + 12,
+  inverted text (+$80 screencodes) on row 11 so each letter is a coloured
+  block with the glyph shape carved out as a black cut-out. Phase 1 dark
+  blue (`$06`) "THE MACHINE WAS NOT EMPTY"; swap at frame 120 (1-frame
+  white-border flash) to phase 2 light blue (`$0E`) "THE SPARK CAME BACK".
+- **Banner skip-across in propagation** — rows 10-12 are skipped (locked
+  colour). Row 9 sources from row 13 (skip-across the banner) so fire
+  keeps climbing past the banner → flames fill above and below.
+- **K-S-K-S drums hammer through** — setup sets `$F6 = $01` (drum gate ON,
+  non-$30 transition marker). No silent breakdown; the kit punches the
+  beat under the fire while the LP filter still closes on V1+V2.
+- **LP filter close** — filter cutoff sweeps `$70 → $08` over 250 frames,
+  with V1+V2 routed (`$D417 = $23` res $2). `$D418` re-asserted every
+  frame so vol writes don't kill the LP bit.
+- **Volume fade-out** — SID vol `$0F → $00` over the last 50 frames.
+- Frame counter at `$f7` reaches 250 (~5 s) and writes `$30` to `$f6`;
+  pefchain advances to greets.
 - Inherits intro's music pages (`'I', $10, $12`).
-- EFO claims `'P', $08, $0C` (5 pages of code + tables — earlier
-  single-page claim caused pefchain to overwrite the colour/sine tables).
+- EFO claims `'P', $08, $0B` (4 pages, much smaller than the old wobble
+  version — no sine / col_tab / bg_tab needed).
 
 ### Part 5 — `parts/greets/greets.asm` (greetings scroll)
 

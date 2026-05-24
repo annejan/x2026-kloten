@@ -131,24 +131,22 @@ Per-frame: plasma (half rows updated), music, beat phase, raster bars, border fl
 
 | Frame | Time | Event |
 |-------|------|-------|
-| 0 | 0 s | Setup: text mode, chargen ROM at $1000, screen $0400, border black. |
-| 0 | 0 s | Screen filled with repeating "DEFEEST" (40-char row pattern × 25 rows). Colour RAM per-row stripe palette for banded wobble. |
-| 0→249 | 0→5.0 s | Per-scanline `$D016` fine scroll wobble (sine table 0–7 px, OR'd with `$08` to preserve CSEL). Border + bg colour cycling per scanline. |
-| 0→199 | 0→4.0 s | LP filter sweep: cutoff $70→$08 over 200 frames. Re-asserted after each `my_music_play`. |
-| 200→249 | 4.0→5.0 s | Volume fade: SID vol $0F→$00 over last 50 frames. Border/bg also snap to black. |
-| **250** | **5.0 s** | `irq_top` sets zp_timer = `$30`; pefchain's `f6 = 30` condition fires. |
+| 0 | 0 s | Setup: hires text mode, chargen ROM at $1800, screen $0400, border + bg black. Screen filled with $A0 (inverse-space solid block) everywhere; banner rows 10-12 overlaid with msg_phase1; banner colour RAM set to $06 dark blue. Drum gate `$F6 = $01` so K-S-K-S keeps firing. |
+| 0→249 | 0→5.0 s | Colour-RAM fire engine: row-alternating propagation through 7-step `sbctab` palette chain, drifting wave_palette seed at row 24, banner rows skipped (locked colour), row 9 sources from row 13 to keep fire climbing past the banner. |
+| 0→249 | 0→5.0 s | LP filter sweep on V1+V2: cutoff $70→$08 over 250 frames. `$D418` re-asserted each frame after `my_music_play` so vol writes don't kill the LP bit. |
+| 120 | 2.4 s | Phase swap: msg_phase2 written to banner; colour RAM flipped to $0E light blue; 1-frame white-border flash. |
+| 200→249 | 4.0→5.0 s | Volume fade: SID vol $0F→$00 over last 50 frames. |
+| **250** | **5.0 s** | IRQ sets zp_timer = `$30`; pefchain's `f6 = 30` condition fires. |
 
-Per-frame: `my_music_play` (drums silent in hush because setup
-zeroed `$F6` so `zp_outro` gate fails), LP filter re-assertion,
-colour cycling, sine-table application to `$D016`. The repeating
-DEFEEST text connects visually back to the screenfill bloom that
-opened the demo — a hush-style swimming-text effect over the
-inherited intro chords.
+Per-frame: `my_music_play` (drums KEEP firing — `$F6 = $01` gate ON),
+fire propagation (~11 k cy thanks to row alternation, fits the
+50 Hz budget), LP filter re-assertion. Text banner ("THE MACHINE WAS
+NOT EMPTY" → "THE SPARK CAME BACK") punches through the flames as
+inverted glyphs cut out of a solid blue band.
 
-**EFO ownership**: `'P', $08, $0C` claims all 5 pages of code +
-sine_tab + col_tab + bg_tab. Earlier `'P', $08, $08` caused
-pefchain to overwrite hush's tables with its driver wait-loop;
-see `docs/pefchain-notes.md`.
+**EFO ownership**: `'P', $08, $0B` claims 4 pages of code + sbctab +
+wave_palette + msg tables. Much smaller than the old wobble version
+(no sine_tab / col_tab / bg_tab); see `docs/pefchain-notes.md`.
 
 ---
 

@@ -28,7 +28,7 @@ re-init SID for a slow 4× tempo pad reprise, no drums, lunch is over.
 | 1 | screenfill | ~5 s | `$06 == 0` (HOLDCNT drained) | **silence** — SID untouched |
 | 2 | intro | ~57 s | `$f6 == $F0` (zp_outro saturated) | full mix builds: arp → +lead → +bass → +drums |
 | 3 | interlude | ~7.7 s + ~11 s blank-filler load gap | `$f6 == $10` (16 beats × 24 frames) | V3-off solo lead pad (PWM phaser) ~2.9 s, buildup ~4.8 s slamming V3 + bass + LP sweep back in on SPARKED drop |
-| 4 | hush | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes, drums silent, vol fades |
+| 4 | hush | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes on V1+V2; **drums KEEP firing** (setup sets `$F6=$01`, gate ON); vol fades over last 50 frames |
 | 5 | greets | ~50 s | `$f6 == $82` (scroll-driven KLOTEN snap) | climax: full mix + V2-filtered "wah" on lead, koala backdrop |
 | 6 | coda | ~32 s | `$f6 == $30` (32-s timer) | triumphant: full mix held, twin stars dance |
 | 7 | end | forever | (none — `stay`) | own player, 4× slower pad reprise, all-voice LP w/ $20..$58 cutoff sweep |

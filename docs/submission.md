@@ -74,9 +74,9 @@ Timestamps from `docs/timing.md` (currently):
 | 01 | `01-screenfill.png` | screenfill | 3 s | radial bloom mid-reveal |
 | 02 | `02-intro.png` | intro | 10 s | bars + balls + logo bouncing |
 | 03 | `03-interlude.png` | interlude | 83 s | SPARKED letters landing |
-| 04 | `04-hush.png` | hush | 88 s | DEFEEST sine wobble live |
+| 04 | `04-hush.png` | hush | 88 s | colour-RAM fire + 3-row blue banner with carved text |
 | 05 | `05-greets.png` | greets | 120 s | mid-scroll, several groups visible |
-| 06 | `06-coda.png` | coda | 175 s | KLOTEN MET DE BROODTROMMEL title + twin stars |
+| 06 | `06-coda.png` | coda | 175 s | KLOTEN MET DE COMMODORE title + twin stars |
 | 07 | `07-end.png` | end | 200 s | credit roll mid-scroll |
 
 If part durations move, the timing offsets need re-syncing. The
@@ -142,7 +142,7 @@ right shape. **But the screenshot timestamps are wrong** for 5 of
 | 01-screenfill | DEFEEST bloom | black — VICE still booting at t=3 |
 | 02-intro      | mid-intro     | **correct** (logo + bars + balls) |
 | 03-interlude  | SPARKED landing | plasma chars (right part, wrong moment) |
-| 04-hush      | DEFEEST wobble | greets "SILICON" — past hush |
+| 04-hush      | fire + banner  | greets "SILICON" — past hush |
 | 05-greets     | mid-scroll    | greets "KOLOR" — right part, fine |
 | 06-coda       | KLOTEN title  | black — between coda and end |
 | 07-end        | credit roll   | **correct** (Kloot/Augurk/TL-Buis credits) |

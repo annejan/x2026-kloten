@@ -65,32 +65,41 @@ party isn't quite here yet — but the bass is coming back.
 
 ### 4. The manifesto (hush — story line 2)
 
-What was once a quiet "breath" beat became the demo's actual
-thesis statement. Two phases, ~5 seconds total, both sine-wobbling
-horizontally over a "DEfeest" wallpaper whose colour RAM rotates
-through a rainbow every ~32 frames — text and wallpaper both
-flowing colour while horizontal `$D020/$D021` raster bars sweep
-across the screen background.
+Full-screen **colour-RAM fire** in standard hires text mode. Every
+cell is char `$A0` (inverse-space solid block); the COLOUR RAM is
+the heat field, propagated up through a 7-step fire palette chain
+(white → yellow → orange → light red → red → brown → dark grey →
+black) via `sbctab` cooling. A wave-drift seed pumps fresh hot
+colours into row 24 each frame, drifting ~1 col / 4 frames. Row
+alternation halves propagation cost so `my_music_play` keeps a
+clean 50 Hz tick throughout. Two phases, ~5 seconds total:
 
-**Phase 1 (~2.4 s, red highlight, full wobble) — the accusation:**
-
-```
-THEY SAID AI DESTROYS CREATIVITY
-KILLING JOY AND NUMBING OUR MINDS
-```
-
-**Phase 2 (~2.6 s, cyan highlight, halved wobble) — the answer:**
+**Phase 1 (~2.4 s, dark-blue banner) — the cryptic accusation:**
 
 ```
-WE FOUND THE OPPOSITE
-NOT A THREAT BUT A TOOL
+THE MACHINE WAS NOT EMPTY
 ```
 
-White border flash on the swap. Audio is still doing its breath
-job underneath (LP filter closing on V1+V2, drums silent, volume
-fading) — so the visual reads as "kinetic but contained" rather
-than "empty space". SPARKED was the spark (emotion); hush is the
-argument (reason). Together they're the demo's full thesis.
+**Phase 2 (~2.6 s, light-blue banner) — the answer:**
+
+```
+THE SPARK CAME BACK
+```
+
+Text rides in a 3-row coloured banner (rows 10-12). Top and bottom
+rows are solid blue `$A0` blocks; the middle row carries inverted
+chars (+$80 screencode) so each letter is a solid block with the
+glyph shape carved out as a black cut-out — reads as crisp signage
+punched through the flames. Propagation skips the banner rows so
+the colour stays locked, and row 9 sources from row 13 (skip-across
+the banner) so fire keeps climbing past it → flames fill above and
+below. White border flash on the swap.
+
+Audio: K-S-K-S drum kit hammers all the way through (hush sets
+`$F6 = $01` to keep the gate ON — no breakdown silence). LP filter
+still closes on V1+V2 over the duration ($70 → $08); volume fades
+over the last 50 frames. SPARKED was the spark (emotion); hush is
+the manifesto delivered with a hard beat under the fire.
 
 ### 5. The greets (greets — community)
 

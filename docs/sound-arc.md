@@ -27,7 +27,7 @@ overlays** on top of that continuous music.
 | screenfill  | (silence — SID untouched, music engine isn't running yet)           |
 | intro       | Bass + lead + arp build in. Drums kick in late (when `zp_outro != 0` — intro's outro animation starts, ~20 s in). K-S-K-S backbeat: V3 paints kick (triangle pitch slam) and snare (low-noise + triangle body) alternating on the quarter; V1 bass-bleeds N_C1 (~33 Hz) sub under both. |
 | interlude   | Pad-only first ~2.9 s: V1 muted, V3 muted via `$D418` bit 7 ("V3 off"), so ONLY V2 lead is audible while line A "FOR YEARS…" types out over 2.8 s — music-box pad under the typewriter confession. `mu_step` forced to 32 in setup so the lead is in phrase 2 ("active 8ths") for movement. V2 PWM modulates via `zp_xphase` for a slow phaser feel. Last ~4.8 s buildup: V3-off bit clears so the K-S-K-S kit + arp slam back in, V1 returns, LP cutoff ramps from `$70` upward with V1+V2 routed through the filter (res $2), sprite-letter "SPARKED" drops with white-border flash. |
-| hush       | **Breakdown.** LP filter closes — and now actually closes audibly because V1 + V2 are routed through it ($D417 = $23, res $2). Cutoff ramps $70 → $08 over the duration; vol fades over the last 50 frames. Drums silent (hush zeros `$F6 = zp_outro` — the gating byte). The eye of the storm before the drop. |
+| hush       | **Manifesto under heat.** Setup sets `$F6 = $01` so the K-S-K-S drum kit keeps hammering through hush (no more silent breakdown — listener stays locked to the beat under the fire). LP filter still closes on V1+V2 via `$D417 = $23` res $2; `$D416` cutoff ramps `$70 → $08` over 250 frames; volume fades the last 50 frames. Music_play ticks at a clean 50 Hz because the colour-RAM fire engine uses row-alternation propagation (~11 k cy/frame, fits the budget). |
 | greets      | **Climax / drop.** Drums return (greets' setup re-arms `$F6`), full mix + lead + arp. V2 (lead) routed through LP filter ($D417 = $42, res $4) with a slow cutoff "wah" — `zp_wobble_pos` OR'd with $40 ramps $40..$FF over 5 s breathing the melody. DYCP scroller tells the personal arc on top of the loudest moment. |
 | coda        | **The trophy — triumphant.** Setup sets `$F6 = $01` so the K-S-K-S drum kit from intro's `my_music_play` keeps firing through the whole part (kick + snare alternating on V3, V1 bass-bleed sub-thump on every hit). Setup ALSO sets `$F8 = $80` to restore intro's `zp_intro` after interlude's `zp_plasma_tgl` clobber — high enough that V1 bass and V2 lead freq writes fire (T_BARS=120) but low enough that V3 ctrl is NOT re-gated to pulse every frame (T_SCROLLER=240), so V3 keeps the **mellow triangle arp timbre** that drum_tick left behind. `$D417 = $26` (V2+V3 routed through LP, res 2) — V1 bass-bleed kept clean because routing the sub-thump through LP + resonance caused audible filter-clap crunch per beat. `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s for a slow breathing motion under the held title. This is the LOUDEST moment of the demo — full mix held aloft for ~32 s while the twin Kloot stars dance behind the title. |
 | end         | `end_music_init` re-inits SID for slow chord/lead reprise: all 3 voices routed through LP filter ($D417=$07, no resonance), V1 walks bass_pattern at END_STEP_FRAMES=24 (4× slower than intro's 6), V2 plays lead_pattern at the same slow tempo, V3 arps within the current chord changing every 4 frames. Cutoff sweeps $20..$58 hi via `wave_xscroll[zp_frame+$40]*8 + $20` (90° out of phase from V3 PWM) for a gentle ~5 s pad breath. V3 sustain pulled down to $9 (ADSR `$11/$98`) so the pulse arp sits under V1/V2's pad instead of on top. No drums. The credit-roll outro — sound matched bit-exact to revision b5f888c via live MCP capture (commits b0af3f0 + 87eb01f). |
@@ -274,8 +274,9 @@ Drums fire only when `zp_outro` is non-zero. This means:
   from `1` toward `$F0` → DRUMS ENTER LATE
 - Interlude/greets: `$F6` repurposed as their own counters but
   always > 0 once setup runs → drums continue
-- Hush: setup zeros `$F6` (which is `zp_timer` there), kept at 0
-  until the very last frame → **resident drums silent** = the comedown
+- Hush: setup sets `$F6 = $01` (drum gate ON) → **resident drums FIRE**
+  through the whole 5-s manifesto fire. LP filter still closes on
+  V1+V2, but the kick + snare keep the audience locked to the beat.
 - Coda: setup sets `$F6 = $01` → **resident drums FIRE** through the
   whole 32-s held title. The K-S-K-S kit + V1 bass-bleed carry the
   trophy weight; no dedicated coda V3 kick needed.
@@ -287,8 +288,8 @@ Story interleave depends on this:
 - Sad pad in interlude (after a brief drum exit at transition):
   drums quickly return at beat 1 because `$F6` ticks to 1 fast
 - Greets climax: drums in their natural place
-- Hush visual breather: drums genuinely STOP for ~5 s, giving the
-  ear a moment before end's reprise
+- Hush manifesto: drums KEEP firing (no breakdown) so the listener
+  stays locked to the beat under the fire engine
 
 ## Per-voice muting trick
 
@@ -330,12 +331,14 @@ The "feeling of transition" is carried by:
   hires sprites from above, white border flash on landing) lands
   exactly when the full mix slams back in. The two-line joke is
   complete *as* the music explodes back into life.
-- **Drums STOP + LP filter close + vol fade in hush** — the
-  breakdown / breather, the calm before the drop. Visual is a
-  hypnotic sine wobble of repeating DEFEEST text. The LP close is
-  now audibly closing the bass + lead because V1 + V2 are routed
-  through the filter ($D417 = $23) — previously the cutoff sweep was
-  silent because no voices were routed.
+- **LP filter close + drums STILL firing in hush** — the manifesto
+  beat. Visual is a full-screen colour-RAM fire with a 3-row blue
+  banner carrying the cryptic-poetry text. K-S-K-S kit keeps
+  hammering ($F6=$01 drum gate ON) so the listener stays locked to
+  the beat under the fire. The LP close ($70→$08 over 5 s) is
+  audibly closing V1+V2 because they're routed through the filter
+  ($D417 = $23) — the bass + lead get progressively muffled while
+  the drums punch clean through.
 - **DYCP scroller + LP-filtered lead "wah" telling the full story in
   greets** — the climax with drums returning + bass + filtered lead
   ($D417 = $42, V2 through filter w/ res $4) + arp. The cutoff

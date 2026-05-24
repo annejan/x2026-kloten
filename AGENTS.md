@@ -41,9 +41,9 @@ Seven parts loaded by Spindle's pefchain framework:
 | 1 | `parts/screenfill/`  | Loading screen — radial DEFEEST bloom + water ripple + fade-to-black | `$06 = $00` (HOLDCNT drained) |
 | 2 | `parts/intro/`       | Logo bounce, scroller, rasterbars, 8 sprites, 3-voice SID + K-S-K-S kit | `$F6 = $F0` (`zp_outro` hits `T_OUTRO_DONE`) |
 | 3 | `parts/interlude/`   | Plasma + bars-on-buildup, typewriter "FOR YEARS…" + sprite-letter "SPARKED" drop with white-border flash, LP V1+V2 filter sweep | `$F6 = $10` (~16 beats ≈ 7.7 s) |
-| 4 | `parts/hush/`        | Manifesto: dual-phase accusation→answer text on a "deFEEST" wallpaper, sine-wobble + colour cycle, white border flash on swap, LP filter close + drums silent under | `$F6 = $30` (frame counter hits 250) |
+| 4 | `parts/hush/`        | Manifesto: full-screen colour-RAM fire engine ($A0 blocks + 7-step sbctab palette chain + drifting wave seed at row 24) with a 3-row blue banner carrying inverted cryptic-poetry text (phase 1 dark blue → phase 2 light blue swap at frame 120, white-border flash). K-S-K-S drums hammer through ($F6=$01); LP filter still closes on V1+V2. | `$F6 = $30` (frame counter hits 250) |
 | 5 | `parts/greets/`      | Climax: smooth-pixel DYCP sprite-font scroller (~50 s, scroll-driven) over a multi-colour koala backdrop. Sprite-7 carousel for clean right-edge entry. Snap landing on " KLOTEN " (the demo title's first word). Drums returning, V2 LP "wah". | `$F6 = $82` (scroll-driven settle + 4 beats) |
-| 6 | `parts/coda/`        | "KLOTEN MET DE BROODTROMMEL / A DIGITAL LUNCH EXPERIENCE / RELEASED AT X2026", twin brown+cyan Kloot stars (Stage F ping-pong zoom breath) on wide sine orbits, alternating priority + in/out of title plane, 32-star 4-tier parallax PETSCII starfield, **triumphant full K-S-K-S kit + V1 bass-bleed sub-thump** (setup sets `$F6 = $01` so intro's drums fire through the held title) | `$F6 = $30` |
+| 6 | `parts/coda/`        | "KLOTEN MET DE COMMODORE / LEARN EXPLORE DISCOVER / RELEASED AT X2026", twin brown+cyan Kloot stars (Stage F ping-pong zoom breath) on wide sine orbits, alternating priority + in/out of title plane, 32-star 4-tier parallax PETSCII starfield, **triumphant full K-S-K-S kit + V1 bass-bleed sub-thump** (setup sets `$F6 = $01` so intro's drums fire through the held title) | `$F6 = $30` |
 | 7 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise (V1/V2 triangle pad, V3 pulse w/ PWM-hi shimmer pulled under via sustain $9, all-voice LP $20..$58 cutoff sweep) | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
@@ -597,14 +597,19 @@ stocktake + recommended focus plan for the X2026 runup.
 
 **What's DONE since the docs were last refreshed (2026-05-20 → 22):**
 
-- **Hush epic rewrite** (commit `cff79d1`) — dual-phase accusation→answer
-  text. Phase 1 (frames 0-119): accusation "they said ai destroys creativity /
-  killing joy and numbing our minds" in red tones (`$02`/`$0E` row palette),
-  full-amplitude wobble. Phase 2 (frames 120-249): answer "we found the
-  opposite / not a threat but a tool" in cyan (`$03`/`$0E`), halved wobble
-  amplitude, white border flash on swap. LP filter close $70→$08 across
-  duration. PRG fits within EFO `$08-$0D` claim ($0800-$0DC0). Lowercase
-  text via `VIC_MEM = $1A` + PETSCII `$41-$5A` codes.
+- **Hush colour-RAM fire rewrite** (commit `e09591d`, 2026-05-24) —
+  replaced the sine-wobble + DEFEEST wallpaper with a full-screen
+  colour-RAM fire engine. Standard hires text mode, every cell is `$A0`
+  (inverse-space solid block); COLOUR RAM is the heat field; propagation
+  cools through a 7-step `sbctab` palette chain (white → yellow → orange →
+  light red → red → brown → dark grey → black). Row-24 wave-palette
+  seed drifts ~1 col / 4 frames; row alternation halves prop cost so
+  `my_music_play` ticks at clean 50 Hz. A 3-row blue banner on rows 10-12
+  carries the cryptic-poetry text ("THE MACHINE WAS NOT EMPTY" → "THE
+  SPARK CAME BACK") as inverted glyphs cut out of solid colour blocks.
+  Propagation skips banner rows; row 9 sources from row 13 so fire keeps
+  climbing past the banner. Drums hammer through (`$F6 = $01` gate ON)
+  — no silent breakdown. EFO claim shrinks to `'P', $08, $0B` (4 pages).
 - **Coda parallax PETSCII starfield** (PR #31) — 32 stars across 4
   speed tiers, replacing the original static-asterisk twinkle.
 - **Coda Stage F ping-pong zoom breath** (PR #33) — both Kloot stars
