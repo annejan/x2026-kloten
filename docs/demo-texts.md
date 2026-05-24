@@ -55,20 +55,20 @@ SPARKED
 
 ---
 
-## 4. hush — Manifesto: accusation → answer
+## 4. hush — Manifesto: machine-cryptic → answer
 
 **Phase 1** (frames 0-119, accusation, red tones):
 
 ```
-THEY SAID AI DESTROYS CREATIVITY
-KILLING JOY AND NUMBING OUR MINDS
+THE MACHINE WAS NOT EMPTY
+WE STILL FELT SOMETHING
 ```
 
 **Phase 2** (frames 120-249, answer, cyan tones):
 
 ```
-WE FOUND THE OPPOSITE
-NOT A THREAT BUT A TOOL
+THE SPARK CAME BACK
+NOT A THREAT / A TOOL
 ```
 
 **Wallpaper** (repeating across rows):
