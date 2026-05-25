@@ -68,6 +68,8 @@ build_part parts/coda       coda \
     kloot_star_tl.bin,2600 \
     kloot_star_bl.bin,2c00 \
     kloot_star_br.bin,3200
+# Strip PRG header (2 bytes load address) so end.asm can .import binary it.
+tail -c +3 "$ROOT/parts/friet/friet.prg" > "$ROOT/parts/friet/friet_payload.bin"
 build_part parts/end        end
 
 echo ">>> linking with pefchain"
