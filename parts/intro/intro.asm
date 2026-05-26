@@ -872,6 +872,15 @@ my_music_play:
         lda #$00
         sta $d40e                 // V3 freq lo
 !drum_skip:
+        // Colocate hook: indirect JMP through a 2-byte vector that each
+        // part can point at its own lyric/text handler. Default = RTS stub.
+        // Because this fires INSIDE my_music_play, the lyric trigger is
+        // synchronous with mu_step — zero drift by construction.
+        jmp (lyric_vec)
+
+lyric_vec:
+        .word lyric_stub
+lyric_stub:
         rts
 
 
