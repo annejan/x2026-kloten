@@ -438,3 +438,10 @@ thing.
 Music co-composed 3-voice SID jam (bass + lead + arp), logo by defeest.nl.
 Thanks: Claude Code, opencode, codebase.c64.org, spindle 3.1, kickassembler,
 and an endless supply of terrible ideas.
+
+### Hidden easter egg
+
+Press **space** during the end-credits roll to launch **Friet met Desire**
+— a standalone SID player / C64 demo loaded from an in-RAM stash.
+The D64 also carries `"friet-met-desire"` for `LOAD "FRIET-MET-DESIRE",8,1`
+from BASIC.
