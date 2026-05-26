@@ -1416,16 +1416,16 @@ friet_copier:
         // on all of these being clean.
         lda #$1b
         sta $d011              // standard text mode
-        lda #$15
-        sta $d018              // screen $0400 + chargen ROM set A (default)
+        lda #$17
+        sta $d018              // screen $0400 + chargen ROM set B (friet baseline)
         lda #$c8
         sta $d016              // 40-col, no MC
         lda #$00
         sta $d020              // black border
         sta $d021              // black bg
         sta $d015              // sprites off
-        // Clear colour RAM to light blue ($0E = C64 default)
-        lda #$0e
+        // Clear colour RAM to cyan ($03 — friet's baseline, not C64 default)
+        lda #$03
         ldx #0
 !clrcol:sta $d800,x
         sta $d900,x
@@ -1433,10 +1433,21 @@ friet_copier:
         sta $db00,x
         inx
         bne !clrcol-
+        // Clear screen to spaces ($20) — friet expects a blank screen
+        lda #$20
+        ldx #0
+!clrscr:sta $0400,x
+        sta $0500,x
+        sta $0600,x
+        sta $0700,x
+        inx
+        bne !clrscr-
         // Bank in BASIC + KERNAL
         lda #$37
         sta $01
-        cli
+        // NO CLI here — friet starts with SEI at $0810 and will CLI
+        // after it sets up $0314. If we CLI now, the pending raster
+        // IRQ fires into stale $0314 → crash.
         jmp $0810
 friet_copier_end:
 
