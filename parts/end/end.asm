@@ -1442,20 +1442,27 @@ friet_copier:
         sta $0700,x
         inx
         bne !clrscr-
-        // Zero friet's ZP state area ($90-$9F). Clean BASIC boot has
-        // these at $00; the demo leaves residue that confuses friet's
-        // lyric ticker (e.g. $98 non-zero = "lyrics already init'd").
+        // Bank in BASIC + KERNAL first so we can call BASIC init.
+        lda #$37
+        sta $01
+        // Full BASIC cold-init: resets all ZP pointers, CHRGET,
+        // variable areas, string stack — everything friet's lyric
+        // ticker needs when it calls BASIC ROM print routines.
+        // $E453 = BASIC vector init, $E3BF = BASIC RAM init.
+        jsr $e453
+        jsr $e3bf
+        // Re-point BASIC start-of-program to $0801 (where friet lives)
+        lda #$01
+        sta $2b
+        lda #$08
+        sta $2c
+        // Zero friet's own state area ($90-$FF) — clean slate.
         lda #$00
-        ldx #$0f
+        ldx #$6f
 !clrzp: sta $90,x
         dex
         bpl !clrzp-
-        // Bank in BASIC + KERNAL
-        lda #$37
-        sta $01
-        // NO CLI here — friet starts with SEI at $0810 and will CLI
-        // after it sets up $0314. If we CLI now, the pending raster
-        // IRQ fires into stale $0314 → crash.
+        // NO CLI — friet's SEI at $0810 handles it.
         jmp $0810
 friet_copier_end:
 
