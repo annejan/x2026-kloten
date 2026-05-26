@@ -177,12 +177,13 @@ setup:
         inx
         bne !ks-
 
-        // SID — LP filter on V2 (lead) with moderate resonance. Cutoff
-        // is modulated per frame in the IRQ (4 bytes there) for a slow
-        // "wah" that matches the DYCP wobble visually.
+        // SID — LP filter on V2 (lead) with low resonance for a gentle
+        // shimmer, not the muddy wah that res $4 produced. Cutoff floor
+        // raised to $70 so the filter never closes far enough to muffle
+        // the lead. This is the CLIMAX — should sound open and triumphant.
         lda #$1f                  // LP mode + vol $F ($D418 bit 4 = LP)
         sta $d418
-        lda #$42                  // res $4, V2 through filter ($D417)
+        lda #$22                  // res $2, V2 through filter ($D417)
         sta $d417
         lda #$00
         sta $d404
@@ -270,12 +271,12 @@ musichook:
         lda #$1f
         sta $d418
 
-        // LP cutoff "wah" — zp_wobble_pos counts 0..255 per frame
-        // (5 s full cycle), OR'd with $40 to keep the cutoff in
-        // $40..$FF so the filter never closes all the way (would
-        // mute V2 audibly). Slow breathing motion on the lead.
+        // LP cutoff — zp_wobble_pos counts 0..255 per frame (5 s full
+        // cycle), OR'd with $70 so the cutoff stays high ($70..$FF).
+        // The gentle shimmer adds motion without muffling the lead.
+        // (Was $40 → too deep, made the climax sound muddy.)
         lda zp_wobble_pos
-        ora #$40
+        ora #$70
         sta $d416
 
         // V1 (bass) plays naturally — this is the payoff. The previous
