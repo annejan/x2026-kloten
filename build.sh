@@ -94,7 +94,7 @@ echo ">>> done — outline-64.d64"
 if [[ -f "$ROOT/tools/update-friet.sh" ]]; then
     "$ROOT/tools/update-friet.sh" 2>&1 || echo "  (friet rebuild skipped)"
 fi
-# File "friet-met-desire" blends into the dirart directory chaos (among DEL entries).
-c1541 "$ROOT/outline-64.d64" -write "$ROOT/parts/friet-met-desire/friet.prg" friet-met-desire >/dev/null 2>&1
+# LOAD "FRIET",8,1 from BASIC.
+c1541 "$ROOT/outline-64.d64" -write "$ROOT/parts/friet-met-desire/friet.prg" friet >/dev/null 2>&1
 
 ls -la "$ROOT/outline-64.d64"
