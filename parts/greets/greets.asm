@@ -238,10 +238,25 @@ setup:
 
         lda #0
         sta zp_beat_phase
-        sta zp_beat_count
+        lda #1
+        sta zp_beat_count            // Start at 1 so that $F6 (also used as
+                                     // zp_outro by the resident my_music_play)
+                                     // is non-zero → drums fire through the
+                                     // K-S-K-S backbeat. If 0, the drum gate
+                                     // at $119E+$89 skips all V3 hits.
+        lda #0
         sta scroll_x_offset
         sta zp_beat_kick
         sta damp_shift
+
+        // Open the V1/V2 music gates: zp_intro ($F8) must be >= T_BARS (120)
+        // for bass (V1) to play and >= T_BALLS (40) for lead (V2) to play.
+        // This byte is not touched by greets' own code but is read every
+        // frame by my_music_play at $119E. If left at whatever the previous
+        // part (interlude) wrote, both voices get gated off and the greets
+        // soundtrack becomes a single droning note.
+        lda #$80                     // ≥ T_BARS (120) → full bass + lead + vol
+        sta $f8                      // zp_intro ($F8 inherited from intro.asm)
 
         lda #$00
         sta VIC_RASTER
