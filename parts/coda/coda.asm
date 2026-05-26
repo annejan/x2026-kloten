@@ -52,7 +52,7 @@
 // nothing in the current coda touches V3 directly; intro's resident
 // my_music_play owns V3 for the arp + K-S-K-S drum kit.)
 
-.const N_FRAMES   = 800               // ~32 s at the half-rate divider
+.const N_FRAMES   = 400               // ~16 s at the half-rate divider (was 800/32s)
                                       // (800 ticks @ 25 Hz). Iteration
                                       // history: 250 (~10 s) → 400
                                       // (~16 s) → 600 (~24 s) → 800.
@@ -266,6 +266,7 @@ setup:
         sta zp_subtick
         sta zp_frame
         sta frame_hi                  // high byte of 16-bit frame counter
+        sta space_state               // 0=normal, 1=paused (space held timer)
 
         // ---- CODA IS THE TRIUMPHANT MOMENT ----
         // Triumph = the full K-S-K-S kit from intro's resident music_play
@@ -907,6 +908,27 @@ musichook:
         // sprite-Y check at the lowest possible top-quad Y. See the
         // comment block at the start of `interrupt:`. Race fixed.)
 
+        // ---- Spacebar: first press pauses auto-timer, second advances ----
+        lda #$7f
+        sta $dc00
+        lda $dc01
+        and #$10
+        bne !no_space+
+        // Space is down
+        lda space_state
+        cmp #1
+        beq !space_advance+            // already paused → advance
+        lda #1
+        sta space_state                // first press → pause
+        jmp !run+
+!space_advance:
+        jmp !trigger_transition+
+!no_space:
+
+        // Skip auto-timer if paused by spacebar
+        lda space_state
+        bne !run+
+
         // transition check: 16-bit compare frame_hi:zp_frame vs N_FRAMES.
         // Fire when (frame_hi:zp_frame) >= N_FRAMES.
         lda frame_hi
@@ -951,6 +973,8 @@ musichook:
 // N_FRAMES values > 255. Reset to 0 in setup.
 frame_hi:
         .byte 0
+space_state:
+        .byte 0                        // 0=auto-timer, 1=paused by spacebar
 
 
 // Kloot star shape state — 2-byte arrays so kloot_advance can index

@@ -298,6 +298,19 @@ musichook:
         // mute (sta $d404) is gone, the bass returns with intro's
         // punchy ADSR ($04 / $61) intact.
 
+        // ----- Spacebar: skip directly to KLOTEN settle -----
+        lda #$7f
+        sta $dc00
+        lda $dc01
+        and #$10
+        bne !no_skip+
+        lda zp_beat_count
+        cmp #SETTLE_BEAT
+        bcs !no_skip+              // already settling, don't re-trigger
+        lda #SETTLE_BEAT
+        sta zp_beat_count
+!no_skip:
+
         // ----- beat counter (only — drums now live in intro's
         // my_music_play and carry through every part) -----
         inc zp_beat_phase
