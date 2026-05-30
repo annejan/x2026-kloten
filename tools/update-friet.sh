@@ -28,7 +28,13 @@ else
     FRIET_DIR=/tmp/friet-met-desire
 fi
 
-# Build the player — needs Python deps (mido, pyyaml, numpy) + KickAssembler
+# Build the player — needs Python deps (mido, pyyaml, numpy) + KickAssembler.
+# If the venv isn't set up, the existing friet.prg on disk is already good —
+# skip cleanly instead of letting `make` spew a scary Error 127 every build.
+if [[ ! -x "$FRIET_DIR/.venv/bin/python" ]]; then
+    echo "  friet .venv not set up — keeping existing friet.prg (rebuild skipped)"
+    exit 0
+fi
 echo "Building player in $FRIET_DIR..."
 (cd "$FRIET_DIR" && make player 2>&1)
 
