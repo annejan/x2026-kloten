@@ -67,6 +67,43 @@ is hard-restart, state 2 is the audible attack, states 3..N are
 sweep frames. Without this, all of the recipes below produce
 nothing audible when sharing a voice with a gated melody engine.
 
+### ⚠️ The same law bites sustained LEADS (friet easter-egg lesson)
+
+Hard restart isn't only a drum problem. The `friet-met-desire`
+easter-egg tune (built from the sibling repo) hit the identical wall
+on its **lead voice**, and the fix generalises a principle worth
+keeping:
+
+- A "sung" lead wants legato — notes butted onset-to-onset with no
+  gap. But if you change pitch *without* dropping the gate, the SID
+  silently skips the attack (same rule as above), so the line glides
+  with no transient. We tried retriggering (gate off→on) on every
+  note to get the accent back — but doing the off→on **within a
+  single frame** doesn't give the envelope a frame to fall, so the
+  hard restart fails and notes come out glitched or "barely there."
+- **Fix:** when filling notes legato, leave a **~2-frame (~40 ms)
+  gate-off gap** before the next onset. Inaudible, but it's a real
+  hard-restart window, so every note re-attacks cleanly. Continuous
+  *and* accented. (In the friet composer this is `dur = gap - 2`.)
+
+Two more lead-clarity traps from the same session:
+
+- **Combined waveforms eat notes.** Selecting tri+pulse (`$50`) for a
+  "brighter" lead AND-combines the two waveform outputs → a thin,
+  partly-cancelled tone that drops notes on some pitches. Pick a
+  single waveform ($10/$20/$40) for anything that must read clearly.
+- **Resonance masks the fundamental.** A resonant filter sweep
+  ("flange/hoover") is gorgeous, but past ~res $9 the peak overpowers
+  the note's own pitch and the melody muddies. res $8 with a ±10
+  cutoff-LFO kept the effect without burying the tune.
+
+And one timing law that applies to drums *and* lead: **every voice
+must share ONE beat→frame grid.** The friet engine snapped the melody
+to an integer-accumulated (Bresenham) 16th grid but left the drums on
+`round(beat × frames_per_beat)` — ~30% of hits landed off-grid and
+flammed against the lead. Put every voice through the same grid
+function and the groove locks.
+
 ### Kick — pitch-swept pulse (Jeroen Tel / 808-style)
 
 The defining sound of "epic" SID drums. Pulse wave with a fast
