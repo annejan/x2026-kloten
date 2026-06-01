@@ -32,9 +32,11 @@ they read inputs from registers/memory, compute, write outputs, and return.
 
 ## Suites
 
-| File | Part | Routine |
+| File | Part | Routines (cases) |
 |------|------|---------|
-| `intro.6502` | intro | `calc_active_count` — ball/X-logo spawn+despawn cascade count |
+| `intro.6502` | intro | `calc_active_count` (9), `reveal_column` (7), `wipe_out_column` (5) — ball cascade count + logo wipe-in/out |
+| `coda.6502` | coda | `kloot_advance` (5) — ping-pong star-shape counter |
+| `end.6502` | end | `push_next_credit_row` (6) — credit-row push + header/body/fade colour |
 
 ## Adding a test
 

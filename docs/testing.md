@@ -51,9 +51,10 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 **50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
 inline relocatable code, data tables).
 
-**Tested today: 3 routines** — `intro/calc_active_count` (9 cases),
-`intro/reveal_column` (7), `intro/wipe_out_column` (5) = 21 assertions.
-**sim coverage ≈ 6 %** (3 of 50 pure routines).
+**Tested today: 5 routines, 32 assertions** — intro `calc_active_count` (9),
+`reveal_column` (7), `wipe_out_column` (5); coda `kloot_advance` (5); end
+`push_next_credit_row` (6). **sim coverage ≈ 10 %** (5 of 50 pure routines),
+across 3 of 6 parts.
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
@@ -61,9 +62,9 @@ inline relocatable code, data tables).
 | intro | 17 | 0 | 4 | **3** |
 | interlude | 15 | 9 | 0 | 0 |
 | greets | 4 | 1 | 9 | 0 |
-| coda | 4 | 1 | 0 | 0 |
-| end | 6 | 0 | 2 | 0 |
-| **total** | **50** | **11** | **15** | **3** |
+| coda | 4 | 1 | 0 | **1** |
+| end | 6 | 0 | 2 | **1** |
+| **total** | **50** | **11** | **15** | **5** |
 
 ### Sim-testable routines per part (the untested surface)
 
@@ -77,9 +78,9 @@ inline relocatable code, data tables).
   `la_pause` `la_backspace` `update_sprites` `sp_off` `sp_in` `sp_bounce`
   `sp_out` `fire_init` `fire_propagate`² `fire_seed` `fadeout`
 - **greets:** `setup` `fadeout` `update_sprite_ptrs` `copy_font`
-- **coda:** `setup` `fadeout` `kloot_advance` `star_field`
-- **end:** `setup` `reveal_text` `scroll_rows_up` `push_next_credit_row`
-  `end_music_init` `end_music_play`
+- **coda:** `setup` `fadeout` **`kloot_advance`** ✅ `star_field`
+- **end:** `setup` `reveal_text` `scroll_rows_up`
+  **`push_next_credit_row`** ✅ `end_music_init` `end_music_play`
 
 ¹ `interrupt`/handlers that end in `rti` need `jsr(..., stop_on_address = …)`
 rather than `stop_on_rts`. ² `fire_propagate`/`write_plasma_row` read SID/noise
@@ -91,20 +92,20 @@ handlers in greets/coda.
 
 ### Highest-value tests to add next
 
-(Done: `calc_active_count`, `reveal_column`, `wipe_out_column`.)
+(Done: `calc_active_count`, `reveal_column`, `wipe_out_column`,
+`kloot_advance`, `push_next_credit_row`.)
 
-1. **intro/`my_music_play`** — the music state machine gated by the
-   `zp_intro` thresholds (40/120/240) that every later part inherits; voice-
-   gating regressions are catchable byte-exact.
-2. **intro/`update_bmp_scroll`** — the most logic-dense pure routine (ROL/ROR
-   bitmap scroll + pointer-wrap bookkeeping); classic shift-carry bug spot.
-3. **end/`push_next_credit_row`** — credit-table indexing + `is_header` flag;
-   a table bug silently corrupts the credits.
-4. **interlude/`fire_propagate`** + **`write_plasma_row`** — deterministic
-   effect kernels (seed the SID noise read); guards the colour-RAM
-   open-bus `and #$0F` footgun.
-5. **coda/`kloot_advance`** — the ping-pong shape counter; small but
-   boundary-heavy at the array turnarounds.
+1. **interlude/`fire_propagate`** + **`write_plasma_row`** — deterministic
+   effect kernels (seed the SID noise read `$d41b` before the `jsr`); guards
+   the colour-RAM open-bus `and #$0F` footgun.
+2. **intro/`move_sprites`** — sine-table-driven sprite positions; assert
+   `$d000+`/MSB against the table for a few `zp_frame` values.
+3. **end/`scroll_rows_up`** — credit hardware-scroll bookkeeping (pairs with
+   the tested `push_next_credit_row`).
+4. **coda/`star_field`** — parallax tick (X-indexed screen/colour writes).
+5. **intro/`my_music_play`** + **`update_bmp_scroll`** — high value but
+   gnarly state machines (SID gating / 16-bit signed pointer compares + mode
+   transitions); brittle to assert, save for last or test only sub-behaviours.
 
 ## Adding a test
 

@@ -1,0 +1,60 @@
+; sim6502 unit tests for end pure routines.   ./tests/sim6502/run.sh
+;
+; push_next_credit_row — copies credit_text[zp_text_row] (40 bytes) into
+; screen row 24 ($0400+24*40=$07c0), sets that row's colour RAM
+; ($d800+24*40=$dbc0), then advances zp_text_row (wrapping at N_CREDIT_ROWS).
+; Colour rule: zp_fade < TEXT_REVEAL(99) -> $00 (invisible during fade-in);
+; else header row -> $07 (yellow flash); else the fixed bottom-row gradient
+; colour row_colour[24]. Pure (deterministic on zp_text_row + zp_fade + the
+; credit tables). is_header rows: 3,5,6,11 = headers; others body/blank.
+;   inputs: zp_text_row=$f8, zp_fade=$fb.
+
+suites {
+  suite("end: push_next_credit_row — credit roll row push") {
+    symbols("/code/tests/sim6502/end.sym")
+    load("/code/tests/sim6502/end.prg", strip_header = true)
+
+    test("pcr-copies-row", "screen row 24 gets credit_text[row], byte-exact") {
+      $f8 = $05          ; zp_text_row = 5 (Kloten met de Commodore)
+      $fb = $63          ; zp_fade = 99 (TEXT_REVEAL) -> visible
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert(memcmp($07c0, $414f, 40), "row 5 copied to screen row 24")
+    }
+
+    test("pcr-header-flashes-yellow", "header row colour = $07") {
+      $f8 = $05          ; row 5 is a header
+      $fb = $63
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert($dbc0 == $07, "header row 5 colour RAM = yellow")
+    }
+
+    test("pcr-body-uses-gradient", "body row colour = row_colour[24]") {
+      $f8 = $08          ; row 8 (by deFEEST) is a body row
+      $fb = $63
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert($dbc0 == peekbyte([row_colour] + 24), "body row uses bottom gradient colour")
+    }
+
+    test("pcr-invisible-during-fade", "colour stays black until TEXT_REVEAL") {
+      $f8 = $05          ; header row, but...
+      $fb = $62          ; zp_fade = 98 (< TEXT_REVEAL) -> invisible
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert($dbc0 == $00, "colour RAM black during fade-in")
+      assert(memcmp($07c0, $414f, 40), "screen still copied during fade")
+    }
+
+    test("pcr-advances-row", "zp_text_row increments") {
+      $f8 = $08
+      $fb = $63
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert($f8 == $09, "zp_text_row 8 -> 9")
+    }
+
+    test("pcr-wraps-at-end", "zp_text_row wraps to 0 after the last row") {
+      $f8 = $46          ; zp_text_row = 70 (N_CREDIT_ROWS-1)
+      $fb = $63
+      jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
+      assert($f8 == $00, "wraps 70 -> 0 at N_CREDIT_ROWS=71")
+    }
+  }
+}

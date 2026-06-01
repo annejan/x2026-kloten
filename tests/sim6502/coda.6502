@@ -1,0 +1,62 @@
+; sim6502 unit tests for coda pure routines.   ./tests/sim6502/run.sh
+;
+; kloot_advance — ping-pong shape counter for one Kloot star, X-indexed
+; (X = star: 0 or 1). Forward (dir==0): inc shape; at KLOOT_FRAMES_TOTAL(24)
+; clamp to 23 and flip dir to backward ($ff). Backward (dir!=0): dec shape;
+; under 0 ($ff) clamp to 0 and flip dir to forward (0). Pure: depends only
+; on X + kloot_shape[X] / kloot_dir[X].
+;   star 0: shape=[kloot_shape_1]($c0f) dir=[kloot_dir_1]($c11)
+;   star 1: shape=[kloot_shape_2]($c10) dir=[kloot_dir_2]($c12)
+
+suites {
+  suite("coda: kloot_advance — ping-pong star-shape counter") {
+    symbols("/code/tests/sim6502/coda.sym")
+    load("/code/tests/sim6502/coda.prg", strip_header = true)
+
+    test("ka-forward-step", "forward mid-range just increments") {
+      x = $00
+      [kloot_dir_1]   = $00      ; forward
+      [kloot_shape_1] = $05
+      jsr([kloot_advance], stop_on_rts = true, fail_on_brk = true)
+      assert([kloot_shape_1] == $06, "shape 5 -> 6")
+      assert([kloot_dir_1]   == $00, "still forward")
+    }
+
+    test("ka-forward-flip-at-top", "clamps at 23 and flips to backward") {
+      x = $00
+      [kloot_dir_1]   = $00      ; forward
+      [kloot_shape_1] = $17      ; 23 (KLOOT_FRAME_LAST)
+      jsr([kloot_advance], stop_on_rts = true, fail_on_brk = true)
+      assert([kloot_shape_1] == $17, "stays clamped at 23")
+      assert([kloot_dir_1]   == $ff, "direction flipped to backward")
+    }
+
+    test("ka-backward-step", "backward mid-range just decrements") {
+      x = $00
+      [kloot_dir_1]   = $ff      ; backward
+      [kloot_shape_1] = $0a      ; 10
+      jsr([kloot_advance], stop_on_rts = true, fail_on_brk = true)
+      assert([kloot_shape_1] == $09, "shape 10 -> 9")
+      assert([kloot_dir_1]   == $ff, "still backward")
+    }
+
+    test("ka-backward-flip-at-bottom", "clamps at 0 and flips to forward") {
+      x = $00
+      [kloot_dir_1]   = $ff      ; backward
+      [kloot_shape_1] = $00
+      jsr([kloot_advance], stop_on_rts = true, fail_on_brk = true)
+      assert([kloot_shape_1] == $00, "stays clamped at 0")
+      assert([kloot_dir_1]   == $00, "direction flipped to forward")
+    }
+
+    test("ka-star2-independent", "X=1 advances star 2 without touching star 1") {
+      x = $01
+      [kloot_dir_2]   = $00
+      [kloot_shape_2] = $03
+      [kloot_shape_1] = $aa      ; sentinel on the OTHER star
+      jsr([kloot_advance], stop_on_rts = true, fail_on_brk = true)
+      assert([kloot_shape_2] == $04, "star 2 advanced 3 -> 4")
+      assert([kloot_shape_1] == $aa, "star 1 untouched (X-indexed)")
+    }
+  }
+}

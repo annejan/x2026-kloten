@@ -16,7 +16,7 @@ KICKASS="$ROOT/kickass/KickAss.jar"
 IMAGE="ghcr.io/barryw/sim6502:latest"
 
 # Parts that have unit tests — assemble each to <name>.prg + copy its .sym.
-PARTS=(intro)
+PARTS=(intro coda end)
 
 for p in "${PARTS[@]}"; do
     echo ">>> assembling $p for tests"

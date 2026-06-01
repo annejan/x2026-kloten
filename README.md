@@ -385,6 +385,25 @@ For each part the build pipeline is:
 Then `pefchain pefchain_script -o outline-64.d64` links the whole
 thing.
 
+## Testing
+
+```bash
+./tests/sim6502/run.sh          # assemble parts + run the 6502 unit tests
+```
+
+Pure 6502 routines get real unit tests via
+[sim6502](https://github.com/barryw/sim6502) (run in Docker): load a
+part's `.prg` + KickAssembler `.sym`, set inputs, `jsr` a routine,
+assert the outputs — on a flat-RAM backend, so no VIC/raster (raster-
+locked code is for the hardware-accurate `vice`/VICE-MCP backend
+instead). 32 assertions across 5 suites today (intro `calc_active_count`
+/ `reveal_column` / `wipe_out_column`, coda `kloot_advance`, end
+`push_next_credit_row`) — ~10% of the ~50 pure routines.
+
+There's also `tools/verify_demo.py`, an MCP-driven full-demo smoke test
+(part transitions + SID health). See [`docs/testing.md`](docs/testing.md)
+for the coverage matrix and how to add tests.
+
 ## Intro memory layout (VIC bank 0)
 
 | Range          | Contents                                       |
