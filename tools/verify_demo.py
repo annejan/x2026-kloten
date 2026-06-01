@@ -2,11 +2,14 @@
 """verify_demo.py — smoke-test the full demo through VICE-MCP.
 
 Launches VICE (via run-mcp.sh or connects to an existing instance),
-steps through the demo in warp mode, and validates each part transition.
+steps through the demo in real-time (or warp with --warp), and validates
+each part transition.
 
 Usage:
-  python3 tools/verify_demo.py              # launch VICE + test
+  python3 tools/verify_demo.py              # launch VICE + test (real-time)
   python3 tools/verify_demo.py --connect    # connect to running VICE
+  python3 tools/verify_demo.py --warp       # play through in warp (faster,
+                                            # but memory reads are flakier)
 
 Checks:
   - Each part loads within expected frame budget
@@ -24,7 +27,10 @@ import urllib.request
 import urllib.error
 
 MCP_URL = "http://127.0.0.1:6510/mcp"
-WARP_DELAY = 0.2       # seconds between polls in warp mode
+WARP_DELAY = 0.2       # seconds between polls
+# Warp plays through faster but memory reads are unreliable under warp on this
+# VICE-MCP build, so default to real-time; opt in with --warp.
+USE_WARP = "--warp" in sys.argv
 
 # Expected transition values per pefchain_script
 # (part_name, transition_byte, expected_value)
@@ -91,8 +97,18 @@ def mcp_parse(method, params=None):
 
 
 def read_mem(address, size):
-    """Read C64 memory via MCP."""
+    """Read C64 memory via MCP. Returns bytes or None.
+
+    New MCP format: {"address":.., "size":.., "encoding":"array",
+    "data":["67","0f",..]} — a dict whose `data` is a list of HEX STRINGS.
+    Older builds returned a bare list of ints; handle both.
+    """
     result = mcp_parse("vice.memory.read", {"address": address, "size": size})
+    if isinstance(result, dict) and "data" in result:
+        try:
+            return bytes(int(b, 16) for b in result["data"])
+        except (ValueError, TypeError):
+            return None
     if isinstance(result, list):
         return bytes(result)
     return None
@@ -115,16 +131,21 @@ def read_word(address):
 
 
 def get_pc():
-    """Get current program counter."""
+    """Get current program counter. MCP returns uppercase 'PC'."""
     regs = mcp_parse("vice.registers.get")
     if isinstance(regs, dict):
-        return regs.get("pc", None)
+        return regs.get("PC", regs.get("pc"))
     return None
 
 
 def set_warp(enabled):
-    """Enable/disable warp mode (best-effort, some MCP builds lack set_warp)."""
-    mcp_call("vice.execution.set_warp", {"enabled": enabled})
+    """Enable/disable warp via the WarpMode resource.
+
+    The standalone vice.execution.set_warp tool no longer exists; warp is a
+    machine resource toggled through vice.machine.config.set.
+    """
+    mcp_call("vice.machine.config.set",
+             {"resources": {"WarpMode": 1 if enabled else 0}})
 
 
 def run_test():
@@ -141,9 +162,9 @@ def run_test():
 
     # Read current machine state
     regs = mcp_parse("vice.registers.get")
-    if regs:
-        pc = regs.get("pc", 0)
-        print(f"  CPU: PC=${pc:04X}  A=${regs.get('a',0):02X}  X=${regs.get('x',0):02X}  Y=${regs.get('y',0):02X}")
+    if isinstance(regs, dict):
+        pc = regs.get("PC", 0)
+        print(f"  CPU: PC=${pc:04X}  A=${regs.get('A',0):02X}  X=${regs.get('X',0):02X}  Y=${regs.get('Y',0):02X}")
         print()
 
     # Warm reset via MCP (set PC to reset vector)
@@ -159,9 +180,13 @@ def run_test():
         print("❌ Demo didn't boot within 25 s")
         return False
 
-    # Enable warp for fast play-through
-    set_warp(True)
-    print("  Warp mode ON\n")
+    # Warp plays through faster, but memory reads are unreliable under warp on
+    # this VICE build, so default to real-time. Opt in with --warp.
+    if USE_WARP:
+        set_warp(True)
+        print("  Warp mode ON\n")
+    else:
+        print("  Real-time mode (reliable reads; pass --warp to speed up)\n")
 
     # Track part transitions
     current_part = -1
@@ -224,7 +249,8 @@ def run_test():
         return False
 
     # Disable warp
-    set_warp(False)
+    if USE_WARP:
+        set_warp(False)
 
     print(f"\n=== Results ===")
     all_parts_seen = len(part_frames) == len(PARTS) - 1  # -1 because 'end' stays

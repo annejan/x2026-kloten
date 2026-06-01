@@ -1,6 +1,6 @@
 # VICE-MCP debugging cookbook
 
-The MCP server exposes ~70 tools for poking VICE from outside the
+The MCP server exposes 64 tools (`tools/list`) for poking VICE from outside the
 emulator. This doc captures the ones we use, the gotchas, and
 ready-to-paste recipes for the kinds of measurements we keep
 needing on this project.
@@ -69,10 +69,14 @@ breakpoint work — the tool output is much more readable when
 addresses come back with labels.
 
 ### Memory
-- `vice.memory.read` — `address=...`, `size=...`. Returns a list
-  of hex bytes as strings. **NB**: the param is `size`, not
-  `length`.
-- `vice.memory.write` — `address=...`, `data=[...]` (bytes).
+- `vice.memory.read` — `address=...`, `size=...`. Returns a JSON
+  object `{"address":…, "size":…, "encoding":"array",
+  "data":["67","0f",…]}` — `data` is a list of hex-byte **strings**
+  (parse with `int(b, 16)`). **NB**: the param is `size`, not
+  `length`. (Older builds returned a bare list of ints; current ones
+  wrap it in the object above — see `tools/verify_demo.py` `read_mem`
+  for a both-formats parser.)
+- `vice.memory.write` — `address=...`, `data=[...]` (list of ints).
 - `vice.memory.search` — pattern search, useful for finding loose
   references after a refactor.
 - `vice.memory.compare` — compare two ranges, or a range against
@@ -98,9 +102,20 @@ addresses come back with labels.
   IRQ/NMI/BRK with timestamps. Returns a `log_id` you pass back
   to read/stop. Essential for seeing whether IRQs fire late.
 
+### CPU / registers
+- `vice.registers.get` — returns a JSON object with **uppercase**
+  keys: `{"PC":…, "A":…, "X":…, "Y":…, "SP":…}` plus boolean status
+  flags `N V B D I Z C`. (Watch the case — `regs["pc"]` is a classic
+  silent `None`.) `PC` is decimal; format with `"$%04X" % pc`.
+- `vice.registers.set` — write any of the same registers.
+- `vice.ping` — `{"status":"ok","version":…,"machine":…,
+  "execution":"running"|"paused"}`. Handy: the `execution` field
+  tells you if a prior `run_until` left the machine paused.
+
 ### Display / capture
 - `vice.display.screenshot` — `path="..."` writes to a file, or
-  omit `path` to get base64 in the response. PNG.
+  omit `path` to get base64 in the response. PNG. Returns
+  `{"status":"ok","format":"PNG","path":…}`.
 - `vice.display.get_dimensions` — output frame dimensions.
 
 ### VIC / SID / CIA state
