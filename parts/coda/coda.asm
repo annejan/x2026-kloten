@@ -112,7 +112,7 @@
 //
 // Stage F — PING-PONG ("breath"). Stage E played the 8 zoom frames
 // once and then wrapped to the rotation segment forever, so the
-// zoom-in only happened at the very start of the part and the cyan
+// zoom-in only happened at the very start of the part and the purple
 // star (which started at frame 8) never showed the zoom at all.
 //
 // Now each star's `kloot_shape_N` counter walks 0..23..0 in a true
@@ -126,7 +126,7 @@
 //   ...repeats forever
 //
 // Star 1 (brown) starts at shape=0 dir=forward → opens with the
-// zoom-in. Star 2 (cyan) starts at shape=KLOOT_FRAMES_TOTAL-1
+// zoom-in. Star 2 (purple) starts at shape=KLOOT_FRAMES_TOTAL-1
 // dir=backward → opens with a zoom-OUT, so the two stars naturally
 // run out of phase: one is shrinking while the other is growing.
 //
@@ -386,8 +386,8 @@ setup:
         sta $d00d                       // spr 6 BL Y
         sta $d00f                       // spr 7 BR Y
 
-        // Star 2 colours: cyan ($0E) vs star 1's brown ($09).
-        lda #$0e
+        // Star 2 colours: purple ($04) vs star 1's brown ($09).
+        lda #$04
         sta $d02b                       // spr 4
         sta $d02c                       // spr 5
         sta $d02d                       // spr 6
@@ -703,13 +703,13 @@ interrupt:
         eor #1
         sta swap_flag
         bne !cyan_front+
-        // Star 1 (brown) → sprites 0-3, star 2 (cyan) → sprites 4-7
+        // Star 1 (brown) → sprites 0-3, star 2 (purple) → sprites 4-7
         lda #$09
         sta $d027
         sta $d028
         sta $d029
         sta $d02a
-        lda #$0e
+        lda #$04
         sta $d02b
         sta $d02c
         sta $d02d
@@ -718,8 +718,8 @@ interrupt:
         sta $d01b
         jmp !safe_done+
 !cyan_front:
-        // Star 2 (cyan) → sprites 0-3, star 1 (brown) → sprites 4-7
-        lda #$0e
+        // Star 2 (purple) → sprites 0-3, star 1 (brown) → sprites 4-7
+        lda #$04
         sta $d027
         sta $d028
         sta $d029
