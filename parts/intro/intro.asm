@@ -489,10 +489,23 @@ irq_bars:
 
         // RASTER-LOCKED bar loop. Each line of the bars zone:
         //   1. wait `cpy VIC_RASTER` until raster == Y
-        //   2. immediately stx $d021 / stx $d020 (X holds preloaded
-        //      palette[Y], so the store happens 4-8 cy after polling
-        //      exit, before sprite-DMA cy 0-15 windows are fully done)
+        //   2. IMMEDIATELY stx $d020 (border) then stx $d021 (bg). X holds
+        //      preloaded palette[Y]. Border FIRST because it paints the
+        //      visible left border — landing it ~cy 6-12 keeps it in HBLANK
+        //      (before the visible left edge ~cy 13-15); bg can follow since
+        //      the display window it colours starts ~cy 16.
         //   3. iny; preload palette[Y+1] into X for next iter
+        //
+        // WHY THE SHORT IMMEDIATE PATH (do NOT "improve" with a delay/pad):
+        // the bars sit OVER the logo bitmap, so badlines steal the bus
+        // ~cy 12-54. The FLD at $3B varies yscroll per frame, so WHICH lines
+        // in $80..$EC are badlines MOVES every frame. Storing immediately
+        // after poll-exit (cy ~6-16) means the writes complete BEFORE the
+        // badline BA at ~cy 12 — a freeze can't displace them. A "pad to the
+        // right border (cy ~55)" scheme was designed and adversarially
+        // rejected: a badline freeze lands inside the pad and pushes the
+        // stores ~40 cy into the NEXT line's visible display, recreating the
+        // seam on every (moving) badline line. Short path = badline-safe.
         //
         // Init Y to (current raster + 1) so we wait for the NEXT line
         // transition before the first write — avoids the "we're already
