@@ -82,4 +82,130 @@ suites {
       assert($f5 == $00, "0 active, no underflow")
     }
   }
+
+  ; ----------------------------------------------------------------------
+  ; reveal_column — the logo wipe-in. Called every frame; with zp_outro=0
+  ; it reveals ONE cell column of bitmap rows 8-16: column = zp_intro -
+  ; T_LOGO (200). Writes $67 to the 9 screen-RAM rows and $01 to the 9
+  ; colour-RAM rows at that column. No write before T_LOGO or after 40
+  ; columns. With zp_outro != 0 it branches to wipe_out_column.
+  ;   screen rows 8..16: $0540 $0568 $0590 $05b8 $05e0 $0608 $0630 $0658 $0680
+  ;   colour rows 8..16: $d940 $d968 $d990 $d9b8 $d9e0 $da08 $da30 $da58 $da80
+  ;   inputs: zp_intro=$f8, zp_outro=$f6.  T_LOGO=200($c8).
+  ; ----------------------------------------------------------------------
+  suite("intro: reveal_column — logo wipe-in (left to right)") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("rc-before-T_LOGO", "no reveal one tick before T_LOGO") {
+      $f8 = $c7          ; zp_intro = 199 (T_LOGO-1)
+      $f6 = $00
+      $0540 = $aa        ; sentinel in column 0
+      $d940 = $aa
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0540 == $aa, "screen col0 untouched before T_LOGO")
+      assert($d940 == $aa, "colour col0 untouched before T_LOGO")
+    }
+
+    test("rc-first-column", "column 0 revealed exactly at T_LOGO, all 9 rows") {
+      $f8 = $c8          ; zp_intro = 200 (T_LOGO) -> column 0
+      $f6 = $00
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0540 == $67, "row 8  col0 screen = $67")
+      assert($05e0 == $67, "row 12 col0 screen = $67")
+      assert($0680 == $67, "row 16 col0 screen = $67")
+      assert($d940 == $01, "row 8  col0 colour = $01")
+      assert($da80 == $01, "row 16 col0 colour = $01")
+    }
+
+    test("rc-mid-column", "column 10 at T_LOGO+10") {
+      $f8 = $d2          ; zp_intro = 210 -> column 10
+      $f6 = $00
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($054a == $67, "row 8  col10 screen = $67")
+      assert($068a == $67, "row 16 col10 screen = $67")
+      assert($d94a == $01, "row 8  col10 colour = $01")
+    }
+
+    test("rc-last-column", "column 39 at T_LOGO+39 (last)") {
+      $f8 = $ef          ; zp_intro = 239 -> column 39
+      $f6 = $00
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0567 == $67, "row 8  col39 screen = $67")
+      assert($06a7 == $67, "row 16 col39 screen = $67")
+    }
+
+    test("rc-only-one-column", "reveals exactly one column, no bleed") {
+      $f8 = $cd          ; zp_intro = 205 -> column 5
+      $f6 = $00
+      $0546 = $aa        ; sentinel in the NEXT column (6)
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0545 == $67, "column 5 written")
+      assert($0546 == $aa, "column 6 left untouched (no bleed)")
+    }
+
+    test("rc-past-end", "no write after 40 columns") {
+      $f8 = $f0          ; zp_intro = 240 -> column 40 (>= 40, complete)
+      $f6 = $00
+      $0540 = $aa
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0540 == $aa, "no reveal once wipe is complete")
+    }
+
+    test("rc-outro-branches-to-wipe", "zp_outro != 0 routes to wipe_out_column") {
+      $f8 = $d2          ; zp_intro = 210 (would reveal col 10 if not outro)
+      $f6 = $2d          ; zp_outro = 45 -> wipe offset 5 -> column 34
+      $0562 = $aa        ; column 34 sentinel
+      jsr([reveal_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0562 == $00, "branched to wipe: column 34 cleared")
+    }
+  }
+
+  ; ----------------------------------------------------------------------
+  ; wipe_out_column — outro mirror. column = 39 - (zp_outro - T_OUTRO_LOGO),
+  ; so it walks 39 -> 0 (right to left) as zp_outro goes 40..79, clearing
+  ; the 9 screen + 9 colour cells to $00. No write before T_OUTRO_LOGO(40)
+  ; or after 40 columns. Uses zp_tmp($f9) as scratch.
+  ; ----------------------------------------------------------------------
+  suite("intro: wipe_out_column — logo wipe-out (right to left)") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("wc-before-T_OUTRO_LOGO", "no wipe one tick before T_OUTRO_LOGO") {
+      $f6 = $27          ; zp_outro = 39 (T_OUTRO_LOGO-1)
+      $0567 = $aa        ; column 39 sentinel
+      jsr([wipe_out_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0567 == $aa, "untouched before T_OUTRO_LOGO")
+    }
+
+    test("wc-first-clears-col39", "column 39 cleared first, at T_OUTRO_LOGO") {
+      $f6 = $28          ; zp_outro = 40 -> offset 0 -> column 39
+      $0567 = $aa        ; row 8  col39
+      $06a7 = $aa        ; row 16 col39
+      jsr([wipe_out_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0567 == $00, "row 8  col39 cleared")
+      assert($06a7 == $00, "row 16 col39 cleared")
+    }
+
+    test("wc-walks-right-to-left", "column 29 at T_OUTRO_LOGO+10") {
+      $f6 = $32          ; zp_outro = 50 -> offset 10 -> column 29
+      $055d = $aa        ; row 8 col29
+      jsr([wipe_out_column], stop_on_rts = true, fail_on_brk = true)
+      assert($055d == $00, "column 29 cleared (39-10)")
+    }
+
+    test("wc-last-clears-col0", "column 0 cleared last, at T_OUTRO_LOGO+39") {
+      $f6 = $4f          ; zp_outro = 79 -> offset 39 -> column 0
+      $0540 = $aa
+      jsr([wipe_out_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0540 == $00, "column 0 cleared")
+    }
+
+    test("wc-past-end", "no write after 40 columns wiped") {
+      $f6 = $50          ; zp_outro = 80 -> offset 40 (>= 40, complete)
+      $0540 = $aa
+      jsr([wipe_out_column], stop_on_rts = true, fail_on_brk = true)
+      assert($0540 == $aa, "no wipe once complete")
+    }
+  }
 }

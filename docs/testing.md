@@ -51,26 +51,28 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 **50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
 inline relocatable code, data tables).
 
-**Tested today: 1 routine** — `intro/calc_active_count` (9 cases).
-**sim coverage ≈ 2 %** (1 of 50 pure routines).
+**Tested today: 3 routines** — `intro/calc_active_count` (9 cases),
+`intro/reveal_column` (7), `intro/wipe_out_column` (5) = 21 assertions.
+**sim coverage ≈ 6 %** (3 of 50 pure routines).
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
 | screenfill | 4 | 0 | 0 | 0 |
-| intro | 17 | 0 | 4 | **1** |
+| intro | 17 | 0 | 4 | **3** |
 | interlude | 15 | 9 | 0 | 0 |
 | greets | 4 | 1 | 9 | 0 |
 | coda | 4 | 1 | 0 | 0 |
 | end | 6 | 0 | 2 | 0 |
-| **total** | **50** | **11** | **15** | **1** |
+| **total** | **50** | **11** | **15** | **3** |
 
 ### Sim-testable routines per part (the untested surface)
 
 - **screenfill:** `prepare` `setup` `interrupt`¹ `fadeout`
 - **intro:** `setup` `fadeout` `clear_screen` `init_sprites` `my_music_init`
   `my_music_play` `clear_bitmap` `copy_logo` `move_sprites`
-  **`calc_active_count`** ✅ `copy_chargen` `init_slide_hide` `reveal_column`
-  `wipe_out_column` `init_bmp_scroll` `update_scroll_colors` `update_bmp_scroll`
+  **`calc_active_count`** ✅ `copy_chargen` `init_slide_hide`
+  **`reveal_column`** ✅ **`wipe_out_column`** ✅ `init_bmp_scroll`
+  `update_scroll_colors` `update_bmp_scroll`
 - **interlude:** `setup` `init_sprites` `write_plasma_row` `update_line_a`
   `la_pause` `la_backspace` `update_sprites` `sp_off` `sp_in` `sp_bounce`
   `sp_out` `fire_init` `fire_propagate`² `fire_seed` `fadeout`
@@ -89,20 +91,19 @@ handlers in greets/coda.
 
 ### Highest-value tests to add next
 
-1. **intro/`reveal_column`** + **`wipe_out_column`** — the logo reveal/wipe
-   cascade; deterministic, branchy, off-by-one-cell prone. Same family as the
-   tested `calc_active_count`.
-2. **intro/`my_music_play`** — the music state machine gated by the
+(Done: `calc_active_count`, `reveal_column`, `wipe_out_column`.)
+
+1. **intro/`my_music_play`** — the music state machine gated by the
    `zp_intro` thresholds (40/120/240) that every later part inherits; voice-
    gating regressions are catchable byte-exact.
-3. **intro/`update_bmp_scroll`** — the most logic-dense pure routine (ROL/ROR
+2. **intro/`update_bmp_scroll`** — the most logic-dense pure routine (ROL/ROR
    bitmap scroll + pointer-wrap bookkeeping); classic shift-carry bug spot.
-4. **end/`push_next_credit_row`** — credit-table indexing + `is_header` flag;
+3. **end/`push_next_credit_row`** — credit-table indexing + `is_header` flag;
    a table bug silently corrupts the credits.
-5. **interlude/`fire_propagate`** + **`write_plasma_row`** — deterministic
+4. **interlude/`fire_propagate`** + **`write_plasma_row`** — deterministic
    effect kernels (seed the SID noise read); guards the colour-RAM
    open-bus `and #$0F` footgun.
-6. **coda/`kloot_advance`** — the ping-pong shape counter; small but
+5. **coda/`kloot_advance`** — the ping-pong shape counter; small but
    boundary-heavy at the array turnarounds.
 
 ## Adding a test
