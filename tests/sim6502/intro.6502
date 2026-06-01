@@ -249,4 +249,163 @@ suites {
       assert($d00d == peekbyte([sine_bot] + 72), "SPR6 Y = sine_bot[72]")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; clear_screen — bitmap-mode screen-RAM + colour-RAM setup (NOT a text
+  ; "space" clear). Two 4-way-unrolled page-strided constant fills:
+  ;   $0400-$07FF (1024 bytes) = $67  (multicolour screen-RAM nibbles)
+  ;   $d800-$dbFF (1024 bytes) = $01  (colour RAM, uniform white).
+  ; Pure: the $d800 write is benign in flat RAM; no VIC/CIA/raster/$01.
+  ; We memfill each region with $aa first so memchk is discriminating.
+  ; --------------------------------------------------------------------
+  suite("intro: clear_screen — bitmap screen + colour-RAM constant fills") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("cs-screen-fills-67", "all 1024 screen-RAM bytes $0400-$07FF = $67") {
+      memfill($0400, $400, $aa)        ; seed so the fill is discriminating
+      jsr([clear_screen], stop_on_rts = true, fail_on_brk = true)
+      assert(memchk($0400, $400, $67), "screen RAM filled with $67")
+    }
+
+    test("cs-colour-fills-01", "all 1024 colour-RAM bytes $d800-$dbFF = $01") {
+      memfill($d800, $400, $aa)
+      jsr([clear_screen], stop_on_rts = true, fail_on_brk = true)
+      assert(memchk($d800, $400, $01), "colour RAM filled with $01")
+    }
+
+    test("cs-no-bleed", "fills stop exactly at $07FF and $dbFF") {
+      $0800 = $aa                      ; one byte past the screen fill
+      $dc00 = $aa                      ; one byte past the colour fill
+      jsr([clear_screen], stop_on_rts = true, fail_on_brk = true)
+      assert($07ff == $67, "last screen byte filled")
+      assert($0800 == $aa, "no overrun past screen $07FF")
+      assert($dbff == $01, "last colour byte filled")
+      assert($dc00 == $aa, "no overrun past colour $dbFF")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; clear_bitmap — zero-fill the hires bitmap $2000-$3FFF (8192 bytes),
+  ; fully unrolled: 32 `sta $hh00,x` bodies ($20..$3F) with X looped 0..255.
+  ; Pure RAM. Seed with $aa first so the zero-fill is discriminating.
+  ; --------------------------------------------------------------------
+  suite("intro: clear_bitmap — zero-fill hires bitmap $2000-$3FFF") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("cb-zeroes-8192", "all 8192 bitmap bytes $2000-$3FFF = $00") {
+      memfill($2000, $2000, $aa)       ; seed so the zero-fill proves itself
+      jsr([clear_bitmap], stop_on_rts = true, fail_on_brk = true)
+      assert(memchk($2000, $2000, $00), "whole bitmap zeroed")
+    }
+
+    test("cb-no-bleed", "fill is bounded to $2000-$3FFF") {
+      $1fff = $aa                      ; one byte below the base
+      $4000 = $aa                      ; one byte past the end
+      jsr([clear_bitmap], stop_on_rts = true, fail_on_brk = true)
+      assert($2000 == $00, "first bitmap byte zeroed")
+      assert($3fff == $00, "last bitmap byte zeroed")
+      assert($1fff == $aa, "nothing written below $2000")
+      assert($4000 == $aa, "nothing written past $3FFF")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; copy_logo — copy the 2880-byte ($0B40) logo bitmap from logo_rows
+  ; ($1300) to $2A00 (bitmap rows 8-16): 11 full pages + a 64-byte tail.
+  ; Pure copy (both src and dst live in the loaded prg). We memfill the
+  ; dest with a sentinel first so memcmp proves the copy actually ran
+  ; (much of the logo source is $00, so a raw compare would be vacuous).
+  ; --------------------------------------------------------------------
+  suite("intro: copy_logo — copy logo bitmap rows to $2A00 (2880 bytes)") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("cl-copies-2880", "the full 2880-byte logo is copied byte-exact") {
+      memfill($2a00, $0b40, $aa)       ; dst sentinel -> memcmp is discriminating
+      jsr([copy_logo], stop_on_rts = true, fail_on_brk = true)
+      assert(memcmp($2a00, $1300, $0b40), "2880 bytes copied byte-exact from logo_rows")
+      assert($2a47 == peekbyte([logo_rows] + $47), "non-blank logo cell copied (src $1347)")
+      assert($2a47 == $0a, "...specifically $0a")
+    }
+
+    test("cl-no-bleed", "copy stops exactly at $353F") {
+      memfill($2a00, $0b40, $5a)       ; fill exactly the dest range
+      $3540 = $aa                      ; sentinel one byte past the end
+      jsr([copy_logo], stop_on_rts = true, fail_on_brk = true)
+      assert($353f == peekbyte([logo_rows] + $0b3f), "last copied byte ($353F) = src end")
+      assert($3540 == $aa, "no overrun past $353F")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; copy_chargen — bank in the CHARGEN ROM ($01=$33), copy $d800-$dfff
+  ; (2048 bytes, 8-way unrolled) to FONT_BASE $4c00, restore $01=$35.
+  ; In flat RAM there is no ROM and the $01 bank-switch is a no-op, so we
+  ; SEED the $d800 source (memfill + distinct page markers) to validate
+  ; the copy loop, then memcmp the dest against it.
+  ; --------------------------------------------------------------------
+  suite("intro: copy_chargen — copy CHARGEN ($d800 in sim) to FONT_BASE $4c00") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("cc-copies-2048", "seeded source copied byte-exact incl page markers") {
+      memfill($d800, $800, $5a)        ; seed the 'ROM' source (flat RAM here)
+      $d800 = $11                      ; page-0 marker
+      $df00 = $88                      ; page-7 marker
+      $dfff = $99                      ; last source byte
+      memfill($4c00, $800, $aa)        ; dst sentinel
+      jsr([copy_chargen], stop_on_rts = true, fail_on_brk = true)
+      assert(memcmp($4c00, $d800, $800), "2048 bytes copied byte-exact")
+      assert($4c00 == $11, "dst page 0 byte = src $d800 marker")
+      assert($53ff == $99, "dst last byte = src $dfff")
+    }
+
+    test("cc-no-bleed", "copy bounded to $4c00-$53FF") {
+      memfill($d800, $800, $5a)
+      memfill($4c00, $800, $aa)
+      $4bff = $aa                      ; one byte below dst
+      $5400 = $aa                      ; one byte past dst
+      jsr([copy_chargen], stop_on_rts = true, fail_on_brk = true)
+      assert($4c00 == $5a, "first dst byte copied")
+      assert($53ff == $5a, "last dst byte copied")
+      assert($4bff == $aa, "nothing written below $4c00")
+      assert($5400 == $aa, "no overrun past $53FF")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; update_scroll_colors — write the 40-cell rainbow colour row:
+  ;   $d800[y] = rainbow_pal[(zp_frame + y)] & $0f   for y = 0..39.
+  ; zp_frame ($fe) shifts the gradient each frame; the X index is 8-bit
+  ; (wraps), and rainbow_pal is periodic-16 (>=256 long). All 40 source
+  ; bytes are already <= $0f, so at frame 0 the row == rainbow_pal[0..39].
+  ; --------------------------------------------------------------------
+  suite("intro: update_scroll_colors — rainbow colour row from rainbow_pal") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("usc-frame0-exact", "frame 0: 40 cells = rainbow_pal[0..39]") {
+      $fe   = $00                      ; zp_frame
+      $d828 = $aa                      ; no-bleed sentinel (cell 40)
+      jsr([update_scroll_colors], stop_on_rts = true, fail_on_brk = true)
+      assert(memcmp($d800, $4200, 40), "whole 40-cell row byte-exact = rainbow_pal[0..39]")
+      assert($d800 == $06, "cell 0 = rainbow_pal[0] & $0f")
+      assert($d827 == $0a, "cell 39 = rainbow_pal[39] & $0f")
+      assert($d828 == $aa, "cell 40 untouched (writes exactly 40)")
+    }
+
+    test("usc-frame-shift", "zp_frame=1 shifts the gradient left by one") {
+      $fe = $01
+      jsr([update_scroll_colors], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == $0e, "cell 0 = rainbow_pal[1] & $0f")
+    }
+
+    test("usc-index-wraps", "zp_frame=240 wraps the 8-bit index (periodic-16 table)") {
+      $fe = $f0
+      jsr([update_scroll_colors], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == $06, "cell 0 = rainbow_pal[240] & $0f = rainbow_pal[0]")
+    }
+  }
 }

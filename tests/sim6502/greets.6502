@@ -54,4 +54,32 @@ suites {
              "16-bit scroll_pos indexes message + 256")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; copy_font — copy the 2048-byte ($800) font/sprite-shape data from the
+  ; in-prg table at $8946 to SPRITE_SHAPE $0800. 8-way-unrolled page loop
+  ; (one byte from each of 8 pages per iteration, X 0..255). Pure copy;
+  ; $0800 is below the prg load ($2000) so it starts as clean flat RAM.
+  ; We memfill the dest with $a5 first so memcmp proves the copy ran.
+  ; --------------------------------------------------------------------
+  suite("greets: copy_font — copy font data to SPRITE_SHAPE $0800 (2048 bytes)") {
+    symbols("/code/tests/sim6502/greets.sym")
+    load("/code/tests/sim6502/greets.prg", strip_header = true)
+
+    test("cf-copies-2048", "the full 2048-byte font is copied byte-exact") {
+      memfill($0800, $800, $a5)        ; dst sentinel -> memcmp is discriminating
+      jsr([copy_font], stop_on_rts = true, fail_on_brk = true)
+      assert(memcmp($0800, $8946, $800), "2048 bytes copied byte-exact from the font table")
+      assert($0801 == $18, "discriminating: dst+1 = src $8947 = $18")
+      assert($0ff8 == $80, "last-page body ran: dst+$7f8 = src $913e = $80")
+    }
+
+    test("cf-no-bleed", "copy stops exactly at $0FFF") {
+      memfill($0800, $800, $a5)
+      $1000 = $a5                      ; sentinel one byte past the end
+      jsr([copy_font], stop_on_rts = true, fail_on_brk = true)
+      assert($0fff == $00, "last copied byte ($0FFF) = src $9145 = $00")
+      assert($1000 == $a5, "no overrun past $0FFF")
+    }
+  }
 }

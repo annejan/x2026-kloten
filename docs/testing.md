@@ -51,38 +51,39 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 **50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
 inline relocatable code, data tables).
 
-**Tested today: 19 routines, 138 assertions** (69 test cases in 14 suites) —
-intro `calc_active_count` (9), `reveal_column` (7), `wipe_out_column` (5),
-`move_sprites` (4); coda `kloot_advance` (5), `star_field` (4); end
-`push_next_credit_row` (6), `scroll_rows_up` (4); interlude `fire_propagate`
-(5), `write_plasma_row` (3), the line-A typewriter `update_line_a` /
-`la_pause` / `la_backspace` (5), and the sprite steppers `sp_off` / `sp_in` /
-`sp_bounce` / `sp_out` (5); greets `update_sprite_ptrs` (4); screenfill
-`fadeout` (3). **sim coverage = 38 %** (19 of 50 pure routines), across all
-6 parts.
+**Tested today: 25 routines, 172 assertions** (83 test cases in 20 suites).
+intro: `calc_active_count`, `reveal_column`, `wipe_out_column`,
+`move_sprites`, plus the fill/copy routines `clear_screen`, `clear_bitmap`,
+`copy_logo`, `copy_chargen`, `update_scroll_colors`. coda: `kloot_advance`,
+`star_field`. end: `push_next_credit_row`, `scroll_rows_up`. interlude:
+`fire_propagate`, `write_plasma_row`, the line-A typewriter (`update_line_a` /
+`la_pause` / `la_backspace`), and the sprite steppers (`sp_off` / `sp_in` /
+`sp_bounce` / `sp_out`). greets: `update_sprite_ptrs`, `copy_font`.
+screenfill: `fadeout`. **sim coverage = 50 %** (25 of 50 pure routines),
+across all 6 parts.
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
 | screenfill | 4 | 0 | 0 | **1** |
-| intro | 17 | 0 | 4 | **4** |
+| intro | 17 | 0 | 4 | **9** |
 | interlude | 15 | 9 | 0 | **9** |
-| greets | 4 | 1 | 9 | **1** |
+| greets | 4 | 1 | 9 | **2** |
 | coda | 4 | 1 | 0 | **2** |
 | end | 6 | 0 | 2 | **2** |
-| **total** | **50** | **11** | **15** | **19** |
+| **total** | **50** | **11** | **15** | **25** |
 
 ### Sim-testable routines per part (the untested surface)
 
 - **screenfill:** `prepare` `setup` `interrupt`¹ **`fadeout`** ✅
-- **intro:** `setup` `fadeout` `clear_screen` `init_sprites` `my_music_init`
-  `my_music_play` `clear_bitmap` `copy_logo` `move_sprites`
-  **`calc_active_count`** ✅ `copy_chargen` `init_slide_hide`
-  **`reveal_column`** ✅ **`wipe_out_column`** ✅ **`move_sprites`** ✅
-  `init_bmp_scroll` `update_scroll_colors` `update_bmp_scroll`
+- **intro:** `setup` `fadeout` **`clear_screen`** ✅ `init_sprites` `my_music_init`
+  `my_music_play` **`clear_bitmap`** ✅ **`copy_logo`** ✅ **`move_sprites`** ✅
+  **`calc_active_count`** ✅ **`copy_chargen`** ✅ `init_slide_hide`
+  **`reveal_column`** ✅ **`wipe_out_column`** ✅
+  `init_bmp_scroll` **`update_scroll_colors`** ✅ `update_bmp_scroll`
 - **interlude:** `setup` `init_sprites` **`write_plasma_row`**² ✅ **`update_line_a`** ✅
   **`la_pause`** ✅ **`la_backspace`** ✅ `update_sprites` **`sp_off`** ✅ **`sp_in`** ✅ **`sp_bounce`** ✅
   **`sp_out`** ✅ `fire_init` **`fire_propagate`**² ✅ `fire_seed` `fadeout`
-- **greets:** `setup` `fadeout` **`update_sprite_ptrs`** ✅ `copy_font`
+- **greets:** `setup` `fadeout` **`update_sprite_ptrs`** ✅ **`copy_font`** ✅
 - **coda:** `setup` `fadeout` **`kloot_advance`** ✅ **`star_field`** ✅
 - **end:** `setup` `reveal_text` **`scroll_rows_up`** ✅
   **`push_next_credit_row`** ✅ `end_music_init` `end_music_play`
@@ -97,28 +98,28 @@ handlers in greets/coda.
 
 ### Highest-value tests to add next
 
-(Done: `calc_active_count`, `reveal_column`, `wipe_out_column`,
-`move_sprites`, `kloot_advance`, `star_field`, `push_next_credit_row`,
-`scroll_rows_up`, `fire_propagate`, `write_plasma_row`, `update_line_a` +
-`la_pause` + `la_backspace`, `sp_off` + `sp_in` + `sp_bounce` + `sp_out`,
-`update_sprite_ptrs`, `fadeout`.)
+(Done — the 25 covered: intro `calc_active_count` `reveal_column`
+`wipe_out_column` `move_sprites` `clear_screen` `clear_bitmap` `copy_logo`
+`copy_chargen` `update_scroll_colors`; coda `kloot_advance` `star_field`; end
+`push_next_credit_row` `scroll_rows_up`; interlude `fire_propagate`
+`write_plasma_row` `update_line_a`+`la_pause`+`la_backspace`
+`sp_off`+`sp_in`+`sp_bounce`+`sp_out`; greets `update_sprite_ptrs`
+`copy_font`; screenfill `fadeout`.)
 
-The behaviourally-interesting routines are now covered. What's left is two
-flavours, both lower-priority:
+Half the pure surface is covered, and all the behaviourally-interesting
+routines are locked. The remaining 25 are lower-priority:
 
-1. **Fill/copy routines** (easy, modest value — `memcmp`/`memchk` against a
-   known source): intro `clear_screen` `clear_bitmap` `copy_logo`
-   `copy_chargen` `update_scroll_colors`; greets `copy_font`. Mechanical but
-   would push coverage toward ~50 % cheaply.
-2. **`setup`/`init_*` routines** (intro/interlude/greets/coda/end/screenfill
-   `setup`, `init_sprites`, `init_bmp_scroll`, `init_slide_hide`, `prepare`):
+1. **`setup`/`init_*` routines** (every part's `setup`, plus `init_sprites`,
+   `init_bmp_scroll`, `init_slide_hide`, `prepare`, `fadeout` in other parts):
    long sequential register/pointer init. Testable but brittle and low-signal
    — assert only the load-bearing pointer/flag each leaves behind, if at all.
-3. **The gnarly state machines (save for last):** intro `my_music_play` +
+2. **The gnarly state machines (save for last):** intro `my_music_play` +
    `update_bmp_scroll`, end `end_music_play` — SID gating / 16-bit signed
    pointer compares + mode transitions; brittle to assert, test only
    sub-behaviours. `update_sprites` (interlude) is the dispatcher over the
    already-tested `sp_*` steppers — low marginal value.
+3. **`my_music_init` / `end_music_init`** — table/pointer init for the music
+   players; testable but only meaningful alongside the players themselves.
 
 ## Adding a test
 
