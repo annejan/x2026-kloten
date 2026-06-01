@@ -1,0 +1,85 @@
+; sim6502 unit tests for intro pure routines.
+; Run:  docker run -v ${PWD}:/code ghcr.io/barryw/sim6502:latest -s /code/tests/sim6502/intro.s6502
+; (or:  ./tests/sim6502/run.sh)
+;
+; calc_active_count computes how many ball/X-logo sprites should be visible
+; from the intro/outro tick counters — pure ZP math, no raster polling, so it
+; runs on the fast flat-RAM `sim` backend. Contract (intro.asm:1114):
+;   zp_intro   = $f8   (input)   T_BALLS       = 40 ($28)
+;   zp_outro   = $f6   (input)   T_OUTRO_BALLS = 176 ($b0)
+;   zp_active_count = $f5 (output) = max(0, intro_count - outro_count)
+;     intro_count = 0            if zp_intro < T_BALLS
+;                 = min(8, ((zp_intro-T_BALLS)>>3)+1) otherwise
+;     outro_count = 0            if zp_outro == 0 or < T_OUTRO_BALLS
+;                 = min(8, ((zp_outro-T_OUTRO_BALLS)>>3)+1) otherwise
+; The .prg loads at $0810 so it leaves zero-page (our inputs) untouched.
+
+suites {
+  suite("intro: calc_active_count — ball spawn/despawn cascade") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("cac-before-spawn", "no sprites before T_BALLS") {
+      $f8 = $00          ; zp_intro = 0
+      $f6 = $00          ; zp_outro = 0
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $00, "0 active when intro tick is 0")
+    }
+
+    test("cac-just-below-threshold", "still 0 one tick before T_BALLS") {
+      $f8 = $27          ; zp_intro = 39 (T_BALLS-1)
+      $f6 = $00
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $00, "0 active at intro=39")
+    }
+
+    test("cac-first-sprite", "first sprite spawns exactly at T_BALLS") {
+      $f8 = $28          ; zp_intro = 40 (T_BALLS)
+      $f6 = $00
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $01, "1 active at T_BALLS")
+    }
+
+    test("cac-second-sprite", "second sprite 8 ticks later") {
+      $f8 = $30          ; zp_intro = 48 (T_BALLS+8)
+      $f6 = $00
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $02, "2 active at T_BALLS+8")
+    }
+
+    test("cac-all-eight", "all 8 spawned by T_BALLS+56") {
+      $f8 = $60          ; zp_intro = 96 (T_BALLS+56)
+      $f6 = $00
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $08, "8 active at T_BALLS+56")
+    }
+
+    test("cac-saturates", "count saturates at 8, never overflows") {
+      $f8 = $ff          ; zp_intro = 255 (way past)
+      $f6 = $00
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $08, "still 8 at intro=255 (saturated)")
+    }
+
+    test("cac-outro-despawns-one", "outro removes the first sprite") {
+      $f8 = $ff          ; intro saturated (8 spawned)
+      $f6 = $b0          ; zp_outro = 176 (T_OUTRO_BALLS) -> 1 despawned
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $07, "7 active after 1 despawn")
+    }
+
+    test("cac-outro-despawns-some", "outro removes two sprites at +8") {
+      $f8 = $ff
+      $f6 = $b8          ; zp_outro = 184 (T_OUTRO_BALLS+8) -> 2 despawned
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $06, "6 active after 2 despawns")
+    }
+
+    test("cac-outro-clears-all", "outro never drives the count negative") {
+      $f8 = $ff
+      $f6 = $ff          ; zp_outro = 255 -> 8+ despawned, clamps at 0
+      jsr([calc_active_count], stop_on_rts = true, fail_on_brk = true)
+      assert($f5 == $00, "0 active, no underflow")
+    }
+  }
+}
