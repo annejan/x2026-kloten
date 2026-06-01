@@ -35,10 +35,11 @@ they read inputs from registers/memory, compute, write outputs, and return.
 | File | Part | Routines (cases) |
 |------|------|---------|
 | `intro.6502` | intro | `calc_active_count` (9), `reveal_column` (7), `wipe_out_column` (5), `move_sprites` (4) — cascade count, logo wipe, sine-driven sprite positions |
-| `coda.6502` | coda | `kloot_advance` (5) — ping-pong star-shape counter |
+| `coda.6502` | coda | `kloot_advance` (5) — ping-pong star-shape counter; `star_field` (4) — gated parallax star tick (gate / move / col-wrap / no-move) |
 | `end.6502` | end | `push_next_credit_row` (6) — credit-row push + header/body/fade colour; `scroll_rows_up` (4) — credit roll coarse scroll-up |
-| `interlude.6502` | interlude | `fire_propagate` (5) — fire engine: open-bus mask, cool/no-cool, banner guard/burn; `write_plasma_row` (3) — 2D plasma colour kernel |
+| `interlude.6502` | interlude | `fire_propagate` (5) — fire engine: open-bus mask, cool/no-cool, banner guard/burn; `write_plasma_row` (3) — 2D plasma colour kernel; line-A typewriter `update_line_a`/`la_pause`/`la_backspace` (5) — type/typo/pause/backspace state machine; sprite steppers `sp_off`/`sp_in`/`sp_bounce`/`sp_out` (5) — gate, fly-in/bounce/fly-out Y stepping |
 | `greets.6502` | greets | `update_sprite_ptrs` (4) — reversed char→ptr DYCP rebuild, carousel, 16-bit reach |
+| `screenfill.6502` | screenfill | `fadeout` (3) — the `sec;rts` pefchain transition hook (opcode lock, no-bleed, constant-time) |
 
 ## Adding a test
 

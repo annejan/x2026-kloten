@@ -59,4 +59,87 @@ suites {
       assert([kloot_shape_1] == $aa, "star 1 untouched (X-indexed)")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; star_field — the parallax star tick. Gated: the body runs ONLY when
+  ; zp_subtick ($fb, a .const so not in the .sym -> raw addr) == 0; else
+  ; immediate RTS. When it runs it sweeps X = 31..0: dec star_tick[X], and
+  ; only when that hits 0 does star X MOVE one column left:
+  ;   reload star_tick[X] = tier_speed[tier]; erase old cell to $20; col -=1
+  ;   (wrap $ff -> $27); draw tier_char[tier] at new col; tier_color[tier]
+  ;   into colour RAM at the new col.  tier_speed={3,5,8,14}
+  ;   tier_char={$2b,$2a,$2e,$2c}  tier_color={$01,$0f,$0b,$06}.
+  ; Per-star arrays: tick=$0cff col=$0cbf row=$0c9f tier=$0cdf (+ index).
+  ; To force a single deterministic move we memfill all 32 ticks to $ff
+  ; (dec -> $fe, never moves) and arm only star 31 (tick at $0d1e).
+  ; Pure RAM: $0400/$d800 are plain RAM in the sim, no $d012/keyboard/CIA.
+  ; --------------------------------------------------------------------
+  suite("coda: star_field — gated parallax star tick") {
+    symbols("/code/tests/sim6502/coda.sym")
+    load("/code/tests/sim6502/coda.prg", strip_header = true)
+
+    test("sf-gated-skip", "zp_subtick != 0 -> immediate RTS, nothing touched") {
+      $fb   = $01            ; gate closed
+      $0cff = $01            ; star 0 tick would otherwise hit 0 and move
+      $0c9f = $00            ; row 0
+      $0cbf = $0a            ; col 10
+      $0cdf = $00            ; tier 0
+      $0409 = $aa            ; sentinels on cells a move WOULD touch
+      $d809 = $aa
+      jsr([star_field], stop_on_rts = true, fail_on_brk = true)
+      assert($0cff == $01, "tick NOT decremented (early RTS)")
+      assert($0409 == $aa, "screen untouched (gate closed)")
+      assert($d809 == $aa, "colour RAM untouched (gate closed)")
+    }
+
+    test("sf-single-move-tier0", "one star moves left, draws + / white at new col") {
+      $fb = $00                  ; gate open
+      memfill($0cff, 32, $ff)    ; freeze all 32 star ticks high (dec -> $fe, no move)
+      $0d1e = $01                ; arm only star 31 (tick -> 0 -> MOVE)
+      $0cbe = $00                ; star_row[31]  = row 0   (base $0c9f + 31)
+      $0cde = $0a                ; star_col[31]  = col 10  (base $0cbf + 31)
+      $0cfe = $00                ; star_tier[31] = tier 0  (base $0cdf + 31)
+      $0409 = $aa                ; sentinels at new-char + colour cells
+      $d809 = $aa
+      jsr([star_field], stop_on_rts = true, fail_on_brk = true)
+      assert($040a == $20, "old col 10 erased to space")                              ; $0400+10
+      assert($0409 == peekbyte([tier_char]),  "new col 9 = tier_char[0] = + ($2b)")   ; $0400+9
+      assert($d809 == peekbyte([tier_color]), "colour col 9 = tier_color[0] = $01")   ; $d800+9
+      assert($0cde == $09, "col decremented 10 -> 9")
+      assert($0d1e == peekbyte([tier_speed]), "tick reloaded = tier_speed[0] = 3")
+    }
+
+    test("sf-col-wrap-tier3", "col 0 wraps to 39, draws , / blue at far right") {
+      $fb = $00
+      memfill($0cff, 32, $ff)
+      $0d1e = $01                ; arm star 31 -> MOVE
+      $0cbe = $05                ; row 5  -> base $0400+5*40 = $04c8
+      $0cde = $00                ; col 0  -> will wrap
+      $0cfe = $03                ; tier 3 (, / blue / speed 14)
+      $04ef = $aa                ; sentinel at wrapped new-char cell ($04c8+39)
+      $d8ef = $aa
+      jsr([star_field], stop_on_rts = true, fail_on_brk = true)
+      assert($04c8 == $20, "old col 0 erased to space")
+      assert($0cde == $27, "col wrapped 0 -> 39 ($27)")
+      assert($04ef == peekbyte([tier_char] + 3),  "new col 39 = tier_char[3] = , ($2c)")
+      assert($d8ef == peekbyte([tier_color] + 3), "colour col 39 = tier_color[3] = $06")
+      assert($0d1e == peekbyte([tier_speed] + 3), "tick reloaded = tier_speed[3] = 14")
+    }
+
+    test("sf-no-move-no-bleed", "tick>1 just decrements, leaves screen+colour alone") {
+      $fb = $00
+      memfill($0cff, 32, $ff)
+      $0d1e = $02                ; star 31 tick = 2 -> dec to 1, NO move
+      $0cbe = $01                ; row 1
+      $0cde = $14                ; col 20
+      $0cfe = $01                ; tier 1
+      $043b = $aa                ; sentinels where a move would have written
+      $d83b = $aa
+      jsr([star_field], stop_on_rts = true, fail_on_brk = true)
+      assert($0d1e == $01, "tick decremented 2 -> 1 (no move)")
+      assert($0cde == $14, "col unchanged (no move)")
+      assert($043b == $aa, "screen untouched (no move)")
+      assert($d83b == $aa, "colour RAM untouched (no move)")
+    }
+  }
 }

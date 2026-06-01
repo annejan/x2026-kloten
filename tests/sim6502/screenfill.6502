@@ -1,0 +1,39 @@
+; sim6502 unit tests for screenfill pure routines.   ./tests/sim6502/run.sh
+;
+; fadeout — the part's pefchain transition hook. It is exactly `sec; rts`
+; ($38 $60 at label fadeout=$c1a6): a no-op that returns carry-set, which is
+; the Spindle "this part is ready to hand off" signal. There is nothing to
+; compute, so the tests lock its CONTRACT instead: it stays a 2-byte no-op
+; (opcode check), it writes no memory (table sentinels survive the call), and
+; it runs in tiny constant time. If anyone ever accidentally grows fadeout
+; into real work, the opcode + cycle bounds trip.
+
+suites {
+  suite("screenfill: fadeout — sec/rts pefchain transition hook") {
+    symbols("/code/tests/sim6502/screenfill.sym")
+    load("/code/tests/sim6502/screenfill.prg", strip_header = true)
+
+    test("fo-is-sec-rts", "fadeout body is exactly SEC ($38) then RTS ($60)") {
+      jsr([fadeout], stop_on_rts = true, fail_on_brk = true)
+      assert(peekbyte([fadeout] + 0) == $38, "first opcode is SEC")
+      assert(peekbyte([fadeout] + 1) == $60, "second opcode is RTS — pure no-op")
+    }
+
+    test("fo-no-bleed", "fadeout writes none of the part's data tables") {
+      [fadetab]        = $aa    ; $c1a8
+      [dtext]          = $aa    ; $c1b8
+      [ripple_palette] = $aa    ; $c600
+      [char_table]     = $aa    ; $c700
+      jsr([fadeout], stop_on_rts = true, fail_on_brk = true)
+      assert([fadetab]        == $aa, "fadetab untouched")
+      assert([dtext]          == $aa, "dtext untouched")
+      assert([ripple_palette] == $aa, "ripple_palette untouched")
+      assert([char_table]     == $aa, "char_table untouched")
+    }
+
+    test("fo-constant-time", "fadeout is a tiny constant-time no-op") {
+      jsr([fadeout], stop_on_rts = true, fail_on_brk = true)
+      assert(cycles < 16, "sec(2)+rts(6) body only")
+    }
+  }
+}

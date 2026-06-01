@@ -115,4 +115,162 @@ suites {
       assert($d828 == $aa, "row 0 write does not spill into row 1 (exactly 40 cells)")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; update_line_a / la_pause / la_backspace — the banner typewriter.
+  ; Pure on its zp counters + the static story_line_a table; every screen
+  ; write lands at $05BA+pos (plain RAM in the sim). No $dc01 keyboard, no
+  ; $d012 raster, no timer. LA_* states: 0=TYPING 1=TYPO 2=PAUSE
+  ; 3=BACKSPACE 4=RETYPE 5=DONE. Types one char every LINE_A_PERIOD(4)
+  ; sub-ticks; at pos==TYPO_TRIGGER(31) it flips to the deliberate-typo
+  ; run, pauses, then backspaces. State bytes: line_a_state/tick/pos/
+  ; typo_idx/pause_cnt are real labels in the .sym.
+  ; --------------------------------------------------------------------
+  suite("interlude: line-A typewriter (update_line_a / la_pause / la_backspace)") {
+    symbols("/code/tests/sim6502/interlude.sym")
+    load("/code/tests/sim6502/interlude.prg", strip_header = true)
+
+    test("la-type-one-char", "LA_TYPING: on the 4th sub-tick types story_line_a[pos], cursor at pos+1") {
+      [line_a_state]    = $00   ; LA_TYPING
+      [line_a_tick]     = $03   ; inc -> 4 == LINE_A_PERIOD -> type this frame
+      [line_a_pos]      = $00
+      [line_a_typo_idx] = $00
+      $05bb = $aa               ; cursor cell sentinel (will be overwritten)
+      jsr([update_line_a], stop_on_rts = true, fail_on_brk = true)
+      assert($05ba == peekbyte([story_line_a] + 0), "typed char = story_line_a[0]")
+      assert($05bb == $a0, "cursor block drawn at new pos (1)")
+      assert([line_a_pos] == $01, "pos advanced by one")
+      assert([line_a_tick] == $00, "tick reset to 0 on the acting frame")
+      assert([line_a_state] == $00, "still LA_TYPING (pos 1 < TYPO_TRIGGER 31)")
+    }
+
+    test("la-subtick-no-type", "LA_TYPING sub-tick (<4) only blinks cursor, pos unchanged") {
+      [line_a_state] = $00
+      [line_a_tick]  = $00      ; inc -> 1 < 4 -> no char this frame
+      [line_a_pos]   = $05
+      $05c0 = $aa              ; $05BA+6 sentinel (cell a typed char WOULD touch next)
+      jsr([update_line_a], stop_on_rts = true, fail_on_brk = true)
+      assert([line_a_pos] == $05, "no char typed -> pos stays 5")
+      assert([line_a_tick] == $01, "tick advanced to 1, not reset")
+      assert($05c0 == $aa, "no write past the single cursor cell")
+    }
+
+    test("la-typo-trigger", "LA_TYPING reaching pos==31 flips to LA_TYPO and arms typo_idx=0") {
+      [line_a_state]    = $00   ; LA_TYPING
+      [line_a_tick]     = $03   ; type this frame
+      [line_a_pos]      = $1e   ; 30 -> types char 30, pos becomes 31 == TYPO_TRIGGER
+      [line_a_typo_idx] = $07   ; garbage, must be cleared to 0
+      jsr([update_line_a], stop_on_rts = true, fail_on_brk = true)
+      assert($05d8 == peekbyte([story_line_a] + 30), "typed story_line_a[30] at $05BA+30")
+      assert($05d9 == $a0, "cursor drawn at new pos 31")
+      assert([line_a_state] == $01, "state advanced to LA_TYPO")
+      assert([line_a_typo_idx] == $00, "typo_idx reset to 0 for the typo run")
+    }
+
+    test("la-pause-exit-to-backspace", "la_pause: cnt 1->0 switches to LA_BACKSPACE, typo_idx=TYPO_LEN(4)") {
+      [line_a_state]     = $02  ; LA_PAUSE
+      [line_a_pos]       = $23  ; 35
+      [line_a_pause_cnt] = $01  ; 1 & $08 == 0 -> blank cursor; dec -> 0 -> transition
+      [line_a_typo_idx]  = $00
+      jsr([update_line_a], stop_on_rts = true, fail_on_brk = true)
+      assert($05dd == $20, "cursor OFF this blink phase -> blank $20 at $05BA+35")
+      assert([line_a_pause_cnt] == $00, "pause counted down to 0")
+      assert([line_a_state] == $03, "state advanced to LA_BACKSPACE")
+      assert([line_a_typo_idx] == $04, "typo_idx seeded to TYPO_LEN (4) for the backspace run")
+    }
+
+    test("la-backspace-final-erase", "la_backspace: 5th tick erases, dec pos, typo_idx 1->0 -> LA_RETYPE") {
+      [line_a_state]    = $03   ; LA_BACKSPACE
+      [line_a_tick]     = $04   ; inc -> 5 -> erase this frame
+      [line_a_pos]      = $20   ; 32 -> dec to 31, erase at $05BA+31
+      [line_a_typo_idx] = $01   ; last char -> dec to 0 -> retype
+      $05da = $aa              ; $05BA+32 neighbour sentinel (must NOT be touched)
+      jsr([update_line_a], stop_on_rts = true, fail_on_brk = true)
+      assert($05d9 == $a0, "erased cell at $05BA+31 set to blank-block $a0")
+      assert([line_a_pos] == $1f, "pos decremented to 31")
+      assert([line_a_tick] == $00, "tick reset after the erase")
+      assert([line_a_typo_idx] == $00, "typo_idx counted down to 0")
+      assert([line_a_state] == $04, "state advanced to LA_RETYPE")
+      assert($05da == $aa, "no bleed: only the single erased cell was written")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; sp_off / sp_in / sp_bounce / sp_out — SPARKED sprite-letter Y/X steppers.
+  ; Sprite N: X at $d000+2N, Y at $d000+2N+1. SPR_EN=$d015. $d010 untouched.
+  ; In the flat-RAM sim these VIC regs are plain RAM (benign / seedable).
+  ; No raster poll, no keyboard, no CIA -> fully deterministic. We jsr the
+  ; per-state labels directly (not the dispatcher) so we pick the stepper;
+  ; control flow depends only on seedable zp: sp_frame=$888f, sp_phase=$888e,
+  ; zp_beat_count=$f6 (a .const -> raw addr). Y literals precomputed from the
+  ; built tables (spawn_delay/fly_in_y/bounce_sine/fly_out_dy); regenerate if
+  ; those tables retune.
+  ; --------------------------------------------------------------------
+  suite("interlude: sprite-letter steppers sp_off/sp_in/sp_bounce/sp_out") {
+    symbols("/code/tests/sim6502/interlude.sym")
+    load("/code/tests/sim6502/interlude.prg", strip_header = true)
+
+    test("spoff-gated-noop", "beat < BUILDUP_BEAT(6) -> sp_off is a no-op") {
+      $f6  = $05            ; zp_beat_count just below BUILDUP_BEAT
+      [sp_phase] = $00
+      $d000 = $aa          ; sprite0 X sentinel
+      $d015 = $aa          ; SPR_EN sentinel
+      jsr([sp_off], stop_on_rts = true, fail_on_brk = true)
+      assert($d000 == $aa, "sprite X untouched while gated")
+      assert($d015 == $aa, "SPR_EN untouched while gated")
+      assert(peekbyte([sp_phase]) == $00, "phase stays PHASE_OFF")
+    }
+
+    test("spoff-arms-xpos", "beat >= 6 -> sp_off lays X table + arms SPR_EN") {
+      $f6  = $06            ; BUILDUP_BEAT reached
+      [sp_phase] = $00
+      [sp_frame] = $77      ; arbitrary; sp_off must zero it
+      jsr([sp_off], stop_on_rts = true, fail_on_brk = true)
+      assert($d000 == peekbyte([spr_x_table] + 0), "spr0 X = spr_x_table[0]")
+      assert($d00e == peekbyte([spr_x_table] + 7), "spr7 X = spr_x_table[7]")
+      assert($d015 == $ff, "SPR_EN = $ff (all 8 armed)")
+      assert(peekbyte([sp_phase]) == $01, "phase -> PHASE_FLY_IN")
+      assert(peekbyte([sp_frame]) == $00, "frame reset to 0")
+    }
+
+    test("spin-flyin-ytable", "sp_in writes fly_in_y[sp_frame-spawn_delay] per sprite") {
+      [sp_phase] = $01
+      [sp_frame] = $0a      ; 10
+      $f6  = $00            ; beat low -> no FLY_OUT divert
+      $d000 = $aa           ; spr0 X sentinel (Y stepper must not touch X)
+      jsr([sp_in], stop_on_rts = true, fail_on_brk = true)
+      assert($d001 == peekbyte([fly_in_y] + 10), "spr0 Y = fly_in_y[10]")
+      assert($d003 == peekbyte([fly_in_y] + 8),  "spr1 Y = fly_in_y[8]")
+      assert($d00b == peekbyte([fly_in_y] + 0),  "spr5 Y = fly_in_y[0]")
+      assert($d00d == $00, "spr6 idx=-2 not yet spawned -> SPR_SPAWN_Y(0)")
+      assert($d000 == $aa, "X column untouched by the Y stepper")
+      assert(peekbyte([sp_frame]) == $0b, "sp_frame incremented to 11")
+      assert(peekbyte([sp_phase]) == $01, "still PHASE_FLY_IN (sp_frame<48, beat<15)")
+    }
+
+    test("spbounce-sine-wobble", "sp_bounce Y = bounce_sine[(frame+delay)] + SPR_TARGET_Y(154)") {
+      [sp_phase] = $02
+      [sp_frame] = $00
+      $f6  = $00            ; below 15 -> no FLY_OUT divert
+      $d010 = $aa           ; SPR_MSB sentinel (never touched)
+      jsr([sp_bounce], stop_on_rts = true, fail_on_brk = true)
+      assert($d001 == peekbyte([bounce_sine] + 0) + $9a, "spr0 Y = bounce_sine[0] + 154")
+      assert($d009 == peekbyte([bounce_sine] + 8) + $9a, "spr4 Y = bounce_sine[8] + 154")
+      assert($d010 == $aa, "SPR_MSB never written")
+      assert(peekbyte([sp_phase]) == $02, "stays PHASE_BOUNCE while beat<15")
+    }
+
+    test("spout-flyup-and-done", "sp_out subtracts fly_out_dy; terminal frame -> DONE + SPR_EN=0") {
+      [sp_phase] = $03
+      [sp_frame] = $13      ; 19 -> after inc reaches FLY_OUT_LEN(20) = terminal
+      $d000 = $aa           ; spr0 X sentinel
+      $d015 = $ff           ; armed coming in
+      jsr([sp_out], stop_on_rts = true, fail_on_brk = true)
+      assert($d001 == $00, "spr0 Y = SPR_TARGET_Y - fly_out_dy[19] = 0")
+      assert($d003 == $00, "spr1 idx clamped to 19 -> 0")
+      assert($d000 == $aa, "X column untouched")
+      assert($d015 == $00, "terminal frame disables sprites (SPR_EN=0)")
+      assert(peekbyte([sp_phase]) == $04, "phase -> PHASE_DONE")
+    }
+  }
 }
