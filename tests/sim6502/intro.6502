@@ -208,4 +208,45 @@ suites {
       assert($0540 == $aa, "no wipe once complete")
     }
   }
+
+  ; ----------------------------------------------------------------------
+  ; move_sprites — position the 8 ball/X-logo sprites each frame from sine
+  ; tables. For sprite x: X-lo = sine_x_lo[(zp_frame + sprite_xphase[x])],
+  ; X-MSB bit from sine_x_hi[...], and Y from a per-band sine table chosen
+  ; by sprite index: 0-2 -> sine_top, 3-5 -> sine_mid, 6-7 -> sine_bot,
+  ; indexed by (zp_frame + sprite_yphase[x]). Writes $d000+2x / $d001+2x.
+  ; Pure (deterministic on zp_frame + the phase/sine tables).
+  ;   sprite_xphase = 0,32,64,96,128,160,192,224
+  ;   sprite_yphase = 0,80,160,40,120,200,56,184
+  ; zp_frame=$10 keeps every index (max 16+224=240) below 256 (no wrap),
+  ; so assertions can index the tables directly. Self-consistent peekbyte.
+  ; ----------------------------------------------------------------------
+  suite("intro: move_sprites — sine-driven sprite positions") {
+    symbols("/code/tests/sim6502/intro.sym")
+    load("/code/tests/sim6502/intro.prg", strip_header = true)
+
+    test("ms-x-from-sine", "sprite 0 X-lo comes from sine_x_lo[frame+xphase]") {
+      $fe = $10          ; zp_frame = 16; sprite 0 xphase=0 -> index 16
+      jsr([move_sprites], stop_on_rts = true, fail_on_brk = true)
+      assert($d000 == peekbyte([sine_x_lo] + 16), "SPR0 X = sine_x_lo[16]")
+    }
+
+    test("ms-y-top-band", "sprites 0-2 take Y from sine_top") {
+      $fe = $10          ; zp_frame = 16; sprite 0 yphase=0 -> index 16
+      jsr([move_sprites], stop_on_rts = true, fail_on_brk = true)
+      assert($d001 == peekbyte([sine_top] + 16), "SPR0 Y = sine_top[16]")
+    }
+
+    test("ms-y-mid-band", "sprites 3-5 take Y from sine_mid") {
+      $fe = $10          ; sprite 3 yphase=40 -> index 16+40=56
+      jsr([move_sprites], stop_on_rts = true, fail_on_brk = true)
+      assert($d007 == peekbyte([sine_mid] + 56), "SPR3 Y = sine_mid[56]")
+    }
+
+    test("ms-y-bot-band", "sprites 6-7 take Y from sine_bot") {
+      $fe = $10          ; sprite 6 yphase=56 -> index 16+56=72
+      jsr([move_sprites], stop_on_rts = true, fail_on_brk = true)
+      assert($d00d == peekbyte([sine_bot] + 72), "SPR6 Y = sine_bot[72]")
+    }
+  }
 }

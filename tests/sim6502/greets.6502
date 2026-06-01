@@ -1,0 +1,57 @@
+; sim6502 unit tests for greets pure routines.   ./tests/sim6502/run.sh
+;
+; update_sprite_ptrs — every frame, rebuild the 8 DYCP sprite pointers
+; ($07f8-$07ff) from the scroller. For x in 0..7 it reads the char at
+; message+scroll_pos+x, maps it through ptr_lookup (char -> sprite-block
+; pointer), and stores it at the REVERSED slot 7-x. scroll_pos is 16-bit
+; (zp_scroll_pos:$f7 lo, scroll_pos_hi:$8001 hi) so the lookup reaches the
+; whole multi-page message. When scroll_x_offset($8000) >= 13 the sprite-7
+; carousel overrides $07ff with char [scroll_pos+8] (the entering buffer).
+; This is the routine that re-asserts the pointers every frame so the
+; Spindle loader's NMI can't leave them clobbered.
+;
+; Assertions are self-consistent via peekbyte (no char-encoding assumptions):
+; slot 7-x must equal ptr_lookup[ message[scroll_pos + x] ].
+
+suites {
+  suite("greets: update_sprite_ptrs — DYCP sprite-pointer rebuild") {
+    symbols("/code/tests/sim6502/greets.sym")
+    load("/code/tests/sim6502/greets.prg", strip_header = true)
+
+    test("usp-reversed-first", "char 0 lands in the LAST sprite slot ($07ff)") {
+      $f7   = $08            ; zp_scroll_pos lo = 8
+      $8001 = $00            ; scroll_pos_hi
+      $8000 = $00            ; scroll_x_offset (< 13 -> no carousel)
+      jsr([update_sprite_ptrs], stop_on_rts = true, fail_on_brk = true)
+      assert($07ff == peekbyte([ptr_lookup] + peekbyte([message] + 8)),
+             "slot 7 = ptr_lookup[message[scroll_pos+0]]")
+    }
+
+    test("usp-reversed-last", "char 7 lands in the FIRST sprite slot ($07f8)") {
+      $f7   = $08
+      $8001 = $00
+      $8000 = $00
+      jsr([update_sprite_ptrs], stop_on_rts = true, fail_on_brk = true)
+      assert($07f8 == peekbyte([ptr_lookup] + peekbyte([message] + 15)),
+             "slot 0 = ptr_lookup[message[scroll_pos+7]]")
+    }
+
+    test("usp-carousel-overrides-slot7", "offset >= 13 shows char [scroll_pos+8] in slot 7") {
+      $f7   = $08
+      $8001 = $00
+      $8000 = $0d            ; scroll_x_offset = 13 -> carousel active
+      jsr([update_sprite_ptrs], stop_on_rts = true, fail_on_brk = true)
+      assert($07ff == peekbyte([ptr_lookup] + peekbyte([message] + 16)),
+             "slot 7 = ptr_lookup[message[scroll_pos+8]] (entering buffer)")
+    }
+
+    test("usp-16bit-reach", "high byte of scroll_pos reaches past page 0") {
+      $f7   = $00            ; scroll_pos = 0 ...
+      $8001 = $01            ; ... + 256 (hi byte) -> message + 256
+      $8000 = $00
+      jsr([update_sprite_ptrs], stop_on_rts = true, fail_on_brk = true)
+      assert($07ff == peekbyte([ptr_lookup] + peekbyte([message] + 256)),
+             "16-bit scroll_pos indexes message + 256")
+    }
+  }
+}
