@@ -605,6 +605,21 @@ expectations. Greets needs bank 0 (`$DD00 |= $03`), not the KERNAL default.
 
 See `parts/greets/greets_test.asm` for a working example.
 
+### Automated 6502 unit tests (sim6502)
+
+For *pure* routines (deterministic, `jsr`/`rts`, no `$d012` raster-polling),
+there's a fast unit-test harness under `tests/sim6502/` using the
+[sim6502](https://github.com/barryw/sim6502) framework via Docker:
+
+```bash
+./tests/sim6502/run.sh          # assemble parts + run every .6502 suite
+```
+
+It loads a part's `.prg` + KickAssembler `.sym`, sets inputs, `jsr`s a routine,
+and asserts the outputs — flat-RAM, so no VIC/raster (raster-locked code is
+for the `vice` backend instead). See [`docs/testing.md`](./docs/testing.md)
+for the backend split, the per-part coverage matrix, and how to add tests.
+
 ---
 
 ## Pending work (current as of 2026-05-22)

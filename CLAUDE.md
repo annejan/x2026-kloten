@@ -49,6 +49,10 @@ The deeper guides live under [`docs/`](./docs/):
   kwarg collision!), recipes for cycle measurement, IRQ logging,
   conditional auto-snapshot on rare bugs, SID state diffs across
   frames.
+- [`docs/testing.md`](./docs/testing.md) — the sim6502 unit-test
+  harness (`tests/sim6502/`, run via Docker), the sim-vs-vice backend
+  split, the per-part coverage matrix (~50 pure routines, 1 tested so
+  far), and how to add tests.
 
 If you're updating long-form guidance, prefer editing those files
 over creating new top-level docs.
