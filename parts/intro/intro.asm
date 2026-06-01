@@ -507,9 +507,11 @@ bar_lda:
         ldx bar_palette,y       // preload palette for that line
 !loop:
 !w:     cpy VIC_RASTER          // 4 — wait for raster == y
-        bne !w-                 // 3 → poll exit ~cy 5-10 of line y
-        stx VIC_BG              // 4 → bg write at cy ~9-14 of line y
-        stx VIC_BORDER          // 4 → border at cy ~13-18
+        bne !w-                 // 3 → poll exit ~cy 5-8 of line y
+        stx VIC_BORDER          // 4 → border FIRST, ~cy 9-13 (hblank, before
+                                //     the visible left border at ~cy 13-15)
+        stx VIC_BG              // 4 → bg ~cy 13-17 — fine, the display window
+                                //     it colours doesn't start until ~cy 16
         iny                     // 2
 bar_lda2:
         ldx bar_palette,y       // 4 (5 page-cross) — preload next
