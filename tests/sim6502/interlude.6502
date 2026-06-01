@@ -68,4 +68,51 @@ suites {
       assert($d990 == $05, "banner row 10 now takes heat from row 11")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; write_plasma_row — the 2D plasma kernel. For row X it computes a
+  ; per-row Y contribution y_contrib = wave[(row_offset[X] + zp_yphase)
+  ; & $ff], then for each of 40 cells c writes
+  ;   colram[X][c] = plasma_palette[(wave[(zp_xphase + c) & $ff]
+  ;                                  + y_contrib) & $0f].
+  ; Destination is self-modified to $D800 + X*40 (row_cr_lo/hi tables;
+  ; row 0 -> $D800, verified from the sym).
+  ; Pure (deterministic on X + zp_xphase($f7) + zp_yphase($fb) + the
+  ; static wave/palette/row_offset tables).
+  ;
+  ; Expected cell values are PRECOMPUTED from the current tables
+  ; (row 0, both phases 0): row_offset[0]=0, wave[0]=8 -> y_contrib=8, so
+  ;   cell0  = palette[(wave[0]  + 8) & $0f] = $00
+  ;   cell39 = palette[(wave[39] + 8) & $0f] = $03.
+  ; If the wave/palette tables are ever retuned, regenerate these two.
+  ; --------------------------------------------------------------------
+  suite("interlude: write_plasma_row — 2D plasma colour kernel") {
+    symbols("/code/tests/sim6502/interlude.sym")
+    load("/code/tests/sim6502/interlude.prg", strip_header = true)
+
+    test("wpr-cell0", "row 0 cell 0 = palette[(wave[0]+y_contrib)&$0f]") {
+      $f7 = $00            ; zp_xphase
+      $fb = $00            ; zp_yphase
+      x   = $00            ; row index 0 -> dest $D800
+      jsr([write_plasma_row], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == $00, "first cell of row 0 = $00")
+    }
+
+    test("wpr-cell39", "row 0 cell 39 (end of the row) = $03") {
+      $f7 = $00
+      $fb = $00
+      x   = $00
+      jsr([write_plasma_row], stop_on_rts = true, fail_on_brk = true)
+      assert($d827 == $03, "last cell of row 0 = $03")
+    }
+
+    test("wpr-no-row-bleed", "writing row 0 leaves row 1's first cell untouched") {
+      $d828 = $aa          ; row 1 cell 0 sentinel ($D800 + 40)
+      $f7 = $00
+      $fb = $00
+      x   = $00            ; write row 0 only
+      jsr([write_plasma_row], stop_on_rts = true, fail_on_brk = true)
+      assert($d828 == $aa, "row 0 write does not spill into row 1 (exactly 40 cells)")
+    }
+  }
 }

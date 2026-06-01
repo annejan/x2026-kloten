@@ -57,4 +57,45 @@ suites {
       assert($f8 == $00, "wraps 70 -> 0 at N_CREDIT_ROWS=71")
     }
   }
+
+  ; --------------------------------------------------------------------
+  ; scroll_rows_up — the credit roll's coarse scroll. Fully unrolled: for
+  ; r = 0..23, copy SCREEN row r+1 (40 bytes) down onto row r. So every
+  ; visible row shifts up by one; row 24 ($07c0) is a SOURCE only (feeds
+  ; row 23) and is never itself a destination, so it stays put. Pure
+  ; memory shuffle on SCREEN ($0400), no inputs beyond screen contents.
+  ;   row r at $0400 + r*40:  row0=$0400 row9=$0568 row10=$0590
+  ;                           row23=$0798 row24=$07c0
+  ; --------------------------------------------------------------------
+  suite("end: scroll_rows_up — credit roll coarse scroll-up") {
+    symbols("/code/tests/sim6502/end.sym")
+    load("/code/tests/sim6502/end.prg", strip_header = true)
+
+    test("sru-row0-from-row1", "row 0 takes row 1's content") {
+      $0428 = $11        ; row 1 cell 0
+      $0400 = $aa        ; row 0 cell 0 sentinel
+      jsr([scroll_rows_up], stop_on_rts = true, fail_on_brk = true)
+      assert($0400 == $11, "row 0 cell 0 = old row 1 cell 0")
+    }
+
+    test("sru-mid-shift", "an interior row takes the row below it (row 9 <- row 10)") {
+      $0590 = $55        ; row 10 cell 0
+      $0568 = $aa        ; row 9 cell 0 sentinel
+      jsr([scroll_rows_up], stop_on_rts = true, fail_on_brk = true)
+      assert($0568 == $55, "row 9 cell 0 = old row 10 cell 0")
+    }
+
+    test("sru-row23-from-row24", "bottom visible row 23 takes row 24") {
+      $07c0 = $22        ; row 24 cell 0
+      $0798 = $aa        ; row 23 cell 0 sentinel
+      jsr([scroll_rows_up], stop_on_rts = true, fail_on_brk = true)
+      assert($0798 == $22, "row 23 cell 0 = old row 24 cell 0")
+    }
+
+    test("sru-row24-source-only", "row 24 is a source, never overwritten") {
+      $07c0 = $22        ; row 24 cell 0
+      jsr([scroll_rows_up], stop_on_rts = true, fail_on_brk = true)
+      assert($07c0 == $22, "row 24 unchanged (not a scroll destination)")
+    }
+  }
 }

@@ -36,8 +36,8 @@ they read inputs from registers/memory, compute, write outputs, and return.
 |------|------|---------|
 | `intro.6502` | intro | `calc_active_count` (9), `reveal_column` (7), `wipe_out_column` (5), `move_sprites` (4) — cascade count, logo wipe, sine-driven sprite positions |
 | `coda.6502` | coda | `kloot_advance` (5) — ping-pong star-shape counter |
-| `end.6502` | end | `push_next_credit_row` (6) — credit-row push + header/body/fade colour |
-| `interlude.6502` | interlude | `fire_propagate` (5) — fire engine: open-bus mask, cool/no-cool, banner guard/burn |
+| `end.6502` | end | `push_next_credit_row` (6) — credit-row push + header/body/fade colour; `scroll_rows_up` (4) — credit roll coarse scroll-up |
+| `interlude.6502` | interlude | `fire_propagate` (5) — fire engine: open-bus mask, cool/no-cool, banner guard/burn; `write_plasma_row` (3) — 2D plasma colour kernel |
 | `greets.6502` | greets | `update_sprite_ptrs` (4) — reversed char→ptr DYCP rebuild, carousel, 16-bit reach |
 
 ## Adding a test

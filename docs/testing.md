@@ -51,21 +51,22 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 **50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
 inline relocatable code, data tables).
 
-**Tested today: 8 routines, 45 assertions** — intro `calc_active_count` (9),
+**Tested today: 10 routines, 52 assertions** — intro `calc_active_count` (9),
 `reveal_column` (7), `wipe_out_column` (5), `move_sprites` (4); coda
-`kloot_advance` (5); end `push_next_credit_row` (6); interlude
-`fire_propagate` (5); greets `update_sprite_ptrs` (4). **sim coverage ≈ 16 %**
-(8 of 50 pure routines), across 5 of 6 parts (all but screenfill).
+`kloot_advance` (5); end `push_next_credit_row` (6), `scroll_rows_up` (4);
+interlude `fire_propagate` (5), `write_plasma_row` (3); greets
+`update_sprite_ptrs` (4). **sim coverage = 20 %** (10 of 50 pure routines),
+across 5 of 6 parts (all but screenfill).
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
 | screenfill | 4 | 0 | 0 | 0 |
 | intro | 17 | 0 | 4 | **4** |
-| interlude | 15 | 9 | 0 | **1** |
+| interlude | 15 | 9 | 0 | **2** |
 | greets | 4 | 1 | 9 | **1** |
 | coda | 4 | 1 | 0 | **1** |
-| end | 6 | 0 | 2 | **1** |
-| **total** | **50** | **11** | **15** | **8** |
+| end | 6 | 0 | 2 | **2** |
+| **total** | **50** | **11** | **15** | **10** |
 
 ### Sim-testable routines per part (the untested surface)
 
@@ -75,12 +76,12 @@ inline relocatable code, data tables).
   **`calc_active_count`** ✅ `copy_chargen` `init_slide_hide`
   **`reveal_column`** ✅ **`wipe_out_column`** ✅ **`move_sprites`** ✅
   `init_bmp_scroll` `update_scroll_colors` `update_bmp_scroll`
-- **interlude:** `setup` `init_sprites` `write_plasma_row`² `update_line_a`
+- **interlude:** `setup` `init_sprites` **`write_plasma_row`**² ✅ `update_line_a`
   `la_pause` `la_backspace` `update_sprites` `sp_off` `sp_in` `sp_bounce`
   `sp_out` `fire_init` **`fire_propagate`**² ✅ `fire_seed` `fadeout`
 - **greets:** `setup` `fadeout` **`update_sprite_ptrs`** ✅ `copy_font`
 - **coda:** `setup` `fadeout` **`kloot_advance`** ✅ `star_field`
-- **end:** `setup` `reveal_text` `scroll_rows_up`
+- **end:** `setup` `reveal_text` **`scroll_rows_up`** ✅
   **`push_next_credit_row`** ✅ `end_music_init` `end_music_play`
 
 ¹ `interrupt`/handlers that end in `rti` need `jsr(..., stop_on_address = …)`
@@ -94,15 +95,17 @@ handlers in greets/coda.
 ### Highest-value tests to add next
 
 (Done: `calc_active_count`, `reveal_column`, `wipe_out_column`,
-`move_sprites`, `kloot_advance`, `push_next_credit_row`, `fire_propagate`,
-`update_sprite_ptrs`.)
+`move_sprites`, `kloot_advance`, `push_next_credit_row`, `scroll_rows_up`,
+`fire_propagate`, `write_plasma_row`, `update_sprite_ptrs`.)
 
-1. **interlude/`write_plasma_row`** — the 2D plasma kernel; seed
-   `zp_xphase`/`zp_yphase` and assert a row's cells against `wave`+palette.
-2. **end/`scroll_rows_up`** — credit hardware-scroll bookkeeping (pairs with
-   the tested `push_next_credit_row`).
-3. **coda/`star_field`** — parallax tick (gated on `zp_subtick`; X-indexed
+1. **coda/`star_field`** — parallax tick (gated on `zp_subtick`; X-indexed
    screen/colour writes).
+2. **interlude/`update_line_a`** + `la_pause`/`la_backspace` — the typewriter
+   state machine (cursor advance, the LOVE→CODE typo backspace pause). Pure
+   on its zp counters; assert the visible-char count + the pause/backspace
+   branch transitions.
+3. **interlude/sprite movers** — `sp_in`/`sp_bounce`/`sp_out`/`sp_off`: per-
+   state sprite Y/X stepping. Deterministic on their phase counters.
 4. **screenfill** — only `prepare`/`setup`/`fadeout` (init + a trivial
    `sec;rts`) and an `rti` handler; low-value to test, but a `fadeout`
    `assert(cycles < …)` would put the 6th part on the board if desired.

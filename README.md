@@ -396,8 +396,8 @@ Pure 6502 routines get real unit tests via
 part's `.prg` + KickAssembler `.sym`, set inputs, `jsr` a routine,
 assert the outputs — on a flat-RAM backend, so no VIC/raster (raster-
 locked code is for the hardware-accurate `vice`/VICE-MCP backend
-instead). 45 assertions across 8 suites today, covering 5 of the 6 parts
-(intro, interlude, greets, coda, end) — ~16% of the ~50 pure routines.
+instead). 52 assertions across 10 suites today, covering 5 of the 6 parts
+(intro, interlude, greets, coda, end) — 20% of the ~50 pure routines.
 
 There's also `tools/verify_demo.py`, an MCP-driven full-demo smoke test
 (part transitions + SID health). See [`docs/testing.md`](docs/testing.md)
