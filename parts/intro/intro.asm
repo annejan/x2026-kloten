@@ -71,6 +71,16 @@
 .const zp_outro     = $f6       // outro tick counter; 0 = inactive, otherwise ticks every 2 frames once $ff in scroll_text triggers the ending
 .const zp_active_count = $f5    // cached number of active ball sprites (0..8); computed once per frame in irq_open, read by irq_close
 
+// Spindle clockslide for irq_bars' stable-raster entry. A = K - $dc06
+// must stay in [0, slide_len] so the bpl branches INTO the $A9 slide
+// (jitter cancels). Measured in VICE: $dc06 at the `sbc` reads ~54
+// (steady) with entry excursions down to ~40 on NMI/badline frames →
+// a ~14cy spread. K=64 gives A≈10 steady; the 24-byte slide absorbs
+// A up to 24 (covers the spread + NMI margin). If a real-HW NMI pushes
+// jitter past 24cy, lengthen the .fill slide below (and bump K to keep
+// A centred). Lifted from spindle-3.1/template/effect.s:61-69.
+.const BAR_SLIDE_K = 64
+
 // Intro phase thresholds (in zp_intro ticks; 2 frames per tick @ 50 Hz so 1 tick = 40 ms)
 // New order: balls → bars → logo → scroller.
 .const T_BALLS     = 40          // balls enable    (~1.6 sec)
@@ -460,9 +470,26 @@ irq_fld:
 // during this window. Chains to irq_close at $f9.
 //==================================================================
 irq_bars:
-        pha
-        tya
-        pha
+        // ---- STABLE-RASTER ENTRY (Spindle clockslide) ----------------
+        // The IRQ enters jittered (7-13 cy depending on the Spindle
+        // foreground instruction interrupted). Without correction the
+        // bar loop's first poll starts at a different cycle every frame,
+        // so the per-line colour seam wobbles. CIA1 Timer B ($dc06) is
+        // Spindle's free-running cycle reference; the slide below burns a
+        // variable 0..N cycles to land at a FIXED cycle every frame.
+        // Self-mod register save (not pha) per the project's stable-raster
+        // convention. See spindle-3.1/template/effect.s:61-69.
+        sta irqb_a+1            // self-mod save A
+        lda #BAR_SLIDE_K
+        sec
+        sbc $dc06              // A = entry jitter (0..N)
+        sta *+4               // patch the bpl operand 4 bytes ahead
+        bpl *+2               // -> branches +A into the slide
+        .fill 24, $a9          // clockslide: 24-byte $A9 run, jump-in = A
+        lda $eaa5              // slide terminator (converges all entries)
+        // --- cycle-stable from here every frame ---
+        stx irqb_x+1           // self-mod save X
+        sty irqb_y+1           // self-mod save Y
 
         lda #$ff
         sta $d019
@@ -530,9 +557,10 @@ bar_lda2:
         lda #$f9
         sta VIC_RASTER
 
-        pla
-        tay
-        pla
+        // self-mod register restore (matches the clockslide-entry save)
+irqb_a: lda #$00
+irqb_x: ldx #$00
+irqb_y: ldy #$00
         rti
 
 
