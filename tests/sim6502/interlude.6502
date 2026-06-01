@@ -1,0 +1,71 @@
+; sim6502 unit tests for interlude pure routines.   ./tests/sim6502/run.sh
+;
+; fire_propagate — the colour-RAM fire engine. For each (frame-parity)
+; row, dst = colour RAM row X ($d800+X*40), src = row below. Per cell:
+;   tmp = $d41b & 3            (SID-noise stochastic cool, 2 bits)
+;   v   = src_cell & $0f       (<-- open-bus mask: colour RAM reads return
+;                                   garbage in the high nibble)
+;   if tmp != 0: dst = v       (3/4: heat propagates straight up)
+;   else:        dst = fire_sbctab[v]   (1/4: cool one step)
+; Banner rows 10-12 are skipped while banner_exposed == 0; once it's set,
+; the fire burns into them too (the "fire eats the banner" beat).
+; In the flat-RAM sim, $d41b holds whatever we seed (constant for the run),
+; so the cool/no-cool path is fully deterministic.
+;   inputs: zp_fire_frame=$f3, banner_exposed=[banner_exposed], $d41b seeded.
+;   rows:   row0=$d800 row1=$d828 ... row10=$d990 row11=$d9b8 (COL_RAM+r*40)
+
+suites {
+  suite("interlude: fire_propagate — colour-RAM fire engine") {
+    symbols("/code/tests/sim6502/interlude.sym")
+    load("/code/tests/sim6502/interlude.prg", strip_header = true)
+
+    test("fp-open-bus-mask", "source high nibble is masked off (and #$0f)") {
+      $f3 = $00              ; zp_fire_frame even -> rows 0,2,.. (row 0 in set)
+      [banner_exposed] = $00
+      $d41b = $03            ; tmp = 3 -> no cool, straight propagate
+      $d828 = $f7            ; row 1 cell 0: garbage high nibble + heat $7
+      $d800 = $aa            ; row 0 cell 0 sentinel
+      jsr([fire_propagate], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == $07, "propagated value masked to low nibble (not $f7)")
+    }
+
+    test("fp-no-cool-propagates", "heat copies straight up when tmp != 0") {
+      $f3 = $00
+      [banner_exposed] = $00
+      $d41b = $02            ; tmp = 2 -> no cool
+      $d828 = $05            ; row 1 cell 0
+      $d800 = $aa
+      jsr([fire_propagate], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == $05, "row 0 takes row 1's heat unchanged")
+    }
+
+    test("fp-cools-via-sbctab", "1-in-4 cool steps through fire_sbctab") {
+      $f3 = $00
+      [banner_exposed] = $00
+      $d41b = $00            ; tmp = 0 -> cool
+      $d828 = $05            ; heat level 5
+      $d800 = $aa
+      jsr([fire_propagate], stop_on_rts = true, fail_on_brk = true)
+      assert($d800 == peekbyte([fire_sbctab] + 5), "cooled value = fire_sbctab[5]")
+    }
+
+    test("fp-banner-protected", "rows 10-12 skipped while banner not exposed") {
+      $f3 = $00              ; row 10 is even -> in this frame's set
+      [banner_exposed] = $00
+      $d41b = $02
+      $d990 = $aa            ; row 10 cell 0 sentinel
+      jsr([fire_propagate], stop_on_rts = true, fail_on_brk = true)
+      assert($d990 == $aa, "banner row 10 left untouched")
+    }
+
+    test("fp-banner-exposed-burns", "once exposed, fire eats banner row 10") {
+      $f3 = $00
+      [banner_exposed] = $01 ; exposed -> row 10 now propagates
+      $d41b = $02            ; no cool
+      $d9b8 = $05            ; row 11 (source for row 10) cell 0
+      $d990 = $aa            ; row 10 cell 0 sentinel
+      jsr([fire_propagate], stop_on_rts = true, fail_on_brk = true)
+      assert($d990 == $05, "banner row 10 now takes heat from row 11")
+    }
+  }
+}

@@ -51,20 +51,20 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 **50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
 inline relocatable code, data tables).
 
-**Tested today: 5 routines, 32 assertions** — intro `calc_active_count` (9),
+**Tested today: 6 routines, 37 assertions** — intro `calc_active_count` (9),
 `reveal_column` (7), `wipe_out_column` (5); coda `kloot_advance` (5); end
-`push_next_credit_row` (6). **sim coverage ≈ 10 %** (5 of 50 pure routines),
-across 3 of 6 parts.
+`push_next_credit_row` (6); interlude `fire_propagate` (5). **sim coverage
+≈ 12 %** (6 of 50 pure routines), across 4 of 6 parts.
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
 | screenfill | 4 | 0 | 0 | 0 |
 | intro | 17 | 0 | 4 | **3** |
-| interlude | 15 | 9 | 0 | 0 |
+| interlude | 15 | 9 | 0 | **1** |
 | greets | 4 | 1 | 9 | 0 |
 | coda | 4 | 1 | 0 | **1** |
 | end | 6 | 0 | 2 | **1** |
-| **total** | **50** | **11** | **15** | **5** |
+| **total** | **50** | **11** | **15** | **6** |
 
 ### Sim-testable routines per part (the untested surface)
 
@@ -74,9 +74,9 @@ across 3 of 6 parts.
   **`calc_active_count`** ✅ `copy_chargen` `init_slide_hide`
   **`reveal_column`** ✅ **`wipe_out_column`** ✅ `init_bmp_scroll`
   `update_scroll_colors` `update_bmp_scroll`
-- **interlude:** `setup` `init_sprites` `write_plasma_row` `update_line_a`
+- **interlude:** `setup` `init_sprites` `write_plasma_row`² `update_line_a`
   `la_pause` `la_backspace` `update_sprites` `sp_off` `sp_in` `sp_bounce`
-  `sp_out` `fire_init` `fire_propagate`² `fire_seed` `fadeout`
+  `sp_out` `fire_init` **`fire_propagate`**² ✅ `fire_seed` `fadeout`
 - **greets:** `setup` `fadeout` `update_sprite_ptrs` `copy_font`
 - **coda:** `setup` `fadeout` **`kloot_advance`** ✅ `star_field`
 - **end:** `setup` `reveal_text` `scroll_rows_up`
@@ -93,16 +93,16 @@ handlers in greets/coda.
 ### Highest-value tests to add next
 
 (Done: `calc_active_count`, `reveal_column`, `wipe_out_column`,
-`kloot_advance`, `push_next_credit_row`.)
+`kloot_advance`, `push_next_credit_row`, `fire_propagate`.)
 
-1. **interlude/`fire_propagate`** + **`write_plasma_row`** — deterministic
-   effect kernels (seed the SID noise read `$d41b` before the `jsr`); guards
-   the colour-RAM open-bus `and #$0F` footgun.
+1. **interlude/`write_plasma_row`** — the 2D plasma kernel; seed
+   `zp_xphase`/`zp_yphase` and assert a row's cells against `wave`+palette.
 2. **intro/`move_sprites`** — sine-table-driven sprite positions; assert
    `$d000+`/MSB against the table for a few `zp_frame` values.
 3. **end/`scroll_rows_up`** — credit hardware-scroll bookkeeping (pairs with
    the tested `push_next_credit_row`).
-4. **coda/`star_field`** — parallax tick (X-indexed screen/colour writes).
+4. **coda/`star_field`** — parallax tick (gated on `zp_subtick`; X-indexed
+   screen/colour writes).
 5. **intro/`my_music_play`** + **`update_bmp_scroll`** — high value but
    gnarly state machines (SID gating / 16-bit signed pointer compares + mode
    transitions); brittle to assert, save for last or test only sub-behaviours.
