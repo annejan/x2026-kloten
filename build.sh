@@ -79,15 +79,14 @@ echo ">>> linking with pefchain"
 # --title       16-char disk name, lowercase by demoscene convention
 # --disk-id     2-char ID; arbitrary identity beyond Spindle's default `2a`
 # --dirart      PETSCII-style box-drawing listing; see dirart.txt
-# --dir-entry   Hex index of the entry that's the actual PRG (= the row
+# --dir-entry   Index of the entry that's the actual PRG (= the row
 #               in dirart.txt holding the entry the user wants visible
-#               as "the demo file" when LISTing). We point at $06 — the
-#               first "kloten met" line.
+#               as "the demo file" when LISTing). Row 4 = "DE COMMODORE".
 ( cd "$ROOT" && "$PEFCHAIN" -v \
     --title "DEFEEST/X2026" \
     --disk-id "KL" \
     --dirart dirart.txt \
-    --dir-entry 6 \
+    --dir-entry 4 \
     -o outline-64.d64 pefchain_script )
 
 echo ">>> done — outline-64.d64"
@@ -97,7 +96,28 @@ echo ">>> done — outline-64.d64"
 if [[ -f "$ROOT/tools/update-friet.sh" ]]; then
     "$ROOT/tools/update-friet.sh" 2>&1 || echo "  (friet rebuild skipped)"
 fi
-# LOAD "FRIET",8,1 from BASIC.
-c1541 "$ROOT/outline-64.d64" -write "$ROOT/parts/friet-met-desire/friet.prg" friet >/dev/null 2>&1
+# deFEEST hapkar menu. The friet easter-egg file hides in the MIDDLE of a
+# row of Dutch snacks so it doesn't stand out as a lone entry — camouflaged
+# in plain sight. The non-friet snacks are tiny 1-block "LEKKER!" stubs
+# (harmless if RUN). The demo is the first PRG in the directory (its dirart
+# row), so LOAD"*",8,1 still autostarts the demo, not a snack.
+# NOTE: c1541 -write inverts case (uppercase ASCII -> PETSCII $C1-DA, which
+# renders as GRAPHICS GARBAGE in the C64 graphics charset). So the filenames
+# MUST be lowercase here to land in $41-5A and read as UPPERCASE on a fresh-
+# boot C64. (pefchain does the opposite for dirart.txt — there it's caps.)
+# The in-demo egg copies friet from a RAM stash, so this disk file is
+# courtesy-only: LOAD"FRIET",8,1 from BASIC.
+D="$ROOT/outline-64.d64"
+SNACK="$ROOT/out/snack_stub.prg"
+mkdir -p "$ROOT/out"
+# tiny PRG: 10 PRINT"LEKKER!"  (load $0801, 1 block)
+printf '\x01\x08\x10\x08\x0a\x00\x99\x22LEKKER!\x22\x00\x00\x00' > "$SNACK"
+for snack in frikandel kroket bitterbal mexicano kaassouffle; do
+    c1541 "$D" -write "$SNACK" "$snack" >/dev/null 2>&1
+done
+c1541 "$D" -write "$ROOT/parts/friet-met-desire/friet.prg" friet >/dev/null 2>&1
+for snack in bamischijf kipnuggets berenhap kapsalon viandel; do
+    c1541 "$D" -write "$SNACK" "$snack" >/dev/null 2>&1
+done
 
 ls -la "$ROOT/outline-64.d64"
