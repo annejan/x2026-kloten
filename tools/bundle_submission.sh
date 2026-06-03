@@ -125,9 +125,17 @@ git archive HEAD --format=zip --prefix="${BUNDLE_BASE}-source/" \
     --output="$BUNDLE_DIR/sources/source.zip"
 
 # ---- step 7: screenshots ------------------------------------------------
+# capture_part_screenshots.sh is timing-broken (lands 5/7 frames wrong) and
+# slow (~3.5 min). Screenshots are voluntary, so allow skipping them and
+# hand-picking later: SKIP_SCREENSHOTS=1 ./tools/bundle_submission.sh
 
-echo "==> capturing screenshots (this takes ~3.5 minutes wall-clock)"
-"$ROOT/tools/capture_part_screenshots.sh" "$BUNDLE_DIR/screenshots"
+if [[ "${SKIP_SCREENSHOTS:-0}" == "1" ]]; then
+    echo "==> SKIP_SCREENSHOTS=1 — skipping screenshot capture (add them by hand later)"
+    : > "$BUNDLE_DIR/screenshots/.gitkeep"
+else
+    echo "==> capturing screenshots (this takes ~3.5 minutes wall-clock)"
+    "$ROOT/tools/capture_part_screenshots.sh" "$BUNDLE_DIR/screenshots"
+fi
 
 # ---- step 8: zip the bundle ---------------------------------------------
 
