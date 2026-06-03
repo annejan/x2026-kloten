@@ -508,8 +508,13 @@ bar_lda:
 !loop:
 !w:     cpy VIC_RASTER          // 4 — wait for raster == y
         bne !w-                 // 3 → poll exit ~cy 5-10 of line y
-        stx VIC_BG              // 4 → bg write at cy ~9-14 of line y
-        stx VIC_BORDER          // 4 → border at cy ~13-18
+        // Border FIRST: it has the earlier on-screen deadline (visible
+        // left border ~cy 11-15) than bg (screen interior ~cy 16+), so
+        // writing border first lands it in hblank (~cy 9-13) and bg
+        // before the interior (~cy 13-17) — both off the visible seam.
+        // (Was bg-first, which left $d020 landing in the visible border.)
+        stx VIC_BORDER          // 4 → border in hblank, before visible left border
+        stx VIC_BG              // 4 → bg before screen interior
         iny                     // 2
 bar_lda2:
         ldx bar_palette,y       // 4 (5 page-cross) — preload next
