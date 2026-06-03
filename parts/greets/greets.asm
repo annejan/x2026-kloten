@@ -568,11 +568,22 @@ musichook:
         // char-wrap instead of sliding smoothly in from off-right.
         lda scroll_x_offset
         cmp #13
-        bcc !no_s7_carousel+
+        bcc !s7_exit_clamp+
         lda #76                    // = 332 - 256 → reg byte for screen X=332
         sec
         sbc scroll_x_offset
         sta $d00e                  // sprite 7 X register
+        jmp !no_s7_carousel+
+!s7_exit_clamp:
+        // Exit mode (offset 0..12): the DXCP X-bob can push sprite 7's X
+        // just below 0 (e.g. 12 + bob - 11), which 8-bit-wraps to ~255 and
+        // teleports the exiting char to the FAR RIGHT (behind the rightmost
+        // chars). Legit exit X here is only 0..13, so any value >= 128 is a
+        // negative wrap → clamp it to the left edge (0).
+        lda $d00e
+        bpl !no_s7_carousel+       // X < 128 → genuine left-edge X, keep it
+        lda #0
+        sta $d00e
 !no_s7_carousel:
 
         // ----- $D010 (sprite X hi-bits) for sprite 0 + sprite 7 -----
@@ -582,8 +593,8 @@ musichook:
         // at offset=37) and for sprite 7 (logical role flips at offset=13).
         //
         //   Sprite 0 (rightmost visible, screen X = 292..253):
-        //     offset 0..36  → screen X 292..256 → hi-bit SET, reg 36..0
-        //     offset 37..39 → screen X 255..253 → hi-bit CLEAR, reg 255..253
+        //     screen X 256..294 → hi-bit SET,   Xlo (reg) = 0..38
+        //     screen X 253..255 → hi-bit CLEAR, Xlo (reg) = 253..255
         //
         //   Sprite 7 (carousel: leftmost OR rightmost-entering):
         //     offset 0..12  → screen X 12..0   → hi-bit CLEAR, reg 12..0
@@ -591,11 +602,18 @@ musichook:
         //                                          (entering buffer, ptr swapped
         //                                           to chars[scroll_pos+8])
         lda #0
-        ldx scroll_x_offset
-        cpx #37
-        bcs !d010_skip_s0+
+        // Sprite 0 hi-bit from its ACTUAL Xlo (post X-bob), not an offset
+        // threshold. The old `offset>=37` test ignored the ±1 DXCP X-bob, so
+        // at offset 37 with bob=+1 the Xlo wrapped to 0 while the hi-bit was
+        // cleared → sprite 0 jumped to screen X 0 (char flew far left, slot
+        // empty). Xlo is 0..38 in the 256+ band (hi SET) or 253..255 below
+        // 256 (hi CLEAR); a <128 test separates them and tracks the bob.
+        ldx $d000                  // sprite 0 Xlo (already includes the bob)
+        cpx #$80
+        bcs !d010_skip_s0+         // Xlo >= 128 → below 256 → hi-bit clear
         ora #$01                   // sprite 0 hi-bit
 !d010_skip_s0:
+        ldx scroll_x_offset
         cpx #13
         bcc !d010_skip_s7+
         ora #$80                   // sprite 7 hi-bit (carousel buffer at right)
