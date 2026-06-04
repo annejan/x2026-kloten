@@ -2,19 +2,23 @@
 // outline-64 — Coda: title card hold between greets' scroller and
 // the end credit roll.
 //
-// Narrative role: the breather where the story lands. Greets has
-// said its piece via the DYCP scroller; the credits are about to
-// roll. Between them, the title sits centered on a quiet screen
-// for ~10 seconds while the resident chord progression drifts on.
+// Narrative role: the triumphant trophy card between greets' scroller
+// and the end credit roll. Greets has said its piece via the DYCP
+// scroller; the credits are about to roll. Between them the title
+// stands centered for ~16 seconds while the resident K-S-K-S kit
+// hammers and the twin Kloot sprites dance behind it.
 //
-// Visuals:
+// Visuals (char layer is fully beat-reactive; sprites are the centrepiece):
 //   row 11   KLOTEN MET DE COMMODORE        (chargen ROM uppercase)
 //   row 13   LEREN ONTDEKKEN KLOOIEN
-//   border  slow sine colour cycle through col_tab
+//   title   a flowing 16-colour rainbow gradient scrolls through the
+//           letters (cyc_tab); kick flashes row 11, snare flashes row 13
+//   border  flows with the same cyc_tab palette
 //   bg      stays black
-//   parallax PETSCII starfield: 32 stars across 4 speed tiers, each
-//   tier with its own char + colour, drifting left (col 0 wraps to 39).
-//   Reads as depth via differential motion alone — no priority swap.
+//   PETSCII twinkle-starfield: 32 stars / 4 speed tiers, real circle +
+//   diamond glyphs (● ○ ◆ ·), drifting left (col 0 wraps to 39); every
+//   kick sparkles the whole field white via sparkle_stars. Reads as
+//   depth via differential motion alone — no priority swap.
 //
 // Music: TRIUMPHANT. setup sets $F6 = $01 so the K-S-K-S drum kit
 // from intro's resident my_music_play fires through the whole part
@@ -23,15 +27,15 @@
 // underneath. The trophy moment is full mix; end credits then
 // strip everything back to chord/lead for the closing minor flow.
 //
-// Transition: after N_FRAMES ticks (~32 s) the IRQ writes $F6 = $30
+// Transition: after N_FRAMES ticks (~16 s) the IRQ writes $F6 = $30
 // and pefchain advances to end. ($30 is also recognized by intro's
 // drum gate as "drums still on" — both values keep drums going,
 // the transition just happens to use a higher one.)
 //
 // Memory:
-//   $0800-$0Dxx  code + parallax starfield state + tier tables
-//   $0E00-$0EFF  col_tab (border colour cycle)
-//   $0F00-$0FFF  sin_tab (twin-star orbital motion)
+//   $0800-$0Exx  code + char-layer state (beat/colour-cycle) + starfield
+//                state + tier tables + cyc/flash/sparkle tables, then
+//                sin_tab (256 B, un-aligned) ending before $1000
 //   $1000-$125D  intro music tables (inherited via 'I' tag)
 //==================================================================
 
@@ -190,6 +194,23 @@
 .const MAIN_SID_FREQ_HI = $103c
 .const MAIN_BASS_PATTERN = $10a8
 .const MAIN_MU_STEP = $1148
+
+// ---- Demoscene char layer: beat-reactive title colour-cycle + PETSCII
+// twinkle-starfield. my_music_play leaves the V3 drum state live in the
+// inherited music page after the per-frame jsr $119e:
+.const DRUM_STATE  = $12bc            // V3 drum countdown: DRUM_LEN-1 on the hit frame
+.const DRUM_OFFSET = $12bd            // 0 = kick rows, 8 = snare rows
+.const ENV_MAX     = 6                // title beat-flash envelope length (frames)
+.const SPARK_MAX   = 5                // starfield kick-sparkle envelope length (frames)
+// Build/flow ramp: `flow` climbs 0..FLOW_MAX (1 step every FLOW_DIV half-rate
+// ticks) so the coda OPENS plain (white title, black border, no sparkle) and
+// the rainbow + bright border + sparkle wash in over ~10 s, full for the
+// climax. flow doubles as the rainbow reveal width (cols 0..flow-1 colour).
+.const FLOW_MAX    = 26               // = title width (full reveal)
+.const FLOW_DIV    = 10               // ticks per flow step → ~10 s to full (25 Hz)
+.const T_FLASH     = 6                // flow ≥ this → beat flash on (~2.4 s)
+.const T_SPARK     = 18               // flow ≥ this → starfield kick-sparkle (~7.2 s)
+.const T_BORDER    = 22               // flow ≥ this → border lights up (~8.8 s, late accent)
 
 // Twin-star orbital motion parameters.
 .const ORBIT_RADIUS  = 56               // pixel radius (±56 px) — was 40,
@@ -620,7 +641,7 @@ fadeout:
 //     4 sprite pointer writes
 //   - star_field: twinkle 16 stars in top rows (4 banks of 4)
 //   - if zp_frame >= N_FRAMES, set $F6 = $30 (transition)
-//   - else border = col_tab[zp_frame] for slow sine colour cycle
+//   - else border = cyc_tab[cyc_base] (flows with the title palette)
 //
 // Sprite positions are FIXED in setup (Stage E pre-rendered zoom) —
 // no per-IRQ X/Y math here. The "growth" lives in the sprite shapes.
@@ -836,7 +857,93 @@ musichook:
         adc #$60
         sta $d416
 
+        // ---- Beat detection: rising edge of the V3 drum countdown -------
+        // (DRUM_STATE/$12bc set fresh by the jsr $119e just above; kick=
+        // offset 0, snare=offset 8.)
+        lda DRUM_STATE
+        cmp prev_drum
+        bcc !cd_nohit+                 // falling
+        beq !cd_nohit+                 // idle/steady
+        ldx DRUM_OFFSET
+        bne !cd_snare+
+        lda #ENV_MAX                   // kick → main title flash
+        sta env_main
+        lda flow                       // sparkle only after the build kicks in
+        cmp #T_SPARK
+        bcc !cd_nohit+
+        lda #SPARK_MAX                 // kick → starfield sparkle pulse
+        sta spark_env
+        jmp !cd_nohit+
+!cd_snare:
+        lda #ENV_MAX                   // snare → sub title flash
+        sta env_sub
+!cd_nohit:
+        lda DRUM_STATE
+        sta prev_drum
+        lda env_main                   // decay flash envelopes
+        beq !cd_dm+
+        dec env_main
+!cd_dm: lda env_sub
+        beq !cd_ds+
+        dec env_sub
+!cd_ds:
+
+        // ---- Flowing colour-cycle phase (cyc_base scrolls 1 step/4 frames)
+        inc cyc_phase
+        lda cyc_phase
+        lsr
+        lsr
+        and #$07
+        sta cyc_base                   // 0..7 — indexes the 8-entry palettes
+
+        // ---- Paint title: the rainbow REVEALS left-to-right as `flow`
+        // ramps. Only cols 0..flow-1 are repainted (colour-cycling) — the
+        // unrevealed cols keep the white/grey rest colours painted once in
+        // setup, so the card opens plain and the colour washes in. All three
+        // rows ($d9bf / $da0f / $da62) share the gradient phase. Cheap: the
+        // loop bound IS flow, no per-cell branch.
+        ldx flow
+        beq !ct_done+
+        dex
+!ct:    txa
+        clc
+        adc cyc_base
+        and #$07
+        tay
+        lda cyc_tab,y
+        sta $d9bf,x                    // row 11
+        sta $da0f,x                    // row 13
+        sta $da62,x                    // row 15 tag (cols past it are spaces)
+        dex
+        bpl !ct-
+!ct_done:
+        // Beat flash overrides the revealed cols once the build starts.
+        lda flow
+        cmp #T_FLASH
+        bcc !ct_noflash+
+        lda env_main                   // row 11 flash on kick
+        beq !ct_nf11+
+        ldy env_main
+        lda flash_ramp,y
+        ldx flow
+        dex
+!ctf11: sta $d9bf,x
+        dex
+        bpl !ctf11-
+!ct_nf11:
+        lda env_sub                    // row 13 flash on snare
+        beq !ct_noflash+
+        ldy env_sub
+        lda flash_ramp,y
+        ldx flow
+        dex
+!ctf13: sta $da0f,x
+        dex
+        bpl !ctf13-
+!ct_noflash:
+
         jsr star_field
+        jsr sparkle_stars
         // (coda_kick used to fire here as a dedicated sparse V3 thump.
         // Removed for the TRIUMPHANT coda revision — intro's resident
         // K-S-K-S kit (kick + snare alternating) + V1 bass-bleed
@@ -855,7 +962,7 @@ musichook:
 !over:  jmp !skip_inc+
 !half_rate:
         // 16-bit frame counter: low byte (zp_frame) walks 0..255 so it
-        // can also index the 256-byte col_tab; high byte carries the
+        // also indexes sin_tab for the filter-cutoff LFO; high byte carries the
         // overflow so the transition check can compare N_FRAMES values
         // that exceed 255 (the original 8-bit-only zp_frame + plain
         // `cmp #N_FRAMES` silently truncated, so 400 / 600 / 800
@@ -864,6 +971,17 @@ musichook:
         bne !no_frame_carry+
         inc frame_hi
 !no_frame_carry:
+        // ---- Build/flow ramp: climb to FLOW_MAX, 1 step per FLOW_DIV ticks.
+        lda flow
+        cmp #FLOW_MAX
+        bcs !flow_done+
+        dec flow_div
+        bne !flow_done+
+        inc flow
+        lda #FLOW_DIV
+        sta flow_div
+!flow_done:
+
         // Advance shape counters via independent dividers so each star
         // rotates at a fundamentally different speed (/3 vs /2). Each
         // counter ping-pongs 0 → 23 → 0 (see Stage F comment up top);
@@ -966,8 +1084,17 @@ musichook:
         jmp !ack+
 
 !run:
-        ldy zp_frame
-        lda col_tab,y
+        // Border stays black until the build lights it up (flow >= T_BORDER),
+        // then shimmers GOLD via its own bord_tab (letters stay rainbow).
+        lda flow
+        cmp #T_BORDER
+        bcc !run_dark+
+        ldy cyc_base
+        lda bord_tab,y
+        sta VIC_BORDER
+        jmp !ack+
+!run_dark:
+        lda #$00
         sta VIC_BORDER
 
 !ack:
@@ -987,7 +1114,7 @@ musichook:
 // ever want the dedicated thump back.)
 
 // High byte of the 16-bit half-rate frame counter. Low byte lives at
-// zp_frame ($fc) so it also indexes the 256-byte col_tab; this byte
+// zp_frame ($fc) so it also indexes sin_tab for the cutoff LFO; this byte
 // carries the overflow so the transition check can compare against
 // N_FRAMES values > 255. Reset to 0 in setup.
 frame_hi:
@@ -1174,8 +1301,8 @@ star_tier: .fill 32, 0
 star_tick: .fill 32, 0
 
 tier_speed: .byte 3, 5, 8, 14
-tier_char:  .byte $2B, $2A, $2E, $2C    // + * . ,
-tier_color: .byte $01, $0F, $0B, $06    // white, lt grey, dk grey, blue
+tier_char:  .byte $51, $57, $5A, $2E    // ● ○ ◆ ·  (PETSCII circles/diamond/dot)
+tier_color: .byte $01, $03, $0E, $06    // white, cyan, lt blue, blue (depth)
 
 row_start_lo: .fill 25, <($0400 + i * 40)
 row_start_hi: .fill 25, >($0400 + i * 40)
@@ -1240,31 +1367,75 @@ title_release:
         .byte $20, $20                                                              // __
 
 //==================================================================
-// Border colour table — 256-entry slow sine through a calm palette
-// (mostly blues / cyans, no harsh contrasts — this is the breather).
-// Page-aligned so `lda col_tab,y` never crosses a page (1 cycle
-// saved on the 50 Hz border-cycle read).
+// Demoscene char-layer state + tables. (The calm col_tab border cycle
+// was dropped — the title colour-cycle + starfield sparkle carry the
+// bold finale, and the border now flows with the same cyc_tab palette.)
 //==================================================================
-.align 256
-col_tab:
-.for (var i = 0; i < 256; i++) {
-        // 4-step low-saturation palette indexed by sine phase.
-        // Bands: $00 black / $06 blue / $0E light-blue / $0F light-grey.
-        .var s = floor(2 + 1.99 * sin(i * 2 * PI / 256))   // 0..3
-        .if (s == 0) { .byte $00 }
-        .if (s == 1) { .byte $06 }
-        .if (s == 2) { .byte $0e }
-        .if (s == 3) { .byte $0f }
-}
+prev_drum:  .byte 0          // last frame's DRUM_STATE (rising-edge detect)
+env_main:   .byte 0          // row 11 flash envelope (kick): ENV_MAX..0
+env_sub:    .byte 0          // row 13 flash envelope (snare)
+spark_env:  .byte 0          // starfield kick-sparkle envelope: SPARK_MAX..0
+cyc_phase:  .byte 0          // colour-cycle phase (advances 1/frame)
+cyc_base:   .byte 0          // (cyc_phase>>2)&15 — current gradient offset
+flow:       .byte 0          // build level 0..FLOW_MAX (rainbow reveal width + gates)
+flow_div:   .byte FLOW_DIV   // counts down ticks between flow steps
+
+// Title RAINBOW (8 entries, indexed (col+cyc_base)&7): red→orange→yellow→
+// lt-green→cyan→lt-blue→blue→purple, wrapping purple→red. The letters cycle
+// through this; one step per 4 frames so it flows.
+cyc_tab:    .byte $02,$08,$07,$0d,$03,$0e,$06,$04
+// Border GOLD-chrome (8 entries, indexed cyc_base): white highlight → ltgrey
+// → yellow → orange → brown shadow → back. Kept SEPARATE from the rainbow
+// letters — the border shimmers gold while the title stays rainbow.
+bord_tab:   .byte $01,$0f,$07,$08,$09,$08,$07,$0f
+// Warm flash ramp, indexed by envelope 1..ENV_MAX (light-red → yellow → grey).
+flash_ramp: .byte $0f,$0f,$07,$07,$08,$08,$0a   // idx 0..6
+// Star kick-sparkle ramp, indexed by spark_env 1..SPARK_MAX-1 (white burst → cool).
+sparkle_ramp: .byte $00,$0d,$0f,$01,$01,$0f     // idx 0..5 (idx 0 unused: tier restore)
+
+
+//==================================================================
+// sparkle_stars — on a kick (spark_env != 0) flash all 32 stars bright
+// for SPARK_MAX frames, then restore each star's tier colour. One
+// (zp),y colour-RAM write per star; runs after star_field so $f9/$fa
+// are free scratch. No-op when spark_env == 0.
+//==================================================================
+sparkle_stars:
+        lda spark_env
+        bne !sp_run+
+        rts
+!sp_run:
+        dec spark_env
+        ldx #31
+!sp_loop:
+        ldy star_row,x
+        lda row_start_lo,y
+        sta $f9
+        lda row_start_hi,y
+        clc
+        adc #$d4                 // → colour RAM
+        sta $fa
+        ldy spark_env
+        bne !sp_bright+
+        ldy star_tier,x          // env reached 0 → restore tier colour
+        lda tier_color,y
+        jmp !sp_w+
+!sp_bright:
+        lda sparkle_ramp,y
+!sp_w:  ldy star_col,x
+        sta ($f9),y
+        dex
+        bpl !sp_loop-
+        rts
 
 
 //==================================================================
 // Sine table for twin-star orbital motion — 256 entries covering a
-// full cycle, each entry = floor(ORBIT_RADIUS * sin(angle)). Page-
-// aligned so `lda sin_tab,y` is single-cycle. MUST end before $1000
-// or it stomps coda's inherited intro music tables at $1000-$125D.
+// full cycle, each entry = floor(ORBIT_RADIUS * sin(angle)). No longer
+// page-aligned (it now follows the code directly); MUST end before
+// $1000 or it stomps coda's inherited intro music tables — the
+// .errorif below guards that.
 //==================================================================
-.align 256
 sin_tab:
 .for (var i = 0; i < 256; i++) {
         .byte floor(ORBIT_RADIUS * sin(i * 2 * PI / 256))

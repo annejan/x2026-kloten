@@ -1249,7 +1249,8 @@ text_ptr_odd:
 //   split_pause_ctr   = remaining freeze frames (0 = scroll active)
 //   split_pause_armed = 0 until alignment detected once,
 //                       prevents re-triggering if scan wobbles.
-.const SPLIT_PAUSE_FRAMES = 40   // ~0.8 s at 50 Hz
+.const SPLIT_PAUSE_FRAMES = 120  // ~2.4 s at 50 Hz (tripled from 40 — let the
+                                 // "anyone still vibeing the Commodore 64" beat land)
 .const SPLIT_MEET_OFFSET  = 40   // pointer-diff threshold (K=54 of 68);
                                  // each ±2 here = ±1 char-step earlier/later
 split_pause_ctr:    .byte 0

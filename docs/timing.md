@@ -185,15 +185,19 @@ Part length is now coupled to message length: add or remove names in
 
 ## Part 6 — coda (`parts/coda/`)
 
-`N_FRAMES = 800` half-rate ticks (doc'd as ~32 s at a 25 Hz subtick
-divider — but **measured ~16 s** on 2026-06-04, i.e. it's effectively
-running at ~50 Hz / 800 frames. Worth a look if coda feels too short).
+`N_FRAMES = 400` half-rate ticks at the 25 Hz subtick divider = **~16 s**
+(confirmed by a real-time VICE run 2026-06-04: coda enters at ~144 s,
+end at ~161 s). 16 s is the **intended, locked length** — not a bug.
 This is the **triumphant trophy** moment — full K-S-K-S kit + V1 bass
-pattern + V2 lead + V3 triangle arp, held under the title for ~32 s
-while the twin Kloot stars dance behind it.
+pattern + V2 lead + V3 triangle arp, held under the title for ~16 s
+while the twin Kloot stars dance behind it. The title is **beat-reactive**:
+the coda IRQ reads the live drum state (`drum_state`/`drum_offset` at
+`$12BC`/`$12BD`) right after its per-frame `jsr $119e` and throbs the
+title on each hit — kick punches the main line (row 11) + a vertical
+heave, snare punches the sub line (row 13); a warm flash decays to rest.
 
 Twin 4-sprite Kloot stars: sprites 0-3 (star 1, brown `$09`) and 4-7
-(star 2, cyan `$0E`) each form a 2×2 grid, X+Y-expanded (48×42 per
+(star 2, purple `$04`) each form a 2×2 grid, X+Y-expanded (48×42 per
 quadrant, source 24×21). Both stars share the 6 KB Stage E shape
 data at `$2000-$37FF` (TR/TL/BL/BR at `$2000/$2600/$2C00/$3200`,
 sprite-pointer bases `$80/$98/$B0/$C8`, 24 frames each).
@@ -201,7 +205,7 @@ sprite-pointer bases `$80/$98/$B0/$C8`, 24 frames each).
 | Frame | Time | Event |
 |-------|------|-------|
 | 0 | 0 s | Setup: text mode, ROM uppercase chargen at `$1000`, screen `$0400`. Title text painted on rows 11, 13, 15 (KLOTEN MET DE COMMODORE / LEARN EXPLORE DISCOVER / RELEASED AT X2026). `$F6 = $01` enables drum gate so intro's K-S-K-S kit fires through the whole part. `$F8 = $80` restores zp_intro between T_BARS and T_SCROLLER so V1+V2 freq writes fire but V3 stays as triangle (drum_tick's last waveform). All 8 sprites enabled (`$D015=$FF`) with twin-star orbit math driving X/Y every frame. Parallax PETSCII starfield seeded (32 stars across 4 speed tiers). |
-| 0 → 799 | 0 → 32.0 s | **Stage F ping-pong zoom breath**: star 1 starts at shape=0 dir=forward → opens with zoom-in; star 2 starts at shape=23 dir=backward → opens with zoom-out. `kloot_shape_N` walks 0→23→0 via shared `kloot_advance` subroutine; rotation reverse-loop is invisible (12-fold symmetry). |
+| 0 → 399 | 0 → 16.0 s | **Stage F ping-pong zoom breath**: star 1 starts at shape=0 dir=forward → opens with zoom-in; star 2 starts at shape=23 dir=backward → opens with zoom-out. `kloot_shape_N` walks 0→23→0 via shared `kloot_advance` subroutine; rotation reverse-loop is invisible (12-fold symmetry). |
 | each zp_frame tick | 25 Hz | Independent shape dividers (`SHAPE_DIV_1=3`, `SHAPE_DIV_2=2`) → fundamentally different rotation rates so lobes drift apart. Independent orbital phases (`ORBIT_SPEED_1=2`, `ORBIT_SPEED_2=3`) for the sine-path orbits at `ORBIT_RADIUS=56`. |
 | each frame | 50 Hz | Priority swap fires on bit-6 transition of `(star2_phase - star1_phase)` — happens at max separation so invisible. Swaps sprite slot assignments + colour registers (brown stays brown) and toggles `$D01B` so the in-front star alternates ~every 1.3 s. |
 | each half-rate tick | 25 Hz | Parallax starfield: each star's tick decrements; on zero the star erases its current col, dec col with wrap 0→39, draws tier char + colour at the new col. 4 tiers × 8 stars; tier speeds 3/5/8/14. |
