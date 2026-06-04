@@ -32,7 +32,10 @@ fi
 
 for p in "${PARTS[@]}"; do
     echo ">>> assembling $p for tests"
-    java -jar "$KICKASS" "$ROOT/parts/$p/$p.asm" -o "$HERE/$p.prg" >/dev/null
+    # -symbolfile is explicit so we don't depend on a KickAss.cfg beside the
+    # jar (CI lifts a bare jar out of the kickassembler image). Writes the
+    # .sym next to the source, which we copy below.
+    java -jar "$KICKASS" "$ROOT/parts/$p/$p.asm" -o "$HERE/$p.prg" -symbolfile >/dev/null
     cp "$ROOT/parts/$p/$p.sym" "$HERE/$p.sym"
 done
 
