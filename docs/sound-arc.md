@@ -278,7 +278,7 @@ Drums fire only when `zp_outro` is non-zero. This means:
   through the whole 5-s manifesto fire. LP filter still closes on
   V1+V2, but the kick + snare keep the audience locked to the beat.
 - Coda: setup sets `$F6 = $01` → **resident drums FIRE** through the
-  whole 32-s held title. The K-S-K-S kit + V1 bass-bleed carry the
+  whole ~16-s held title. The K-S-K-S kit + V1 bass-bleed carry the
   trophy weight; no dedicated coda V3 kick needed.
 - End: doesn't call `my_music_play` (uses its own routine) → no drums
 

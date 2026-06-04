@@ -74,9 +74,9 @@ Timestamps from `docs/timing.md` (currently):
 | 01 | `01-screenfill.png` | screenfill | 3 s | radial bloom mid-reveal |
 | 02 | `02-intro.png` | intro | 10 s | bars + balls + logo bouncing |
 | 03 | `03-interlude.png` | interlude | 83 s | SPARKED letters landing |
-| 04 | `04-hush.png` | hush | 88 s | colour-RAM fire + 3-row blue banner with carved text |
+| 04 | `04-hush.png` | interlude (fire phase) | 85 s | colour-RAM fire + 3-row blue banner with carved text |
 | 05 | `05-greets.png` | greets | 120 s | mid-scroll, several groups visible |
-| 06 | `06-coda.png` | coda | 175 s | KLOTEN MET DE COMMODORE title + twin stars |
+| 06 | `06-coda.png` | coda | 150 s | KLOTEN MET DE COMMODORE title + twin stars |
 | 07 | `07-end.png` | end | 200 s | credit roll mid-scroll |
 
 If part durations move, the timing offsets need re-syncing. The
@@ -142,7 +142,7 @@ right shape. **But the screenshot timestamps are wrong** for 5 of
 | 01-screenfill | DEFEEST bloom | black — VICE still booting at t=3 |
 | 02-intro      | mid-intro     | **correct** (logo + bars + balls) |
 | 03-interlude  | SPARKED landing | plasma chars (right part, wrong moment) |
-| 04-hush      | fire + banner  | greets "SILICON" — past hush |
+| 04-hush      | fire + banner  | greets "SILICON" — past the fire phase |
 | 05-greets     | mid-scroll    | greets "KOLOR" — right part, fine |
 | 06-coda       | KLOTEN title  | black — between coda and end |
 | 07-end        | credit roll   | **correct** (Kloot/Augurk/TL-Buis credits) |
@@ -171,8 +171,8 @@ part's duration changes. Cheap, brittle.
 
 **Right** — anchor each snapshot to **demo state**, not wall
 clock. Read `$F6` via MCP every ~250 ms; detect each part's
-transition (intro→interlude on `$F6=$F0`, interlude→hush on
-`$F6=$10`, etc.); snapshot N seconds after each transition is
+transition (intro→interlude on `$F6=$F0`, interlude→greets on
+`$F6=$30`, greets→coda on `$F6=$82`, etc.); snapshot N seconds after each transition is
 seen. Robust across timing drift; no recalibration needed.
 Adds ~50 lines of bash + MCP calls.
 
@@ -230,7 +230,7 @@ The script trusts these inputs to stay in sync with the demo:
 
 | Input | What drifts | Where to update |
 |---|---|---|
-| Per-part screenshot timestamps | If a part's duration changes (greets/interlude/hush most likely) | `tools/capture_part_screenshots.sh` `snapshot ... NN` lines |
+| Per-part screenshot timestamps | If a part's duration changes (greets/interlude most likely) | `tools/capture_part_screenshots.sh` `snapshot ... NN` lines |
 | `DURATION` in NFO + bundle README | Same — total runtime | `tools/bundle_submission.sh` config block |
 | Credits, story note, tools list, AI authorship note | Anytime team / tools / collaboration model shifts | `tools/nfo_template.txt` + `tools/how_it_was_made.md` |
 | SID preference (8580) | If we ever re-tune for 6581 | `tools/bundle_submission.sh` + NFO + how-it-was-made |

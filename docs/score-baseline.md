@@ -201,7 +201,7 @@ END_STEP_FRAMES = 24 (4× slower than intro)
    up"), but for coda we cycle through this phrase too — the trophy
    moment shouldn't feel sparse. Options:
    - Force coda to phase-lock onto phrase 2 or 3 (active 8ths / high
-     climb) for its 32-second hold
+     climb) for its ~16-second hold
    - Add a fifth "coda phrase" to lead_pattern (would need 32 more
      bytes in `$10C8`+)
 
