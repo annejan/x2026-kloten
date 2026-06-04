@@ -13,29 +13,37 @@ effects and music evolve.
 
 ## Part chain
 
-### Measured timeline (VICE-MCP, 2026-05-21)
+### Measured timeline (VICE-MCP, 2026-06-04 — real-time full pass)
 
-Per-part durations as observed via live `$D018` + `$F6` sampling — note
-that pefchain inserts blank-filler effects between parts to mask the
-disk load, so the "perceived" gap between transitions can be larger
-than the part's own duration. With ~8 KB of koala bitmap to stream
-into greets, the biggest blank gap sits before greets.
+Per-part durations measured live (reset → autostart → `$D018`/`$F6`/`$D015`
+transition sampling + per-part screenshot confirmation), `t=0` at autostart.
+Note that pefchain inserts blank-filler effects between parts to mask the
+disk load, so the "perceived" gap between transitions can be larger than
+the part's own internal duration — the biggest blank gap (and the bulk of
+interlude's ~26 s) sits around the ~8 KB koala stream into greets.
 
 ```
-screenfill ─5s─→ intro ─57s─→ interlude (plasma+SPARKED+fire) ─~13s─→ greets ─50s─→ coda ─30s─→ end (loops, space→friet)
+boot+screenfill ─~8s─→ intro ─~59s─→ interlude (plasma+SPARKED+fire) ─~26s─→ greets ─~51s─→ coda ─~16s─→ end (loops, space→friet)
 ```
 
-| Part | Duration | Sets `$D018` | Transition trigger |
-|------|----------|--------------|---------------------|
-| screenfill | ~5 s | `$17` (lo-case ROM) | `$06 == $00` (HOLDCNT) |
-| intro | ~57 s | `$19` (bitmap mode) | `$F6 == $F0` (zp_outro saturated) |
-| interlude | ~13 s (16 beats plasma+SPARKED + 250 frames fire) | `$15` → `$16` (fire phase switches chargen) | `$F6 == $30` (fire timer) |
-| greets | ~50 s (scroll-driven KLOTEN landing) | `$19` (bitmap mode, koala) | `$F6 == $82` |
-| coda | ~30 s | `$15` (chargen $1000) | `$F6 == $30` (timer) |
-| end | loops | `$1D` (chargen $3000) | (none — `stay`; space triggers friet easter egg) |
+| Part | Start (t) | Duration | Sets `$D018` | Transition trigger |
+|------|-----------|----------|--------------|---------------------|
+| boot + screenfill | 0 s | ~8 s | `$15`→`$17` | `$06 == $00` (HOLDCNT) |
+| intro | ~8 s | **~59 s** | `$19` (bitmap mode) | `$F6 == $F0` (zp_outro saturated) |
+| interlude | ~67 s | **~26 s** (plasma+SPARKED ~17 s, fire ~9 s, incl. pre-greets load gap) | `$15` (plasma) → `$17` (fire) | `$F6 == $30` (fire timer) |
+| greets | ~93 s | **~51 s** (scroll-driven KLOTEN landing) | `$19` (bitmap mode, koala) | `$F6 == $82` |
+| coda | ~144 s | **~16 s** | `$15` (chargen $1000) | `$F6 == $30` (timer) |
+| end | ~161 s | loops (1 credit cycle ~45 s) | `$1D` (chargen $3000) | (none — `stay`; space triggers friet easter egg) |
 
-**Measured one-pass runtime: ~2:35** from boot to end-credits-loop
-(shorter than before — hush merged into interlude, no separate blank-filler gap).
+**Boot → end-credits start: ~2:41.**
+**Boot → first full credit cycle done: ~3:26 (= minimal demo length** —
+a viewer has seen everything once by here**).** One credit cycle ≈ 45 s
+(71 credit rows × 32 frames).
+
+> Drift vs the 2026-05-21 numbers: interlude grew ~13→~26 s (mostly the
+> pre-greets blank-filler load gap), coda shrank ~30→~16 s, and the end
+> credit cycle is ~45 s, not ~30.7 s. The intro-section "outro done ~73 s"
+> figures below are also stale (the intro now ends ~67 s).
 
 Music stays continuous across every part-to-part blank-filler because
 intro installs `my_music_play` via the EFO `'M', $9e, $11` tag — see
@@ -177,7 +185,9 @@ Part length is now coupled to message length: add or remove names in
 
 ## Part 6 — coda (`parts/coda/`)
 
-`N_FRAMES = 800` half-rate ticks (~32 s at the 25 Hz subtick divider).
+`N_FRAMES = 800` half-rate ticks (doc'd as ~32 s at a 25 Hz subtick
+divider — but **measured ~16 s** on 2026-06-04, i.e. it's effectively
+running at ~50 Hz / 800 frames. Worth a look if coda feels too short).
 This is the **triumphant trophy** moment — full K-S-K-S kit + V1 bass
 pattern + V2 lead + V3 triangle arp, held under the title for ~32 s
 while the twin Kloot stars dance behind it.
@@ -230,7 +240,7 @@ Loops forever (`stay`). One credit cycle:
 | 0 | 0 s | Text-mode credit roll. SID vol = 0, screen/text black. |
 | 0→99 | 0→2.0 s | **Fade-in**: zp_fade 0→99. SID vol ramps $00→$0F. Text invisible (color RAM = $00). |
 | 99 (TEXT_REVEAL) | 2.0 s | Color RAM painted with gradient. Credit text visible. |
-| 2.0→32.7 s | **Credit scroll** | yscroll every 4 frames; hardware scroll every 32 frames (next credit line pulls in). 48 rows × 32 frames ≈ 30.7 s per full cycle, then loops. Full uppercase A-Z font with custom Å glyph at screencode `$5B`. |
+| 2.0→~45 s | **Credit scroll** | yscroll every 4 frames; hardware scroll every 32 frames (next credit line pulls in). **71 credit rows × 32 frames ≈ 45 s per full cycle** (measured 2026-06-04, `zp_text_row $f8` 0→70→0), then loops. Full uppercase A-Z font with custom Å glyph at screencode `$5B`. |
 
 Music: 128-step chord/lead cycle × 24 frames/step = 61.4 s per
 cycle. LP filter on (re-asserted every frame).
