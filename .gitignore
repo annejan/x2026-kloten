@@ -25,7 +25,11 @@ __pycache__/
 
 # Local upstream archives / backups
 KickAssembler.zip
-kickass/
+# Ship just the KA jar (freeware, v5.25) so CI + a fresh `git clone &&
+# ./build.sh` work without the theweb.dk download (its WAF 415s cloud IPs).
+# Everything else under kickass/ (PDF, Examples, cfg) stays ignored.
+kickass/*
+!kickass/KickAss.jar
 chargen.bin
 
 # ...but DO ship the C64 chargen ROM in greets so `git clone &&

@@ -23,18 +23,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # KickAssembler isn't redistributable, so kickass/ is gitignored.
-      # theweb.dk's WAF 415s GitHub's runner IPs, so instead lift the jar out
-      # of barrywalker71/kickassembler (maintained by sim6502's own author —
-      # KA v5.14, assembles all six parts). run.sh expects kickass/KickAss.jar.
-      - name: Get KickAssembler (from the kickassembler image)
-        run: |
-          docker pull barrywalker71/kickassembler:latest
-          cid=$(docker create barrywalker71/kickassembler:latest)
-          mkdir -p kickass
-          docker cp "$cid":/KickAss.jar kickass/KickAss.jar
-          docker rm "$cid"
-          test -f kickass/KickAss.jar
+      # kickass/KickAss.jar (KA v5.25) is committed — see .gitignore. Public
+      # KA Docker images ship old KA (<=v5.14) whose symbol-file writer drops
+      # labels that precede a `.for`, breaking the suite; theweb.dk's WAF 415s
+      # cloud IPs. So we ship the jar and just sanity-check it's here.
+      - name: Check KickAssembler
+        run: test -f kickass/KickAss.jar
 
       # Pre-pull so a registry hiccup is its own clearly-labelled step.
       - name: Pull sim6502 image
