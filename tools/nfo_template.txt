@@ -18,7 +18,7 @@
                  hardware (digital filter, no per-unit cutoff drift),
                  and its cleaner filter character is what lets the
                  sidechain + LP wah + dark-phaser tricks in
-                 interlude / hush / greets / end land the same way
+                 interlude / greets / end land the same way
                  on every C64. The 6581 will still play but the
                  filter behaviour is unit-dependent.
 
@@ -42,7 +42,7 @@
        direction help     Ranzbak/deFEEST
                           Cinder/deFEEST
        greetz             see the demo's greets part for the scene
-                          salute — ~30 groups, settles on KLOOT
+                          salute — ~30 groups, settles on DEFEEST
 
 
    [ ------- honest note on AI authorship ------- ]

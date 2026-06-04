@@ -248,9 +248,9 @@ Coda also sets `$F8 = $80` (not `$FF`) so the V3 arp stays as triangle
 between drum hits (see the "V3 timbre" table above). The combined mix
 under the held title:
 - **V1**: walking bass_pattern + N_C1 sub-thump on every drum
-- **V2**: lead_pattern through LP filter (inherited V2-routed `$D417=$42` from greets)
+- **V2**: lead_pattern through LP filter (coda sets `$D417=$26`: V2+V3 routed, res 2)
 - **V3**: triangle arp between drums, triangle pitch-slam kick / low-noise + triangle snare during hits
-- **Filter**: cutoff frozen at greets' last value (no wobble modulation)
+- **Filter**: V2+V3 through LP (`$D417=$26`, res 2); cutoff breathes via `sin_tab[zp_frame]+$60` (V1 bass-bleed kept clean)
 
 ## Filter / volume arc across parts
 
@@ -262,8 +262,8 @@ hush:     vol=$1F (LP mode), V1+V2 filtered ($D417=$23, res $2),
            cutoff $70→$08 over duration, vol fades $0F→$00 over last 50 frames
 greets:    vol=$1F (LP mode), V2 filtered ($D417=$42, res $4),
            cutoff modulated by `zp_wobble_pos | $40` for slow "wah"
-coda:      vol=$1F, LP mode on, $D417=$42 inherited (V2 still filtered),
-           cutoff FROZEN at greets' last value (no wobble in coda)
+coda:      vol=$1F, LP mode on, $D417=$26 (V2+V3 filtered, res $2),
+           cutoff breathes via sin_tab[zp_frame]+$60 (V1 bass-bleed clean)
 end:       vol ramps $00→$0F over 2 s, V1+V2+V3 all filtered ($D417=$07),
            cutoff sweeps $20..$58 hi over ~5.1 s
 ```
@@ -306,7 +306,7 @@ voice-routing bits in `$D417` when adding filter work to a part.
    - Filter routing changes (intro=off, interlude/hush=V1+V2, greets=V2)
    - Filter cutoff sweeping (interlude up, hush close, greets wah)
    - Volume fade (hush's final 50 frames)
-   - Coda inherits greets' V2-routed filter with a frozen cutoff
+   - Coda routes V2+V3 through LP ($D417=$26, res $2) with a gently breathing cutoff (sin_tab LFO)
 
 3. **125 BPM is the demoscene sweet spot.** Fast enough for a driving
    8th-note feel, slow enough that 24-frame beats don't feel rushed.

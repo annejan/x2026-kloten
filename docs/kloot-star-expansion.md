@@ -22,7 +22,7 @@ top of it:
   the difference is per-star X/Y positions, per-star shape counters,
   and per-star ping-pong direction.
 - **Star 1** = sprites 0-3 (brown `$09`), **Star 2** = sprites 4-7
-  (cyan `$0E`). Each has its own `kloot_shape_N` counter (0..23)
+  (purple `$04`). Each has its own `kloot_shape_N` counter (0..23)
   advancing at independent rates (`SHAPE_DIV_1=3`, `SHAPE_DIV_2=2`
   ticks-per-step at the half-rate divider) → fundamentally different
   rotation speeds, lobes drift apart visually.
@@ -37,9 +37,9 @@ top of it:
   symmetry. Shared step routine `kloot_advance` indexed by `X = star
   number (0 or 1)` keeps the binary footprint manageable.
 - **Orbital motion**: each star has its own `starN_orbit_phase`
-  advancing per IRQ (`ORBIT_SPEED_1=1`, `ORBIT_SPEED_2=2`). Phase
-  indexes a 256-byte sine table at `$0F00` (page-aligned — MUST end
-  before `$1000` or it stomps the inherited intro music tables).
+  advancing per IRQ (`ORBIT_SPEED_1=2`, `ORBIT_SPEED_2=3`). Phase
+  indexes a 256-byte sine table (no longer page-aligned — packed after
+  the code, MUST end before `$1000` or it stomps the inherited music).
   X / Y offsets computed from sine + cosine (cosine via phase + 64
   offset).
 - **Sprite-pointer writes** are now a 4-iteration Y-indexed loop over
@@ -50,15 +50,16 @@ top of it:
   toggle fires on the bit-6 transition of (phase2 − phase1) — that
   happens every ~64 frames at max separation, so the swap is invisible
   (stars are far apart). Implementation also swaps the sprite slot
-  assignments + colour registers so brown stays brown and cyan stays
-  cyan regardless of which is in front.
+  assignments + colour registers so brown stays brown and purple stays
+  purple regardless of which is in front.
 - **In-front-of-text toggle**: `$D01B` flips between `$FF` (sprites
   behind text) and `$00` (sprites in front) on the same safe-window
   trigger. Stars appear to orbit through the title in 3D.
 - **Parallax PETSCII starfield** (PR #31). 32 stars across 4 speed
-  tiers (`tier_speed[]={3,5,8,14}` half-rate ticks per move), 4
-  distinct chars (`+ * . ,`) and 4 colours (white / lt-grey /
-  dk-grey / blue). Per half-rate tick each star's countdown advances;
+  tiers (`tier_speed[]={3,5,8,14}` half-rate ticks per move), PETSCII
+  glyphs `● ○ ◆ ·` (`tier_char={$51,$57,$5A,$2E}`) and 4 colours
+  (white / cyan / lt-blue / blue). Per half-rate tick each star's
+  countdown advances; on each kick `sparkle_stars` flashes them white;
   on zero the star erases its current col, decrements col with wrap
   `0→39`, draws the tier's char + colour at the new column. Title
   rows 11 and 13 are never assigned to any star so the drift passes
@@ -76,7 +77,7 @@ twice with X=0, X=1) → sprite-pointer loop`.
 (The dedicated `coda_kick` routine was removed when coda switched
 to the resident K-S-K-S kit — see `docs/sid-drums.md`.)
 
-EFO claims: `'P', $08, $0F` for code + state + col_tab + sin_tab
+EFO claims: `'P', $08, $0F` for code + char-layer state + sin_tab
 (8 pages), `'P', $20, $37` for the 6 KB Kloot-star shape data,
 `'I', $10, $12` for inherited intro music.
 
@@ -321,19 +322,20 @@ big = abs(math.cos(freq * theta)) ** curve
 
 ### What changed
 Two independent 4-sprite Kloot stars cross each other. Star 1 (sprites
-0-3) keeps the original brown ($09); star 2 (sprites 4-7) is cyan
-($0E). Both share the same pre-rendered 24-frame zoom+rotation shape
+0-3) keeps the original brown ($09); star 2 (sprites 4-7) is purple
+($04). Both share the same pre-rendered 24-frame zoom+rotation shape
 data at `$2000-$37FF` but advance through it at independent rates via
 separate `kloot_shape_1` / `kloot_shape_2` counters, so lobe angles
 drift apart visually.
 
 ### Orbital motion
-A 256-byte sine table at `$0B00` (page-aligned) supplies both X and Y
-offsets. Each frame, two independent phase counters advance:
+A 256-byte sine table (`sin_tab`, packed after the code, no longer
+page-aligned) supplies both X and Y offsets. Each frame, two
+independent phase counters advance:
 
 ```
-star1_phase += ORBIT_SPEED_1   (= 1 → ~5 s/cycle)
-star2_phase += ORBIT_SPEED_2   (= 2 → ~2.5 s/cycle)
+star1_phase += ORBIT_SPEED_1   (= 2 → ~2.5 s/cycle)
+star2_phase += ORBIT_SPEED_2   (= 3 → ~1.7 s/cycle)
 ```
 
 The sin_tab lookup gives the orbital centre offset; cosine is derived
@@ -366,5 +368,5 @@ The toggle triggers when bit 6 of the phase difference
 ~90° apart, clearly separated). The swap is invisible because the
 stars are far apart; by the next crossing, the depth order has
 reversed. Sprite colours follow the star identity, not the hardware
-slot, so brown always belongs to star 1 and cyan to star 2.
+slot, so brown always belongs to star 1 and purple to star 2.
 `

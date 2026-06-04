@@ -121,7 +121,7 @@ KLOTEN MET DE COMMODORE
 **Subtitle** (row 13):
 
 ```
-LEARN EXPLORE DISCOVER
+LEREN ONTDEKKEN KLOOIEN
 ```
 
 **Release tag** (row 15):
@@ -133,9 +133,9 @@ RELEASED AT X2026
 **Starfield characters** (4-tier parallax):
 
 ```
-+  *  .  ,
+●  ○  ◆  ·
 ```
-(nearest → farthest)
+(nearest → farthest; `tier_char = $51,$57,$5A,$2E`)
 
 ---
 
@@ -148,7 +148,7 @@ RELEASED AT X2026
           you were watching
                                   (blank)
      Kloten met de Commodore
-      learn explore discover
+      leren ontdekken klooien
                                   (blank)
           by deFEEST
            for X2026

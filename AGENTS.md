@@ -26,8 +26,8 @@ in years sat down one evening with an AI pair-programmer — is woven
 into the demo itself: interlude's plasma shows "FOR YEARS NO TIME
 FOR BREADBIN CODE" then "AI WROTE" drops in as 8 sprite letters
 when the bass returns; greets' DYCP scroller tells the lunchbox-party
-story; coda lands the title "KLOTEN MET DE BROODTROMMEL / A DIGITAL
-LUNCH EXPERIENCE"; end credits close out the bow.
+story; coda lands the on-screen title "KLOTEN MET DE COMMODORE / LEREN
+ONTDEKKEN KLOOIEN"; end credits close out the bow.
 
 **Read `docs/narrative-arc.md` and `docs/sound-arc.md` first** —
 they're the two-sided map of the same arc (story side and audio side
@@ -42,8 +42,8 @@ Seven parts loaded by Spindle's pefchain framework:
 | 2 | `parts/intro/`       | Logo bounce, scroller, rasterbars, 8 sprites, 3-voice SID + K-S-K-S kit | `$F6 = $F0` (`zp_outro` hits `T_OUTRO_DONE`) |
 | 3 | `parts/interlude/`   | Plasma + bars-on-buildup, typewriter "FOR YEARS…" + sprite-letter "SPARKED" drop with white-border flash, LP V1+V2 filter sweep | `$F6 = $10` (~16 beats ≈ 7.7 s) |
 | 4 | `parts/hush/`        | Manifesto: full-screen colour-RAM fire engine ($A0 blocks + 7-step sbctab palette chain + drifting wave seed at row 24) with a 3-row blue banner carrying inverted cryptic-poetry text (phase 1 dark blue → phase 2 light blue swap at frame 120, white-border flash). K-S-K-S drums hammer through ($F6=$01); LP filter still closes on V1+V2. | `$F6 = $30` (frame counter hits 250) |
-| 5 | `parts/greets/`      | Climax: smooth-pixel DYCP sprite-font scroller (~50 s, scroll-driven) over a multi-colour koala backdrop. Sprite-7 carousel for clean right-edge entry. Snap landing on " KLOTEN " (the demo title's first word). Drums returning, V2 LP "wah". | `$F6 = $82` (scroll-driven settle + 4 beats) |
-| 6 | `parts/coda/`        | "KLOTEN MET DE COMMODORE / LEARN EXPLORE DISCOVER / RELEASED AT X2026", twin brown+cyan Kloot stars (Stage F ping-pong zoom breath) on wide sine orbits, alternating priority + in/out of title plane, 32-star 4-tier parallax PETSCII starfield, **triumphant full K-S-K-S kit + V1 bass-bleed sub-thump** (setup sets `$F6 = $01` so intro's drums fire through the held title) | `$F6 = $30` |
+| 5 | `parts/greets/`      | Climax: smooth-pixel DYCP sprite-font scroller (~50 s, scroll-driven) over a multi-colour koala backdrop. Sprite-7 carousel for clean right-edge entry. Snap landing on " DEFEEST " (the home crew sign-off). Drums returning, V2 LP "wah". | `$F6 = $82` (scroll-driven settle + 4 beats) |
+| 6 | `parts/coda/`        | "KLOTEN MET DE COMMODORE / LEREN ONTDEKKEN KLOOIEN / RELEASED AT X2026", twin brown+purple Kloot stars (Stage F ping-pong zoom breath) on wide sine orbits, alternating priority + in/out of title plane, beat-reactive demoscene char layer (8-colour rainbow colour-cycle title, PETSCII ●○◆· starfield sparkling on every kick, gold border) eased in by a build/flow ramp, **triumphant full K-S-K-S kit + V1 bass-bleed sub-thump** (setup sets `$F6 = $01` so intro's drums fire through the held title) | `$F6 = $30` |
 | 7 | `parts/end/`         | Credit roll, side bars, slow chord/lead reprise (V1/V2 triangle pad, V3 pulse w/ PWM-hi shimmer pulled under via sustain $9, all-voice LP $20..$58 cutoff sweep) | `stay` (loops) |
 
 Read `README.md` for full per-part descriptions. The
@@ -215,7 +215,7 @@ For the full per-part / per-page table see
 | `$0400-$07FF`  | Screen RAM (intro: bitmap colour-info; others: text) |
 | `$0800-$5BBC`  | intro code + bitmap colour info + sprite shapes + scroller |
 | `$0800-$0CE7`  | hush code + sine_tab + col_tab + bg_tab (during hush) |
-| `$0800-$0FFF`  | coda code + state + col_tab + sin_tab (8 pages) (during coda) |
+| `$0800-$0FFF`  | coda code + char-layer state + cyc/bord/flash tables + sin_tab (8 pages) (during coda) |
 | `$1000-$125D`  | **intro's resident music** — tables + my_music_play (inherited by interlude / hush / greets / coda) |
 | `$2000-$27FF`  | greets sprite font (during greets) / coda Kloot TR+TL sprite shapes (during coda) |
 | `$2C00-$37FF`  | coda Kloot BL+BR sprite shapes (4 quadrants × 24 frames × 64 B; sprite-pointer bases `$80/$98/$B0/$C8`) |

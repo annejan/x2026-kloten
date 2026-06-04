@@ -106,9 +106,9 @@ the part length tracks automatically.
 
 | Block | Mode | Direction | Chars | Content |
 |-------|------|-----------|-------|---------|
-| 1 | 0 | left | 132 | "deFEEST presents…" + "Anus and Claude Opus 4.7…" |
-| 2 | 1 | right | 107 | "Open borders, FLD-bounce logo…" |
-| 3 | 2 | zig-zag | 99 | "Greetings to everyone who still codes the breadbin…" |
+| 1 | 0 | left | ~78 | "deFEEST presents Anus and Kloot using codebase.c64.org" |
+| 2 | 1 | right | ~89 | "Open borders, FLD logo, rainbows, 8-sprite balls, custom SID." |
+| 3 | 2 | zig-zag | ~68 | "Greetings to anyone still vibeing the Commodore 64" — zig-zag freezes ~2.4 s when it resolves (`SPLIT_PAUSE_FRAMES = 120`) |
 
 Advance rate: 8 frames/char. Blocks separated by `$FE` sentinel
 characters; end-of-text = `$FF` triggers outro.
@@ -204,14 +204,14 @@ sprite-pointer bases `$80/$98/$B0/$C8`, 24 frames each).
 
 | Frame | Time | Event |
 |-------|------|-------|
-| 0 | 0 s | Setup: text mode, ROM uppercase chargen at `$1000`, screen `$0400`. Title text painted on rows 11, 13, 15 (KLOTEN MET DE COMMODORE / LEARN EXPLORE DISCOVER / RELEASED AT X2026). `$F6 = $01` enables drum gate so intro's K-S-K-S kit fires through the whole part. `$F8 = $80` restores zp_intro between T_BARS and T_SCROLLER so V1+V2 freq writes fire but V3 stays as triangle (drum_tick's last waveform). All 8 sprites enabled (`$D015=$FF`) with twin-star orbit math driving X/Y every frame. Parallax PETSCII starfield seeded (32 stars across 4 speed tiers). |
+| 0 | 0 s | Setup: text mode, ROM uppercase chargen at `$1000`, screen `$0400`. Title text painted on rows 11, 13, 15 (KLOTEN MET DE COMMODORE / LEREN ONTDEKKEN KLOOIEN / RELEASED AT X2026). `$F6 = $01` enables drum gate so intro's K-S-K-S kit fires through the whole part. `$F8 = $80` restores zp_intro between T_BARS and T_SCROLLER so V1+V2 freq writes fire but V3 stays as triangle (drum_tick's last waveform). All 8 sprites enabled (`$D015=$FF`) with twin-star orbit math driving X/Y every frame. Parallax PETSCII starfield seeded (32 stars across 4 speed tiers). |
 | 0 → 399 | 0 → 16.0 s | **Stage F ping-pong zoom breath**: star 1 starts at shape=0 dir=forward → opens with zoom-in; star 2 starts at shape=23 dir=backward → opens with zoom-out. `kloot_shape_N` walks 0→23→0 via shared `kloot_advance` subroutine; rotation reverse-loop is invisible (12-fold symmetry). |
 | each zp_frame tick | 25 Hz | Independent shape dividers (`SHAPE_DIV_1=3`, `SHAPE_DIV_2=2`) → fundamentally different rotation rates so lobes drift apart. Independent orbital phases (`ORBIT_SPEED_1=2`, `ORBIT_SPEED_2=3`) for the sine-path orbits at `ORBIT_RADIUS=56`. |
 | each frame | 50 Hz | Priority swap fires on bit-6 transition of `(star2_phase - star1_phase)` — happens at max separation so invisible. Swaps sprite slot assignments + colour registers (brown stays brown) and toggles `$D01B` so the in-front star alternates ~every 1.3 s. |
 | each half-rate tick | 25 Hz | Parallax starfield: each star's tick decrements; on zero the star erases its current col, dec col with wrap 0→39, draws tier char + colour at the new col. 4 tiers × 8 stars; tier speeds 3/5/8/14. |
 | each frame | 50 Hz | V2-cutoff LFO: `$d416 = sin_tab[zp_frame] + $a0` so the filtered lead breathes through the held title (sin_tab values ±56 give a $4a..$d8 cutoff sweep — wide-open, bright). |
-| 0 → 799 | 0 → 32.0 s | Border colour cycles through `col_tab` (256-entry slow sine). |
-| **800** | **32.0 s** | IRQ writes `$F6 = $30`, border snaps to black, `$D015 = $00` hides sprites; pefchain's `f6 = 30` fires, end loads. |
+| 0 → 399 | 0 → 16.0 s | Beat-reactive char layer eased in by a `flow` ramp: title colour-cycles an 8-colour rainbow (kick flashes row 11, snare row 13), starfield sparkles white on each kick. Border stays black until `flow >= T_BORDER` (~8.8 s), then shimmers the 8-entry gold `bord_tab`. |
+| **400** | **16.0 s** | IRQ writes `$F6 = $30`, border snaps to black, `$D015 = $00` hides sprites; pefchain's `f6 = 30` fires, end loads. |
 
 Per-frame: orbit math + sprite-position writes FIRST (so VIC's
 per-raster sprite-Y check sees the new positions before raster 52,
@@ -223,7 +223,7 @@ drag them away. `zp_subtick` toggles each IRQ; only every second IRQ
 increments the 16-bit half-rate frame counter (`zp_frame` + `frame_hi`)
 used to compare against `N_FRAMES`.
 
-**EFO ownership**: `'P', $08, $0F` (code + state + col_tab + sin_tab,
+**EFO ownership**: `'P', $08, $0F` (code + char-layer state + sin_tab,
 8 pages — `sin_tab` MUST end before `$1000` or it stomps the
 inherited intro music tables; see `docs/memory-layout.md` "Stage F
 note"). `'P', $20, $37` (all 4 quadrants of Kloot shape data:

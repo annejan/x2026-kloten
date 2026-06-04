@@ -129,9 +129,9 @@ so we never touch CIA2 `$DD00` after the initial Spindle setup.
 | `$0800-$0BFF`  | —          | code + IRQs + sprite shapes | code + tables | code + tables | DYCP sprite font (A-Z + blank + hyphen, 2 KB total) | code + state + tier tables | — |
 | `$0C00-$0CFF`  | —          | (free)     | code+     | code (tail) | sprite font (cont.) | code (cont.) + ping-pong state + starfield init data | — |
 | `$0D00-$0DFF`  | —          | —          | code+     | —         | sprite font (cont.) | code (cont.) + title text | — |
-| `$0E00-$0EFF`  | —          | —          | code (interlude) | — | sprite font (cont.) | col_tab   | —         |
+| `$0E00-$0EFF`  | —          | —          | code (interlude) | — | sprite font (cont.) | char-layer state + cyc/bord/flash tabs | — |
 | `$0F00-$0FFF`  | —          | —          | —         | —         | sprite font (cont.) | sin_tab   | —         |
-| `$1000-$125D`  | —          | **resident music tables + `my_music_play` — inherited by interlude / hush / greets / coda; end uses its own player** ||||||
+| `$1000-$125D`  | —          | **resident music tables + `my_music_play` (drum_state $12BC / drum_offset $12BD) — inherited by interlude / greets / coda; end uses its own player** ||||||
 | `$1300-$1FFF`  | —          | compact logo_rows | —    | —         | —         | —         | —         |
 | `$2000-$27FF`  | —          | logo bitmap (multicolour) | — | —    | koala bitmap (320×200 MCM) | Kloot-star TR shapes (24 frames) | — |
 | `$2800-$2BFF`  | —          | (logo bitmap continues) | — | —     | koala bitmap (cont.) | Kloot-star TL shapes (cont.) | — |
@@ -183,13 +183,15 @@ Instead `parts/coda/kloot_star_{tr,tl,bl,br}.bin` are each passed to
 in `build.sh`. Each 1.5 KB chunk becomes its own pefchain payload
 entry alongside coda's main `.efo`.
 
-**Stage F note** (2026-05-21): coda's `.align 256` directives on
-`col_tab` and `sin_tab` are load-bearing — `sin_tab` MUST end
-before `$1000` or it stomps the inherited music tables. The size
-diet in PR #33 (sprite-pointer loop refactor) was specifically to
-fit Stage F's ping-pong logic back inside the 8-page claim. If you
-grow coda's code, watch `parts/coda/coda.sym` for `sin_tab=$1000+`
-— that's the symptom.
+**Coda byte-budget note** (updated 2026-06-04): coda's tables are no
+longer `.align 256`d — `col_tab` was dropped entirely (the demoscene
+char layer's `cyc_tab`/`bord_tab`/`flash_ramp` + state took its place),
+and `sin_tab` (256 B, the only big table left) now packs straight after
+the code. `sin_tab` MUST still end before `$1000` or it stomps the
+inherited music tables; coda currently ends at `$0FFE` — 1 byte of
+slack. If you grow coda's code, watch `parts/coda/coda.sym` for
+`sin_tab` creeping toward `$0F00+` — that's the symptom (the `.errorif`
+on `sin_tab + 256 > $1000` is the hard backstop).
 
 ### Zero-page
 
@@ -208,7 +210,7 @@ grow coda's code, watch `parts/coda/coda.sym` for `sin_tab=$1000+`
 
 ### Why bytes are placed where they are (concrete examples)
 
-- **`drum_state` lives at `$128A`** (inside intro's music segment)
+- **`drum_state` lives at `$12BC`** (`drum_offset` at `$12BD`, inside intro's music segment)
   rather than zero-page, because every part that calls
   `INTRO_MUSIC_PLAY` at `$119E` sees the same address. Putting it in
   intro's `'I',$10,$12`-protected pages means interlude / hush /

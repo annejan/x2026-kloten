@@ -29,8 +29,8 @@ overlays** on top of that continuous music.
 | interlude   | Pad-only first ~2.9 s: V1 muted, V3 muted via `$D418` bit 7 ("V3 off"), so ONLY V2 lead is audible while line A "FOR YEARS…" types out over 2.8 s — music-box pad under the typewriter confession. `mu_step` forced to 32 in setup so the lead is in phrase 2 ("active 8ths") for movement. V2 PWM modulates via `zp_xphase` for a slow phaser feel. Last ~4.8 s buildup: V3-off bit clears so the K-S-K-S kit + arp slam back in, V1 returns, LP cutoff ramps from `$70` upward with V1+V2 routed through the filter (res $2), sprite-letter "SPARKED" drops with white-border flash. |
 | hush       | **Manifesto under heat.** Setup sets `$F6 = $01` so the K-S-K-S drum kit keeps hammering through hush (no more silent breakdown — listener stays locked to the beat under the fire). LP filter still closes on V1+V2 via `$D417 = $23` res $2; `$D416` cutoff ramps `$70 → $08` over 250 frames; volume fades the last 50 frames. Music_play ticks at a clean 50 Hz because the colour-RAM fire engine uses row-alternation propagation (~11 k cy/frame, fits the budget). |
 | greets      | **Climax / drop.** Drums return (greets' setup re-arms `$F6`), full mix + lead + arp. V2 (lead) routed through LP filter ($D417 = $42, res $4) with a slow cutoff "wah" — `zp_wobble_pos` OR'd with $40 ramps $40..$FF over 5 s breathing the melody. DYCP scroller tells the personal arc on top of the loudest moment. |
-| coda        | **The trophy — triumphant.** Setup sets `$F6 = $01` so the K-S-K-S drum kit from intro's `my_music_play` keeps firing through the whole part (kick + snare alternating on V3, V1 bass-bleed sub-thump on every hit). Setup ALSO sets `$F8 = $80` to restore intro's `zp_intro` after interlude's `zp_plasma_tgl` clobber — high enough that V1 bass and V2 lead freq writes fire (T_BARS=120) but low enough that V3 ctrl is NOT re-gated to pulse every frame (T_SCROLLER=240), so V3 keeps the **mellow triangle arp timbre** that drum_tick left behind. `$D417 = $26` (V2+V3 routed through LP, res 2) — V1 bass-bleed kept clean because routing the sub-thump through LP + resonance caused audible filter-clap crunch per beat. `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s for a slow breathing motion under the held title. This is the LOUDEST moment of the demo — full mix held aloft for ~32 s while the twin Kloot stars dance behind the title. |
-| end         | `end_music_init` re-inits SID for slow chord/lead reprise: all 3 voices routed through LP filter ($D417=$07, no resonance), V1 walks bass_pattern at END_STEP_FRAMES=24 (4× slower than intro's 6), V2 plays lead_pattern at the same slow tempo, V3 arps within the current chord changing every 4 frames. Cutoff sweeps $20..$58 hi via `wave_xscroll[zp_frame+$40]*8 + $20` (90° out of phase from V3 PWM) for a gentle ~5 s pad breath. V3 sustain pulled down to $9 (ADSR `$11/$98`) so the pulse arp sits under V1/V2's pad instead of on top. No drums. The credit-roll outro — sound matched bit-exact to revision b5f888c via live MCP capture (commits b0af3f0 + 87eb01f). |
+| coda        | **The trophy — triumphant.** Setup sets `$F6 = $01` so the K-S-K-S drum kit from intro's `my_music_play` keeps firing through the whole part (kick + snare alternating on V3, V1 bass-bleed sub-thump on every hit). Setup ALSO sets `$F8 = $80` to restore intro's `zp_intro` after interlude's `zp_plasma_tgl` clobber — high enough that V1 bass and V2 lead freq writes fire (T_BARS=120) but low enough that V3 ctrl is NOT re-gated to pulse every frame (T_SCROLLER=240), so V3 keeps the **mellow triangle arp timbre** that drum_tick left behind. `$D417 = $26` (V2+V3 routed through LP, res 2) — V1 bass-bleed kept clean because routing the sub-thump through LP + resonance caused audible filter-clap crunch per beat. `$D416` cutoff sweeps via `sin_tab[zp_frame] + $60` over ~10 s for a slow breathing motion under the held title. This is the LOUDEST moment of the demo — full mix held aloft for ~16 s while the twin Kloot stars dance behind the title. |
+| end         | `end_music_init` re-inits SID for slow chord/lead reprise: all 3 voices routed through LP filter ($D417=$07, no resonance), V1 walks bass_pattern at END_STEP_FRAMES=24 (4× slower than intro's 6), V2 plays lead_pattern at the same slow tempo, V3 arps within the current chord changing every 4 frames. Cutoff sweeps $20..$58 hi via `wave_xscroll[zp_frame+$40]*8 + $20` (90° out of phase from V3 PWM) for a gentle ~5 s pad breath. V3 sustain pulled down to $6 (ADSR `$11/$68`) so the pulse arp sits under V1/V2's pad instead of on top. No drums. The credit-roll outro — sound matched bit-exact to revision b5f888c via live MCP capture (commits b0af3f0 + 87eb01f). |
 
 ## Why my_music_play is special
 
@@ -241,8 +241,8 @@ lda #$00 / sta $D40E
 !drum_skip:
 ```
 
-The state bytes `drum_state` + `drum_offset` live in intro's music
-segment (around `$128A`), so every part inheriting `'I', $10, $12`
+The state bytes `drum_state` (`$12BC`) + `drum_offset` (`$12BD`) live in
+intro's music segment, so every part inheriting `'I', $10, $12`
 sees the same state.
 
 ### Why the kit is built this way
@@ -348,7 +348,7 @@ The "feeling of transition" is carried by:
 - **Coda's full K-S-K-S kit under "KLOTEN MET DE BROODTROMMEL"**
   — the triumphant moment. Drums from intro's resident kit
   CONTINUE into coda (setup sets `$F6 = $01`); the kick + snare
-  + V1 bass-bleed all carry through the held title for ~32 s.
+  + V1 bass-bleed all carry through the held title for ~16 s.
   Visually: twin Kloot stars dancing on wide orbits + parallax
   PETSCII starfield + title held steady. Loudest moment of the
   demo, by design — the audience hears, sees, *gets it*.

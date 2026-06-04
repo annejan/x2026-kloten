@@ -50,13 +50,14 @@ DEFAULT_OUTPUT = "/tmp/outline64_demo.mp4"
 # small lead-in margin so you don't clip the opening transition.
 PART_OFFSETS = {
     # name       (start_s, end_s)
-    "screenfill": (0,   5),
-    "intro":      (5,   110),
-    "interlude":  (110, 118),   # post-8ed0777 timing (~7.7 s)
-    "sinus":      (118, 128),
-    "greets":     (128, 207),   # post-#32 timing (~77 s)
-    "coda":       (207, 218),
-    "end":        (218, 280),   # loops forever; record 1+ full music cycle
+    # Measured by a real-time VICE pass 2026-06-04 (see docs/timing.md).
+    # hush was merged into interlude; coda is ~16 s (was ~32 s).
+    "screenfill": (0,   8),
+    "intro":      (8,   67),
+    "interlude":  (67,  93),    # includes the merged fire phase (ex-hush)
+    "greets":     (93,  144),
+    "coda":       (144, 161),
+    "end":        (161, 280),   # loops forever; record 1+ full music cycle
 }
 PART_LEAD_S = 1.0   # extra seconds added before/after to avoid clipping
 

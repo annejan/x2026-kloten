@@ -238,7 +238,7 @@ resident-music inheritance, the drum code propagates automatically.
 
 Since the May 20 rework, drums are a **table-driven K-S-K-S kit**
 (kick and snare alternating on the quarter-note grid). State lives
-in intro's music segment around `$128A`:
+in intro's music segment (`drum_state` at `$12BC`, `drum_offset` at `$12BD`):
 
 - `drum_state` — countdown of remaining frames in the current hit window
 - `drum_offset` — 0 for kick rows, 8 for snare rows of the drum table
@@ -349,7 +349,7 @@ IS the sub body — a dedicated layer was redundant.
 The triumphant coda config (since 2026-05-21):
 
 - Setup sets `$F6 = $01` → enables intro's `my_music_play` drum
-  gate, so the K-S-K-S kit fires through the whole 32-s held title.
+  gate, so the K-S-K-S kit fires through the whole ~16-s held title.
 - Setup sets `$F8 = $80` (= between `T_BARS` 120 and `T_SCROLLER`
   240) → V1 bass + V2 lead freq writes fire every step boundary,
   but V3's ctrl is NOT re-gated to pulse every frame, so V3 stays

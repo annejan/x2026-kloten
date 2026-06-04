@@ -1,5 +1,12 @@
 # Sinus — vision archive
 
+> **Historical archive — see current code for what ships.** The `sinus`
+> part was renamed `hush` (`7413108`) and later MERGED into interlude
+> (`0d8dca5`); there is no standalone part anymore. The manifesto text
+> was also rewritten to "THE MACHINE NEVER DIED" / "NOW IT BURNS AGAIN"
+> (`22dc2a4`) — the "What shipped" notes below describe the earlier
+> wording. This doc is kept only as a record of the design space.
+>
 > **Shipped: Option D — the manifesto.** Implemented in commit
 > `cff79d1` (rewrite) + `f1779de` (chargen fix) + `48b3330`
 > (byte-order fix). See [`narrative-arc.md §4`](./narrative-arc.md)

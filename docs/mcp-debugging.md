@@ -6,7 +6,7 @@ ready-to-paste recipes for the kinds of measurements we keep
 needing on this project.
 
 `./run-mcp.sh` boots the demo with VICE-MCP listening on
-`127.0.0.1:6510`. After ~17 s of real-time boot + autostart, the
+`http://127.0.0.1:6510/mcp`. After ~17 s of real-time boot + autostart, the
 demo is live and the MCP is responsive.
 
 ## Calling the MCP from Python
@@ -165,26 +165,31 @@ r = call("vice.symbols.lookup", name="my_music_play")
 assert r["address"] == 0x119e, f"Music dispatcher moved to {r['address']:04x}!"
 ```
 
-The inheritor parts (interlude/hush/greets/coda) hard-code
+The inheritor parts (interlude/greets/coda) hard-code
 `INTRO_MUSIC_PLAY = $119e`. After any refactor of the music
 segment, run this check.
 
-### Measure how many cycles `my_music_step` actually costs
+### Measure how many cycles `my_music_play` actually costs
+
+The music routine is monolithic — `my_music_play` (at $119e) does the
+whole per-frame update (V1/V2/V3 + the V3 drum table), so this is the
+routine to time. It advances `mu_step` only on `STEP_FRAMES` boundaries,
+so the cost varies frame to frame.
 
 ```python
 call("vice.symbols.load", path="parts/intro/intro.sym")
-step_addr = call("vice.symbols.lookup", name="my_music_step")["address"]
-rts_addr  = step_addr + N   # find rts via disassemble first
+play_addr = call("vice.symbols.lookup", name="my_music_play")["address"]
+rts_addr  = play_addr + N   # find rts via disassemble first
 
 # checkpoint at entry and exit
-cp_in  = call("vice.checkpoint.add", address=step_addr)
+cp_in  = call("vice.checkpoint.add", address=play_addr)
 cp_out = call("vice.checkpoint.add", address=rts_addr)
 
-call("vice.run_until", address=step_addr, timeout=2.0)
+call("vice.run_until", address=play_addr, timeout=2.0)
 call("vice.cycles.stopwatch", action="reset")
 call("vice.run_until", address=rts_addr,  timeout=2.0)
 cy = call("vice.cycles.stopwatch", action="read")["cycles"]
-print(f"my_music_step took {cy} cycles this call")
+print(f"my_music_play took {cy} cycles this call")
 ```
 
 Repeat over many frames (some on step boundaries, some not) to
@@ -197,9 +202,9 @@ build a distribution.
 # K = bounce_total[zp_frame]. A K=0 frame is one where
 # bounce_total[zp_frame] == 0.
 
-# Auto-snapshot on entry to irq_fld_bottom when K=0:
-fld_bot = call("vice.symbols.lookup", name="irq_fld_bottom")["address"]
-cp = call("vice.checkpoint.add", address=fld_bot)
+# Auto-snapshot on entry to irq_fld when K=0:
+fld = call("vice.symbols.lookup", name="irq_fld")["address"]
+cp = call("vice.checkpoint.add", address=fld)
 call("vice.checkpoint.set_condition",
      checkpoint_num=cp["checkpoint_num"],
      condition="MEM($4800 + MEM($FE)) == 0")
@@ -221,12 +226,11 @@ for e in entries:
     print(f"  {e['type']:4s} @raster {e['raster']:>3x} cy {e['cycle']:>5d}")
 ```
 
-Expected (intro, K=0):
+Expected (intro):
 ```
   IRQ  @raster   1 ...  # irq_open
-  IRQ  @raster  43 ...  # irq_fld
-  IRQ  @raster  80 ...  # irq_bars
-  IRQ  @raster  c3 ...  # irq_fld_bottom (K=0, trigger = $C3 + 0)
+  IRQ  @raster  3b ...  # irq_fld   (FLD stretch zone lines $3B..$3B+K)
+  IRQ  @raster  80 ...  # irq_bars  (BAR_TOP)
   IRQ  @raster  f9 ...  # irq_close
 ```
 
@@ -249,11 +253,13 @@ print("V3 freq", sid_a["voices"][2]["freq"], "→", sid_b["voices"][2]["freq"])
 print("V3 ctrl", sid_a["voices"][2]["ctrl"], "→", sid_b["voices"][2]["ctrl"])
 ```
 
-If V3 ctrl is flipping between `$81` (noise = drum) and `$41`
-(pulse = arp) every other frame, drum_tick is fighting with the
-arp write. That was our pre-split race; the new my_music_critical
-writes drum_tick LAST so V3 stays at `$81` for the full drum
-window.
+During a snare hit V3 ctrl reads `$81` (noise = drum) and during the
+arp it reads `$41` (pulse = arp) — kick rows use `$11` (triangle).
+This is by design: inside the monolithic `my_music_play` the V3 drum
+tick block runs LAST (after the arp's gate write), so the drum
+waveform wins for the whole `DRUM_LEN` window. If you instead see the
+ctrl thrashing $41/$81 mid-window, something is writing $d412 after
+the drum tick.
 
 ## Known limitations of this VICE-MCP build
 

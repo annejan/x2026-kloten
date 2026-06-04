@@ -93,9 +93,8 @@ The `pefchain_script` is a sequence of `<pef-file> <condition>` lines:
 ```
 parts/screenfill/screenfill.pef     06 = 00
 parts/intro/intro.pef               f6 = f0
-parts/interlude/interlude.pef       f6 = 20
-parts/hush/hush.pef               f6 = 30
-parts/greets/greets.pef             f6 = 20
+parts/interlude/interlude.pef       f6 = 30
+parts/greets/greets.pef             f6 = 82
 parts/coda/coda.pef                 f6 = 30
 parts/end/end.pef                   stay
 ```
@@ -106,22 +105,22 @@ fadeout returns with carry set, pefchain loads the next part.
 
 ### Reusing the same byte across parts
 
-We reuse `$F6` for five different transitions (intro → interlude →
-hush → greets → coda → end). This is fine because **each part's setup
-resets the byte to a value that doesn't satisfy the next condition**:
+We reuse `$F6` for the transitions (intro → interlude → greets → coda
+→ end). This is fine because **each part's setup resets the byte to a
+value that doesn't satisfy the next condition**:
 
 - intro's `zp_outro` ticks from `0` to `$F0` (transition: `f6 = f0`)
-- interlude's setup resets `$F6 = 0`, then beat counter ticks to `$20`
-  (transition: `f6 = 20`)
-- hush' setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
-  `$FC` (the actual frame counter — `$F9` is unsafe, see below) ≥
-  N_FRAMES (~5 s). Transition: `f6 = 30`.
-- greets' setup resets `$F6 = 0`, then beat counter ticks to `$20`
-  (transition: `f6 = 20`)
-- coda's setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once
-  `$FC` (half-rate frame counter) ≥ N_FRAMES (~10 s). Same trigger
-  value as hush, fine because they're not adjacent in the chain.
-  Transition: `f6 = 30`.
+- interlude runs plasma + the SPARKED drop, then the merged fire phase
+  (formerly the separate `hush` part — merged in `0d8dca5`); its IRQ
+  drives `$F6` to `$30` when the fire phase completes (transition:
+  `f6 = 30`)
+- greets is scroll-driven: when the scroller reaches the `DEFEEST`
+  settle text, `$F6` is forced to `SETTLE_BEAT` and natural beat-ticking
+  runs it up to `$82` (transition: `f6 = 82`)
+- coda's setup resets `$F6 = 0`, then its IRQ sets `$F6 = $30` once the
+  half-rate frame counter (`$FC` + a code-RAM high byte) ≥
+  `N_FRAMES = 400` (~16 s). Same trigger value as interlude, fine
+  because they're not adjacent. Transition: `f6 = 30`.
 
 #### Watch out: `$F9` and `$FA` are clobbered every `my_music_play`
 

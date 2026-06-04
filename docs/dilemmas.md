@@ -75,11 +75,10 @@ which is already the scroller.
    - **Reference**: `ranzbak/defeest-fld/badline.asm`, and Jesder's
      0xc64 original. Both linked in the external-references section.
 
-4. **Single FLD + bouncing fade-text (current)**. K_max bumped from
-   28 to 36 in commit `9ab56c8`. yscroll lands at 0 (`(5+35) % 8`),
-   top FLD ends at `$5F` with 33 lines of slack to BAR_TOP, logo
-   bounces $73..$97 — peak still inside the bars zone. Fade-text
-   travels with the logo as a single visual unit. Accepted.
+4. **Single FLD + bouncing fade-text (current)**. `bounce_total =
+   round(14 + 14·sin)` gives `K = 0..28` (see `intro.asm`, FLD trigger
+   at `$3B`). Top FLD ends with slack to BAR_TOP, the logo bounces, and
+   the fade-text travels with it as a single visual unit. Accepted.
 
 ### Levers we kept on the table but didn't use
 

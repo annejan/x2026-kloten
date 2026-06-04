@@ -87,7 +87,7 @@ perspective, the running emulator was a REPL it could poke:
 The loop looked like:
 
 1. **Human asks for an effect** ("I want the brown star to zoom in
-   and the cyan one to zoom out, naturally out of phase")
+   and the purple one to zoom out, naturally out of phase")
 2. **AI proposes a design**, often referencing
    [codebase.c64.org](https://codebase.c64.org/) for the canonical
    technique

@@ -29,8 +29,8 @@ re-init SID for a slow 4× tempo pad reprise, no drums, lunch is over.
 | 2 | intro | ~57 s | `$f6 == $F0` (zp_outro saturated) | full mix builds: arp → +lead → +bass → +drums |
 | 3 | interlude | ~7.7 s + ~11 s blank-filler load gap | `$f6 == $10` (16 beats × 24 frames) | V3-off solo lead pad (PWM phaser) ~2.9 s, buildup ~4.8 s slamming V3 + bass + LP sweep back in on SPARKED drop |
 | 4 | hush | ~5 s | `$f6 == $30` (frame counter stall) | LP cutoff closes on V1+V2; **drums KEEP firing** (setup sets `$F6=$01`, gate ON); vol fades over last 50 frames |
-| 5 | greets | ~50 s | `$f6 == $82` (scroll-driven KLOTEN snap) | climax: full mix + V2-filtered "wah" on lead, koala backdrop |
-| 6 | coda | ~32 s | `$f6 == $30` (32-s timer) | triumphant: full mix held, twin stars dance |
+| 5 | greets | ~50 s | `$f6 == $82` (scroll-driven DEFEEST snap) | climax: full mix + V2-filtered "wah" on lead, koala backdrop |
+| 6 | coda | ~16 s | `$f6 == $30` (16-s timer) | triumphant: full mix held, twin stars dance |
 | 7 | end | forever | (none — `stay`) | own player, 4× slower pad reprise, all-voice LP w/ $20..$58 cutoff sweep |
 
 Total runtime: ~2:55 from boot to end-credits-loop. Music stays
@@ -148,7 +148,7 @@ END_STEP_FRAMES = 24 (4× slower than intro)
 | Lead phrase | 192 | 3.84 s | 32 lead notes |
 | Full melody | 768 | 15.36 s | 4 phrases |
 | Drum cycle | 24 | 480 ms | K-S-K-S = 1 quarter per drum |
-| Coda hold | 800 (half-rate) | 32 s | `N_FRAMES` in coda.asm |
+| Coda hold | 400 (half-rate) | 16 s | `N_FRAMES` in coda.asm |
 | End step | 24 | 480 ms | `END_STEP_FRAMES`, 4× slower |
 | End full progression | 768 | 15.36 s | once through Am-Em-F-G |
 | End cutoff sweep | 256 | ~5.1 s | filter "breath" $20..$58 |

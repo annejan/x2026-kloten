@@ -17,7 +17,7 @@ That's the whole thing. Seven parts carry it.
 [03] interlude   the confession           — FOR YEARS NO TIME / SPARKED
 [04] hush        the manifesto             — accusation → answer, dual-phase
 [05] greets      the party                  — lunchbased lifeforms, shoutouts
-[06] coda        the trophy                  — KLOTEN MET DE BROODTROMMEL
+[06] coda        the trophy                  — KLOTEN MET DE COMMODORE
 [07] end         the bow                    — credits roll, lunch is over
 ```
 
@@ -109,25 +109,26 @@ screen, eight X-expanded sprite letters DYCP-wave through a list
 of demogroup names — the loudest moment, everyone gets a shoutout.
 ~50 seconds, scrolling through a wall of crew handles at 9 px/frame
 (≈ 11 chars/sec) over a multi-colour koala backdrop, landing on
-"KLOTEN" (the demo title's first word). The transition is
+"DEFEEST" (the home crew sign-off). The transition is
 scroll-driven: when the last name finishes exiting, the row snaps
-to centred KLOTEN for ~1.9 s, then pefchain advances to coda.
+to centred DEFEEST for ~1.9 s, then pefchain advances to coda.
 
 No story text here. The story already happened in interlude.
 
 ### 6. The trophy (coda — triumphant ending)
 
 The triumphant moment before the credits land. Three title lines,
-centred, holding still for ~32 seconds while everything else
-moves:
+centred, holding for ~16 seconds while everything else moves — the
+char layer builds: the title cycles an 8-colour rainbow, the border
+lights gold, and the starfield sparkles on the kit:
 
 ```
-       KLOTEN MET DE BROODTROMMEL
-       A DIGITAL LUNCH EXPERIENCE
-            RELEASED AT X2026
+       KLOTEN MET DE COMMODORE
+       LEREN ONTDEKKEN KLOOIEN
+           RELEASED AT X2026
 ```
 
-Behind them, two 12-lobe Claude-style stars (one brown, one cyan)
+Behind them, two 12-lobe Claude-style stars (one brown, one purple)
 dance — wide sine orbits, ±56 px, 1:1.5 chase ratio, each
 ping-ponging through its own zoom-breath (in → rotate → out) at
 different speeds. They alternate priority through the title plane
@@ -179,12 +180,12 @@ music:   silent →  drums in→  filter rise→ filter close→full kit→ slow
 The story lands in three places: interlude (FOR YEARS NO TIME →
 SPARKED) tells the confession; hush (accusation → answer) makes
 the argument explicit; coda lands the trophy with the title + the
-X2026 release tag, while the greets settle on `KLOTEN` gives the
-AI-character one subtle nod. Greets itself is the
+X2026 release tag, while the greets settle on `DEFEEST` signs off
+as the home crew. Greets itself is the
 party — no story, just community shoutouts. When the SPARKED letters drop, the bass returns and the
 filter opens. When the hush filter closes, the drums stop. When
 the greets drums come back, the lead's wah kicks in. When the coda
-title lands, the drums sparse out to one beat per second. Each
+title lands, the full K-S-K-S kit keeps hammering under it. Each
 text reveal sits on an audio shift. Each visual climax has a
 music moment under it. That's the cohesion — the arcs aren't
 parallel tracks, they're the same wave seen from two sides.

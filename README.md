@@ -214,12 +214,12 @@ trigger. The end card is the only "stay" loop.
 
 ### Part 6 — `parts/coda/coda.asm` (title card)
 
-- **Title card** — "KLOTEN MET DE BROODTROMMEL" on row 11, "A DIGITAL
-  LUNCH EXPERIENCE" on row 13. Text mode, ROM uppercase chargen at
-  `$1000`. The breather where the story lands between greets' scroller
-  and end's credit roll.
+- **Title card** — "KLOTEN MET DE COMMODORE" on row 11, "LEREN ONTDEKKEN
+  KLOOIEN" on row 13, "RELEASED AT X2026" on row 15. Text mode, ROM
+  uppercase chargen at `$1000`. The triumphant trophy where the story
+  lands between greets' scroller and end's credit roll.
 - **Twin Kloot stars — 4-sprite 96×84 quads each.** Star 1 (sprites
-  0-3, **brown `$09`**) and star 2 (sprites 4-7, **cyan `$0E`**). Each
+  0-3, **brown `$09`**) and star 2 (sprites 4-7, **purple `$04`**). Each
   is a 2×2 quad of X+Y-expanded 24×21 sprites = 48×42 on screen per
   quadrant, 96×84 total. Both stars share the same pre-rendered shape
   data at `$2000-$37FF` (4 quadrants × 24 frames × 64 B), and each star
@@ -242,7 +242,7 @@ trigger. The end card is the only "stay" loop.
   are naturally out of phase.
 - **Twin-star orbits + priority swap.** Each star orbits on a sine
   path indexed by `star{1,2}_orbit_phase` advanced at different speeds
-  (`ORBIT_SPEED_1=1`, `ORBIT_SPEED_2=2`). VIC priority rule (higher
+  (`ORBIT_SPEED_1=2`, `ORBIT_SPEED_2=3`). VIC priority rule (higher
   sprite number = in front) means star 2 always renders on top by
   default — a `swap_flag` toggles which star owns sprites 0-3 vs 4-7
   on the bit-6 transition of `(star2_phase - star1_phase)`, so the
@@ -250,17 +250,24 @@ trigger. The end card is the only "stay" loop.
   is invisible because the stars are far apart at the swap moment.
 - **`$D01B` in-front-of-text toggle** — same trigger as the priority
   swap. Stars appear to orbit through the title plane in 3D.
-- **Parallax PETSCII starfield** (PR #31) — 32 stars across 4 speed
-  tiers (`tier_speed[]={3,5,8,14}` half-rate ticks per move), 4
-  distinct chars (`+ * . ,`, fast→slow) and 4 colours
-  (white / lt-grey / dk-grey / blue). Per half-rate tick each star's
-  countdown advances; on zero the star erases its current col, dec's
-  col with wrap `0→39`, draws the tier's char + colour at the new
-  position. Title rows 11/13 are never assigned, so drift passes
-  above + below the title.
-- **Slow border colour cycle** through a 256-entry calm palette
-  (black / blue / light-blue / light-grey), driven by
-  `col_tab[zp_frame]`.
+- **Beat-reactive demoscene char layer.** The whole char layer reacts
+  to the resident K-S-K-S kit — the IRQ reads the live drum state from
+  `drum_state`/`drum_offset` (`$12BC`/`$12BD`) right after its per-frame
+  `jsr $119e`. A `flow` build ramp eases it in: the coda opens plain
+  (white title, black border, no sparkle) and over ~10 s the rainbow,
+  gold border and sparkle wash in, full for the climax.
+  - **Title** cycles an 8-colour rainbow gradient (`cyc_tab`) flowing
+    through the letters; kick flashes row 11, snare flashes row 13.
+  - **Parallax PETSCII starfield** (PR #31) — 32 stars across 4 speed
+    tiers (`tier_speed[]={3,5,8,14}` half-rate ticks per move), PETSCII
+    glyphs `● ○ ◆ ·` (`tier_char={$51,$57,$5A,$2E}`, fast→slow) in
+    white / cyan / lt-blue / blue (`tier_color={$01,$03,$0E,$06}`).
+    Each kick flashes the whole field white (`sparkle_stars`). Title
+    rows 11/13 are never assigned, so drift passes above + below it.
+- **Gold border.** Stays black until the build lights it
+  (`flow >= T_BORDER`), then shimmers through a separate 8-entry gold
+  palette (`bord_tab`). (The old 256-entry `col_tab` sine cycle was
+  dropped to make room for the char-layer code.)
 - **Triumphant K-S-K-S kit + V1 bass-bleed sub-thump** — setup sets
   `$F6 = $01` so intro's resident drum kit fires through the whole
   part (no dedicated coda kick anymore). V3 alternates between the
@@ -270,14 +277,14 @@ trigger. The end card is the only "stay" loop.
   V1+V2 walk their patterns but V3's ctrl stays as triangle (= mellow
   arp between drum hits instead of pulse). See
   [`docs/sid-drums.md`](./docs/sid-drums.md) for the K-S-K-S kit.
-- Filter routing inherits greets' `$D417 = $42` (V2 routed through
-  LP); coda then runs a slow sin-LFO on `$D416` (cutoff) for a
-  ~10 s breath under the held title.
+- Filter routing: coda sets `$D417 = $26` (V2+V3 through LP, resonance
+  2; V1 bass-bleed kept clean) and runs a slow sin-LFO on `$D416`
+  (cutoff) for a breathing motion under the held title.
 - Half-rate divider on `zp_subtick` keeps `zp_frame` ticking at
-  25 Hz; after `N_FRAMES = 800` half-rate ticks (~32 s) the IRQ
+  25 Hz; after `N_FRAMES = 400` half-rate ticks (~16 s) the IRQ
   writes `$30` to `$f6` and pefchain advances to end.
 - Inherits intro's music pages (`'I', $10, $12`).
-- EFO claims `'P', $08, $0F` for code + `col_tab` + `sin_tab`
+- EFO claims `'P', $08, $0F` for code + char-layer state + `sin_tab`
   (8 pages — `sin_tab` MUST end before `$1000` or it stomps the
   inherited intro music tables), and `'P', $20, $37` for the
   6 KB of Kloot-star shape data (overlaps end's `$30-$44` claim;

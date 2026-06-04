@@ -89,8 +89,8 @@ across all 6 parts.
   **`push_next_credit_row`** ✅ `end_music_init` `end_music_play`
 
 ¹ `interrupt`/handlers that end in `rti` need `jsr(..., stop_on_address = …)`
-rather than `stop_on_rts`. ² `fire_propagate`/`write_plasma_row` read SID/noise
-(`$d41b`) — seed that byte before the `jsr`.
+rather than `stop_on_rts`. ² `fire_propagate` reads SID/noise (`$d41b`) — seed that byte before
+the `jsr`. `write_plasma_row` is deterministic (no hardware reads).
 
 **vice-only** (raster/IRQ — test on the hardware backend): interlude's
 `interrupt` `fire_irq` `bar_chain_0..5` `bar_chain_end`, and the `interrupt`

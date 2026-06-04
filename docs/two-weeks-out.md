@@ -4,6 +4,12 @@
 the koala backdrop / scroll-driven greets / callmusic-during-load-gap
 sweep. Snapshot, not a contract — update when the situation shifts.*
 
+> **Superseded (2026-06-04).** This is a dated planning snapshot. The
+> part/duration figures below are stale — `hush` was merged into
+> interlude, the coda is now ~16 s (was ~30 s), and the coda gained a
+> demoscene char layer. For the current timeline see
+> [`docs/timing.md`](./timing.md) and [`AGENTS.md`](../AGENTS.md).
+
 ## Where we are
 
 All seven parts play end-to-end, ~2:55 of runtime. Demo cycle:
