@@ -32,9 +32,10 @@ that's absent — fresh clone / CI — `run.sh` drops in a zero stub just so the
 part assembles, since no `end` test touches it.)
 
 **CI.** `.github/workflows/tests.yml` runs the whole suite on every push to
-`main` + every PR: it sets up Java, fetches KickAssembler (gitignored, so
-pulled fresh), pulls the sim6502 image, then calls `run.sh`. Same green/red
-as running it locally.
+`main` + every PR: it sets up Java, lifts `KickAss.jar` out of the
+`barrywalker71/kickassembler` image (KA is gitignored + theweb.dk's WAF 415s
+cloud IPs, so we borrow it from sim6502-author Barry Walker's KA image),
+pulls the sim6502 image, then calls `run.sh`. Same green/red as locally.
 
 ### Two backends — what goes where
 
