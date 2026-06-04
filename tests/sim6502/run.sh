@@ -18,6 +18,18 @@ IMAGE="ghcr.io/barryw/sim6502:latest"
 # Parts that have unit tests — assemble each to <name>.prg + copy its .sym.
 PARTS=(intro coda end interlude greets screenfill)
 
+# `end` .import's the friet easter-egg payload, which lives in the gitignored
+# parts/friet-met-desire/ (built from a separate repo via tools/update-friet.sh).
+# The `end` unit tests (push_next_credit_row / scroll_rows_up) never touch it,
+# so on a fresh clone / CI where it's absent, drop in a zero stub purely so the
+# part assembles. Real builds (build.sh) use the real payload.
+FRIET_BIN="$ROOT/parts/friet-met-desire/friet_payload.bin"
+if [[ ! -f "$FRIET_BIN" ]]; then
+    echo ">>> friet_payload.bin absent — writing a 256-byte zero stub for the test build"
+    mkdir -p "$(dirname "$FRIET_BIN")"
+    head -c 256 /dev/zero > "$FRIET_BIN"
+fi
+
 for p in "${PARTS[@]}"; do
     echo ">>> assembling $p for tests"
     java -jar "$KICKASS" "$ROOT/parts/$p/$p.asm" -o "$HERE/$p.prg" >/dev/null

@@ -26,7 +26,15 @@ register/memory inputs, `jsr` a routine, assert on the outputs.
 `.sym`, then runs each `tests/sim6502/*.6502` suite in
 `ghcr.io/barryw/sim6502:latest` (repo mounted at `/code`). Exit 0 = all
 pass, 1 = failure → CI-friendly. The `.prg`/`.sym` are build artifacts
-(gitignored); only the `.6502` sources are tracked.
+(gitignored); only the `.6502` sources are tracked. (`end` `.import`s the
+friet easter-egg payload from the gitignored `parts/friet-met-desire/`; when
+that's absent — fresh clone / CI — `run.sh` drops in a zero stub just so the
+part assembles, since no `end` test touches it.)
+
+**CI.** `.github/workflows/tests.yml` runs the whole suite on every push to
+`main` + every PR: it sets up Java, fetches KickAssembler (gitignored, so
+pulled fresh), pulls the sim6502 image, then calls `run.sh`. Same green/red
+as running it locally.
 
 ### Two backends — what goes where
 
@@ -47,20 +55,21 @@ A routine that *looks* pure but contains a `cpy $d012 / bne` raster wait will
 > `$d41b` needs a seeded value; one that turns out to poll `$d012` moves to
 > the `vice` column).
 
-**76 classified routines** across the six parts:
-**50 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
-inline relocatable code, data tables).
+**77 classified routines** across the six parts:
+**51 sim-testable** · **11 vice-only** · **15 not-unit** (IRQ-handler entries,
+inline relocatable code, data tables). (`sparkle_stars` joined coda's pure
+surface in the 2026-06-04 demoscene-char rework.)
 
-**Tested today: 25 routines, 172 assertions** (83 test cases in 20 suites).
+**Tested today: 26 routines, 178 assertions** (86 test cases in 21 suites).
 intro: `calc_active_count`, `reveal_column`, `wipe_out_column`,
 `move_sprites`, plus the fill/copy routines `clear_screen`, `clear_bitmap`,
 `copy_logo`, `copy_chargen`, `update_scroll_colors`. coda: `kloot_advance`,
-`star_field`. end: `push_next_credit_row`, `scroll_rows_up`. interlude:
-`fire_propagate`, `write_plasma_row`, the line-A typewriter (`update_line_a` /
-`la_pause` / `la_backspace`), and the sprite steppers (`sp_off` / `sp_in` /
-`sp_bounce` / `sp_out`). greets: `update_sprite_ptrs`, `copy_font`.
-screenfill: `fadeout`. **sim coverage = 50 %** (25 of 50 pure routines),
-across all 6 parts.
+`star_field`, `sparkle_stars`. end: `push_next_credit_row`, `scroll_rows_up`.
+interlude: `fire_propagate`, `write_plasma_row`, the line-A typewriter
+(`update_line_a` / `la_pause` / `la_backspace`), and the sprite steppers
+(`sp_off` / `sp_in` / `sp_bounce` / `sp_out`). greets: `update_sprite_ptrs`,
+`copy_font`. screenfill: `fadeout`. **sim coverage = 51 %** (26 of 51 pure
+routines), across all 6 parts.
 
 | Part | sim-testable | vice-only | not-unit | tested |
 |------|:---:|:---:|:---:|:---:|
@@ -68,9 +77,9 @@ across all 6 parts.
 | intro | 17 | 0 | 4 | **9** |
 | interlude | 15 | 9 | 0 | **9** |
 | greets | 4 | 1 | 9 | **2** |
-| coda | 4 | 1 | 0 | **2** |
+| coda | 5 | 1 | 0 | **3** |
 | end | 6 | 0 | 2 | **2** |
-| **total** | **50** | **11** | **15** | **25** |
+| **total** | **51** | **11** | **15** | **26** |
 
 ### Sim-testable routines per part (the untested surface)
 
@@ -84,7 +93,7 @@ across all 6 parts.
   **`la_pause`** ✅ **`la_backspace`** ✅ `update_sprites` **`sp_off`** ✅ **`sp_in`** ✅ **`sp_bounce`** ✅
   **`sp_out`** ✅ `fire_init` **`fire_propagate`**² ✅ `fire_seed` `fadeout`
 - **greets:** `setup` `fadeout` **`update_sprite_ptrs`** ✅ **`copy_font`** ✅
-- **coda:** `setup` `fadeout` **`kloot_advance`** ✅ **`star_field`** ✅
+- **coda:** `setup` `fadeout` **`kloot_advance`** ✅ **`star_field`** ✅ **`sparkle_stars`** ✅
 - **end:** `setup` `reveal_text` **`scroll_rows_up`** ✅
   **`push_next_credit_row`** ✅ `end_music_init` `end_music_play`
 
@@ -98,11 +107,11 @@ handlers in greets/coda.
 
 ### Highest-value tests to add next
 
-(Done — the 25 covered: intro `calc_active_count` `reveal_column`
+(Done — the 26 covered: intro `calc_active_count` `reveal_column`
 `wipe_out_column` `move_sprites` `clear_screen` `clear_bitmap` `copy_logo`
-`copy_chargen` `update_scroll_colors`; coda `kloot_advance` `star_field`; end
-`push_next_credit_row` `scroll_rows_up`; interlude `fire_propagate`
-`write_plasma_row` `update_line_a`+`la_pause`+`la_backspace`
+`copy_chargen` `update_scroll_colors`; coda `kloot_advance` `star_field`
+`sparkle_stars`; end `push_next_credit_row` `scroll_rows_up`; interlude
+`fire_propagate` `write_plasma_row` `update_line_a`+`la_pause`+`la_backspace`
 `sp_off`+`sp_in`+`sp_bounce`+`sp_out`; greets `update_sprite_ptrs`
 `copy_font`; screenfill `fadeout`.)
 

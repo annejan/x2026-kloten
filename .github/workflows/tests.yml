@@ -1,0 +1,40 @@
+name: sim6502 unit tests
+
+# Assembles every part-under-test with KickAssembler, then runs the
+# tests/sim6502/*.6502 suites in Barry Walker's sim6502 Docker image.
+# See docs/testing.md for the backend split (sim = pure routines).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sim6502:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java (KickAssembler runtime)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # KickAssembler isn't redistributable, so kickass/ is gitignored —
+      # fetch it fresh. run.sh expects the jar at kickass/KickAss.jar.
+      - name: Fetch KickAssembler
+        run: |
+          curl -fsSL --retry 3 --retry-delay 5 \
+            -o KickAssembler.zip http://theweb.dk/KickAssembler/KickAssembler.zip
+          unzip -q KickAssembler.zip -d kickass
+          test -f kickass/KickAss.jar
+
+      # Pre-pull so a registry hiccup is its own clearly-labelled step.
+      - name: Pull sim6502 image
+        run: docker pull ghcr.io/barryw/sim6502:latest
+
+      - name: Run sim6502 suite
+        run: ./tests/sim6502/run.sh

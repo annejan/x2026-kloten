@@ -68,10 +68,12 @@ suites {
   ;   reload star_tick[X] = tier_speed[tier]; erase old cell to $20; col -=1
   ;   (wrap $ff -> $27); draw tier_char[tier] at new col; tier_color[tier]
   ;   into colour RAM at the new col.  tier_speed={3,5,8,14}
-  ;   tier_char={$2b,$2a,$2e,$2c}  tier_color={$01,$0f,$0b,$06}.
-  ; Per-star arrays: tick=$0cff col=$0cbf row=$0c9f tier=$0cdf (+ index).
-  ; To force a single deterministic move we memfill all 32 ticks to $ff
-  ; (dec -> $fe, never moves) and arm only star 31 (tick at $0d1e).
+  ;   tier_char={$51,$57,$5a,$2e} (PETSCII ● ○ ◆ ·)  tier_color={$01,$03,$0e,$06}.
+  ; Per-star arrays are referenced by SYMBOL ([star_tick]/[star_col]/
+  ; [star_row]/[star_tier]) so the suite survives coda layout shifts. To
+  ; force a single deterministic move we memfill all 32 ticks to $ff
+  ; (dec -> $fe, never moves) and arm only star 0 (processed last in the
+  ; X=31..0 sweep).
   ; Pure RAM: $0400/$d800 are plain RAM in the sim, no $d012/keyboard/CIA.
   ; --------------------------------------------------------------------
   suite("coda: star_field — gated parallax star tick") {
@@ -79,67 +81,114 @@ suites {
     load("/code/tests/sim6502/coda.prg", strip_header = true)
 
     test("sf-gated-skip", "zp_subtick != 0 -> immediate RTS, nothing touched") {
-      $fb   = $01            ; gate closed
-      $0cff = $01            ; star 0 tick would otherwise hit 0 and move
-      $0c9f = $00            ; row 0
-      $0cbf = $0a            ; col 10
-      $0cdf = $00            ; tier 0
-      $0409 = $aa            ; sentinels on cells a move WOULD touch
+      $fb = $01             ; gate closed
+      [star_tick] = $01     ; star 0 tick would otherwise hit 0 and move
+      [star_row]  = $00     ; row 0
+      [star_col]  = $0a     ; col 10
+      [star_tier] = $00     ; tier 0
+      $0409 = $aa           ; sentinels on cells a move WOULD touch
       $d809 = $aa
       jsr([star_field], stop_on_rts = true, fail_on_brk = true)
-      assert($0cff == $01, "tick NOT decremented (early RTS)")
+      assert([star_tick] == $01, "tick NOT decremented (early RTS)")
       assert($0409 == $aa, "screen untouched (gate closed)")
       assert($d809 == $aa, "colour RAM untouched (gate closed)")
     }
 
-    test("sf-single-move-tier0", "one star moves left, draws + / white at new col") {
-      $fb = $00                  ; gate open
-      memfill($0cff, 32, $ff)    ; freeze all 32 star ticks high (dec -> $fe, no move)
-      $0d1e = $01                ; arm only star 31 (tick -> 0 -> MOVE)
-      $0cbe = $00                ; star_row[31]  = row 0   (base $0c9f + 31)
-      $0cde = $0a                ; star_col[31]  = col 10  (base $0cbf + 31)
-      $0cfe = $00                ; star_tier[31] = tier 0  (base $0cdf + 31)
-      $0409 = $aa                ; sentinels at new-char + colour cells
+    test("sf-single-move-tier0", "one star moves left, draws ● / white at new col") {
+      $fb = $00                      ; gate open
+      memfill([star_tick], 32, $ff)  ; freeze all 32 ticks high (dec -> $fe, no move)
+      [star_tick] = $01              ; arm star 0 (tick -> 0 -> MOVE)
+      [star_row]  = $00              ; row 0
+      [star_col]  = $0a              ; col 10
+      [star_tier] = $00              ; tier 0
+      $0409 = $aa                    ; sentinels at new-char + colour cells
       $d809 = $aa
       jsr([star_field], stop_on_rts = true, fail_on_brk = true)
       assert($040a == $20, "old col 10 erased to space")                              ; $0400+10
-      assert($0409 == peekbyte([tier_char]),  "new col 9 = tier_char[0] = + ($2b)")   ; $0400+9
+      assert($0409 == peekbyte([tier_char]),  "new col 9 = tier_char[0] = ● ($51)")   ; $0400+9
       assert($d809 == peekbyte([tier_color]), "colour col 9 = tier_color[0] = $01")   ; $d800+9
-      assert($0cde == $09, "col decremented 10 -> 9")
-      assert($0d1e == peekbyte([tier_speed]), "tick reloaded = tier_speed[0] = 3")
+      assert([star_col] == $09, "col decremented 10 -> 9")
+      assert([star_tick] == peekbyte([tier_speed]), "tick reloaded = tier_speed[0] = 3")
     }
 
-    test("sf-col-wrap-tier3", "col 0 wraps to 39, draws , / blue at far right") {
+    test("sf-col-wrap-tier3", "col 0 wraps to 39, draws · / blue at far right") {
       $fb = $00
-      memfill($0cff, 32, $ff)
-      $0d1e = $01                ; arm star 31 -> MOVE
-      $0cbe = $05                ; row 5  -> base $0400+5*40 = $04c8
-      $0cde = $00                ; col 0  -> will wrap
-      $0cfe = $03                ; tier 3 (, / blue / speed 14)
+      memfill([star_tick], 32, $ff)
+      [star_tick] = $01          ; arm star 0 -> MOVE
+      [star_row]  = $05          ; row 5  -> base $0400+5*40 = $04c8
+      [star_col]  = $00          ; col 0  -> will wrap
+      [star_tier] = $03          ; tier 3 (· / blue / speed 14)
       $04ef = $aa                ; sentinel at wrapped new-char cell ($04c8+39)
       $d8ef = $aa
       jsr([star_field], stop_on_rts = true, fail_on_brk = true)
       assert($04c8 == $20, "old col 0 erased to space")
-      assert($0cde == $27, "col wrapped 0 -> 39 ($27)")
-      assert($04ef == peekbyte([tier_char] + 3),  "new col 39 = tier_char[3] = , ($2c)")
+      assert([star_col] == $27, "col wrapped 0 -> 39 ($27)")
+      assert($04ef == peekbyte([tier_char] + 3),  "new col 39 = tier_char[3] = · ($2e)")
       assert($d8ef == peekbyte([tier_color] + 3), "colour col 39 = tier_color[3] = $06")
-      assert($0d1e == peekbyte([tier_speed] + 3), "tick reloaded = tier_speed[3] = 14")
+      assert([star_tick] == peekbyte([tier_speed] + 3), "tick reloaded = tier_speed[3] = 14")
     }
 
     test("sf-no-move-no-bleed", "tick>1 just decrements, leaves screen+colour alone") {
       $fb = $00
-      memfill($0cff, 32, $ff)
-      $0d1e = $02                ; star 31 tick = 2 -> dec to 1, NO move
-      $0cbe = $01                ; row 1
-      $0cde = $14                ; col 20
-      $0cfe = $01                ; tier 1
+      memfill([star_tick], 32, $ff)
+      [star_tick] = $02          ; star 0 tick = 2 -> dec to 1, NO move
+      [star_row]  = $01          ; row 1
+      [star_col]  = $14          ; col 20
+      [star_tier] = $01          ; tier 1
       $043b = $aa                ; sentinels where a move would have written
       $d83b = $aa
       jsr([star_field], stop_on_rts = true, fail_on_brk = true)
-      assert($0d1e == $01, "tick decremented 2 -> 1 (no move)")
-      assert($0cde == $14, "col unchanged (no move)")
+      assert([star_tick] == $01, "tick decremented 2 -> 1 (no move)")
+      assert([star_col] == $14, "col unchanged (no move)")
       assert($043b == $aa, "screen untouched (no move)")
       assert($d83b == $aa, "colour RAM untouched (no move)")
+    }
+  }
+
+  ; --------------------------------------------------------------------
+  ; sparkle_stars — the kick-synced star flash. No-op when spark_env == 0
+  ; (immediate RTS). Otherwise: dec spark_env, then sweep X = 31..0 writing
+  ; ONE colour-RAM cell per star at ($0400+row*40 + $d400) + col:
+  ;   spark_env still != 0 after the dec -> sparkle_ramp[spark_env] (bright);
+  ;   spark_env hit 0          -> tier_color[star_tier] (restore depth tint).
+  ; sparkle_ramp = {$00,$0d,$0f,$01,$01,$0f} (idx 0 unused — restore path).
+  ; Star 0 is processed LAST, so we park the other 31 at row 0/col 0 (their
+  ; writes pile harmlessly on $d800) and assert star 0's unique cell.
+  ; --------------------------------------------------------------------
+  suite("coda: sparkle_stars — kick-synced star flash") {
+    symbols("/code/tests/sim6502/coda.sym")
+    load("/code/tests/sim6502/coda.prg", strip_header = true)
+
+    test("sp-noop-when-zero", "spark_env == 0 -> immediate RTS, nothing touched") {
+      [spark_env] = $00
+      $d82d = $aa                ; sentinel where a flash WOULD write (row1,col5)
+      jsr([sparkle_stars], stop_on_rts = true, fail_on_brk = true)
+      assert([spark_env] == $00, "envelope untouched (early RTS)")
+      assert($d82d == $aa, "colour RAM untouched (no-op)")
+    }
+
+    test("sp-bright-flash", "mid-envelope writes sparkle_ramp[env] into colour RAM") {
+      memfill([star_row], 32, $00)   ; park all 32 stars at row 0
+      memfill([star_col], 32, $00)   ; ...col 0 (writes pile on $d800)
+      [spark_env] = $02              ; dec -> 1 (still bright)
+      [star_row]  = $01              ; star 0 -> row 1
+      [star_col]  = $05              ; star 0 -> col 5  ($d800+40+5 = $d82d)
+      jsr([sparkle_stars], stop_on_rts = true, fail_on_brk = true)
+      assert([spark_env] == $01, "envelope decremented 2 -> 1")
+      assert($d82d == peekbyte([sparkle_ramp] + 1), "star 0 cell = sparkle_ramp[1] = $0d")
+    }
+
+    test("sp-restore-tier", "envelope hits 0 -> restores tier_color[tier]") {
+      memfill([star_row], 32, $00)
+      memfill([star_col], 32, $00)
+      memfill([star_tier], 32, $00)  ; others restore tier 0 onto $d800
+      [spark_env] = $01              ; dec -> 0 (restore path)
+      [star_row]  = $01              ; star 0 -> row 1
+      [star_col]  = $05              ; star 0 -> col 5  ($d82d)
+      [star_tier] = $02              ; star 0 -> tier 2 (lt blue $0e)
+      jsr([sparkle_stars], stop_on_rts = true, fail_on_brk = true)
+      assert([spark_env] == $00, "envelope decremented 1 -> 0")
+      assert($d82d == peekbyte([tier_color] + 2), "star 0 cell = tier_color[2] = $0e")
     }
   }
 }
