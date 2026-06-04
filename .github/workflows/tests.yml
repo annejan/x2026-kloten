@@ -27,8 +27,10 @@ jobs:
       # fetch it fresh. run.sh expects the jar at kickass/KickAss.jar.
       - name: Fetch KickAssembler
         run: |
+          # theweb.dk rejects curl's default User-Agent with HTTP 415, so spoof one.
           curl -fsSL --retry 3 --retry-delay 5 \
-            -o KickAssembler.zip http://theweb.dk/KickAssembler/KickAssembler.zip
+            -A "Mozilla/5.0 (X11; Linux x86_64)" \
+            -o KickAssembler.zip https://theweb.dk/KickAssembler/KickAssembler.zip
           unzip -q KickAssembler.zip -d kickass
           test -f kickass/KickAss.jar
 
