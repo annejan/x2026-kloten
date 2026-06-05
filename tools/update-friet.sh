@@ -1,31 +1,31 @@
 #!/bin/bash
-# Update friet.prg from the friet-met-desire repository.
+# Update friet.prg from the x2026-friet repository.
 #
 # Usage:  ./tools/update-friet.sh
 #
-# Builds the standalone player from the friet-met-desire repo and copies
+# Builds the standalone player from the x2026-friet repo and copies
 # the resulting .prg to parts/friet-met-desire/friet.prg so build.sh can
 # bundle it.
 #
 # The friet source repo is cloned to /tmp on first run (or use a sibling
-# directory ../friet-met-desire if already checked out).
+# directory ../x2026-friet if already checked out).
 set -eo pipefail
 
 ROOT="$(dirname "$(readlink -f "$0")")/.."
-FRIET_REPO="https://github.com/annejan/friet-met-desire.git"
+FRIET_REPO="https://github.com/annejan/x2026-friet.git"
 
 # Look for existing checkout
-if [[ -d "$ROOT/../friet-met-desire" ]]; then
-    FRIET_DIR="$(realpath "$ROOT/../friet-met-desire")"
+if [[ -d "$ROOT/../x2026-friet" ]]; then
+    FRIET_DIR="$(realpath "$ROOT/../x2026-friet")"
     echo "Using sibling checkout: $FRIET_DIR"
-elif [[ -d /tmp/friet-met-desire ]]; then
-    FRIET_DIR=/tmp/friet-met-desire
-    echo "Updating /tmp/friet-met-desire"  
+elif [[ -d /tmp/x2026-friet ]]; then
+    FRIET_DIR=/tmp/x2026-friet
+    echo "Updating /tmp/x2026-friet"  
     git -C "$FRIET_DIR" pull --ff-only
 else
-    echo "Cloning friet-met-desire to /tmp/friet-met-desire"
-    git clone "$FRIET_REPO" /tmp/friet-met-desire
-    FRIET_DIR=/tmp/friet-met-desire
+    echo "Cloning friet-met-desire to /tmp/x2026-friet"
+    git clone "$FRIET_REPO" /tmp/x2026-friet
+    FRIET_DIR=/tmp/x2026-friet
 fi
 
 # Build the player — needs Python deps (mido, pyyaml, numpy) + KickAssembler.
