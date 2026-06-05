@@ -32,7 +32,13 @@ fi
 # If the venv isn't set up, the existing friet.prg on disk is already good —
 # skip cleanly instead of letting `make` spew a scary Error 127 every build.
 if [[ ! -x "$FRIET_DIR/.venv/bin/python" ]]; then
-    echo "  friet .venv not set up — keeping existing friet.prg (rebuild skipped)"
+    echo "  friet .venv not set up — using the repo's prebuilt out/friet.prg"
+    if [[ -f "$FRIET_DIR/out/friet.prg" ]]; then
+        cp "$FRIET_DIR/out/friet.prg" "$ROOT/parts/friet-met-desire/friet.prg"
+        echo "  Copied prebuilt friet.prg ($(wc -c < "$ROOT/parts/friet-met-desire/friet.prg") bytes)"
+    else
+        echo "  (no prebuilt out/friet.prg — keeping existing on disk)"
+    fi
     exit 0
 fi
 echo "Building player in $FRIET_DIR..."

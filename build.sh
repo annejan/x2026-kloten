@@ -68,8 +68,19 @@ build_part parts/coda       coda \
     kloot_star_tl.bin,2600 \
     kloot_star_bl.bin,2c00 \
     kloot_star_br.bin,3200
-# Strip PRG header (2 bytes load address) so end.asm can .import binary it.
-tail -c +3 "$ROOT/parts/friet-met-desire/friet.prg" > "$ROOT/parts/friet-met-desire/friet_payload.bin"
+# Exomizer-crunch the koala friet for the easter egg (the space-key egg
+# decrunches it to $0801). end.asm .import's the resulting friet_exo.bin.
+EXO="$(command -v exomizer || echo /tmp/exomizer/src/exomizer)"
+if [[ -x "$EXO" ]]; then
+    "$EXO" mem -o "$ROOT/parts/friet-met-desire/_exo.prg" "$ROOT/parts/friet-met-desire/friet.prg" >/dev/null 2>&1
+    LADDR=$(od -An -tx1 -N2 "$ROOT/parts/friet-met-desire/_exo.prg" | tr -d ' \n')
+    [[ "$LADDR" != "fe07" ]] && echo "  WARNING: friet_exo load addr \$$LADDR (expected \$07FE) — fix EXO_DST in end.asm"
+    tail -c +3 "$ROOT/parts/friet-met-desire/_exo.prg" > "$ROOT/parts/friet-met-desire/friet_exo.bin"
+    rm -f "$ROOT/parts/friet-met-desire/_exo.prg"
+    echo "  crunched friet_exo.bin ($(wc -c < "$ROOT/parts/friet-met-desire/friet_exo.bin") bytes)"
+else
+    echo "  exomizer not found — keeping existing parts/friet-met-desire/friet_exo.bin"
+fi
 build_part parts/end        end
 
 echo ">>> verifying EFO page claims"

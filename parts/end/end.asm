@@ -60,9 +60,12 @@
 
 .const NOTE_REST     = $FF
 
-// Friet easter egg: payload size (needed for the copy loop).
-.var friet_bin = LoadBinary("../../parts/friet-met-desire/friet_payload.bin")
-.const FRIET_PAGES = (friet_bin.getSize() + 255) / 256
+// Friet easter egg: the koala edition (34.8K) is exomizer-crunched to ~7K
+// so it still RAM-stashes. The space-key egg decrunches it to $0801.
+.var friet_exo = LoadBinary("../../parts/friet-met-desire/friet_exo.bin")
+.const EXO_SIZE = friet_exo.getSize()
+.const EXO_DST  = $07fe                  // exomizer 'mem' crunched-load addr
+.const EXO_END  = EXO_DST + EXO_SIZE     // end_of_data for get_crunched_byte
 
 // Music data lives in intro.asm's $1000-$125D segment which is still
 // resident in RAM when end loads (end's chunk is $3000+). Pefchain
@@ -865,16 +868,20 @@ interrupt:
         pla
         pla
         pla
-        // Relocate the copy loop to $0200 (cassette buffer, unused).
-        // The copy from $4E00→$0801 will overwrite end's code at $3000+,
-        // so we can't run the loop from here — it'd self-destruct.
+        // Relocate the decrunch launcher (+ exomizer decruncher) to $C000 —
+        // safe RAM above the $0801-$8FE8 decrunch target and the $07FE
+        // crunched copy. 3 pages cover the ~700-byte block; running it from
+        // end's code ($3000+) would self-destruct once the decrunch writes.
         ldx #0
-!reloc: lda friet_copier,x
-        sta $0200,x
+!reloc: lda friet_dc_src,x
+        sta $c000,x
+        lda friet_dc_src+$100,x
+        sta $c100,x
+        lda friet_dc_src+$200,x
+        sta $c200,x
         inx
-        cpx #(friet_copier_end - friet_copier)
         bne !reloc-
-        jmp $0200
+        jmp $c000
 !no_space:
 
         // Re-arm raster IRQ for line $00 of next frame (we are the only IRQ).
@@ -1390,21 +1397,40 @@ row_ptr_hi:
         .byte >(credit_text + r * 40)
 }
 
-// friet_copier — tiny position-independent loop copied to $0200
-// before execution. Does the actual $4E00→$0801 memcopy then banks
-// in KERNAL + BASIC and JMPs to the friet entry at $0810.
-// MUST be position-independent (no absolute JMP/JSR to self).
-friet_copier:
-        lda #<friet_stash
+//==================================================================
+// friet_dc — decrunch launcher, relocated to $C000 and run there.
+// Copies the exomizer-crunched koala friet from its $5800 stash down
+// to $07FE, decrunches it in-place to $0801-$8FE8, stock-resets the
+// machine (friet needs a clean C64), then JMPs the friet entry $0810.
+// Lives at $C000 — RAM untouched by the decrunch or by friet itself.
+// Assembled under .pseudopc so absolute refs resolve to the $C000 copy;
+// the egg copies the bytes from friet_dc_src (their real store address).
+//==================================================================
+friet_dc_src:
+.pseudopc $c000 {
+friet_dc:
+        // Spindle's CIA2-NMI loader is still live (NMI isn't masked by SEI)
+        // and corrupts friet's koala setup as it boots. Disable the source
+        // and point the NMI vector back at the KERNAL default so any stray
+        // NMI (e.g. RESTORE) is harmless. friet then boots like a clean C64.
+        lda #$7f
+        sta $dd0d
+        lda $dd0d               // ack any pending CIA2 NMI
+        lda #$47
+        sta $0318
+        lda #$fe
+        sta $0319
+        // copy EXO_SIZE crunched bytes: friet_exo_stash ($5800) -> $07FE
+        lda #<friet_exo_stash
         sta $fb
-        lda #>friet_stash
+        lda #>friet_exo_stash
         sta $fc
-        lda #$01
+        lda #<EXO_DST
         sta $fd
-        lda #$08
+        lda #>EXO_DST
         sta $fe
-        ldx #FRIET_PAGES
-        ldy #0
+        ldx #>EXO_SIZE          // full pages
+        ldy #$00
 !cp:    lda ($fb),y
         sta ($fd),y
         iny
@@ -1413,70 +1439,61 @@ friet_copier:
         inc $fe
         dex
         bne !cp-
-        // Reset C64 to stock state. End's custom font at $3000 is
-        // overwritten; colour RAM has end's gradient (not the default
-        // light-blue); screen RAM has end's credit text. Friet relies
-        // on all of these being clean.
-        lda #$1b
-        sta $d011              // standard text mode
-        lda #$17
-        sta $d018              // screen $0400 + chargen ROM set B (friet baseline)
-        lda #$c8
-        sta $d016              // 40-col, no MC
-        lda #$00
-        sta $d020              // black border
-        sta $d021              // black bg
-        sta $d015              // sprites off
-        // Clear colour RAM to cyan ($03 — friet's baseline, not C64 default)
-        lda #$03
-        ldx #0
-!clrcol:sta $d800,x
-        sta $d900,x
-        sta $da00,x
-        sta $db00,x
-        inx
-        bne !clrcol-
-        // Clear screen to spaces ($20) — friet expects a blank screen
-        lda #$20
-        ldx #0
-!clrscr:sta $0400,x
-        sta $0500,x
-        sta $0600,x
-        sta $0700,x
-        inx
-        bne !clrscr-
-        // Bank in BASIC + KERNAL first so we can call BASIC init.
+        ldy #$00                // remaining (EXO_SIZE & $ff) bytes
+!cr:    lda ($fb),y
+        sta ($fd),y
+        iny
+        cpy #<EXO_SIZE
+        bne !cr-
+        // point get_crunched_byte at end-of-crunched and decrunch
+        lda #<EXO_END
+        sta exod_byte_lo
+        lda #>EXO_END
+        sta exod_byte_hi
+        cld
+        jsr exod_decrunch       // -> friet at $0801-$8FE8
+        // ----- give friet a clean-boot C64 -----
+        // friet (koala) runs standalone via RUN, so it expects the KERNAL
+        // cold-start I/O state: CIA1 jiffy + CIA2 NMI off (IOINIT), default
+        // vectors incl NMI (RESTOR), and a reset screen editor + VIC (CINT).
+        // Our partial reset wasn't enough — friet's raster-IRQ koala setup
+        // needs the real thing. (No RAMTAS — that would wipe friet.)
         lda #$37
-        sta $01
-        // Full BASIC cold-init: resets all ZP pointers, CHRGET,
-        // variable areas, string stack — everything friet's lyric
-        // ticker needs when it calls BASIC ROM print routines.
-        // $E453 = BASIC vector init, $E3BF = BASIC RAM init.
-        jsr $e453
-        jsr $e3bf
-        // Re-point BASIC start-of-program to $0801 (where friet lives)
+        sta $01                 // KERNAL+BASIC+I/O in for the init calls
+        jsr $ff84               // IOINIT — CIA1 timers, CIA2 NMI off, CPU port
+        jsr $ff8a               // RESTOR — KERNAL vectors ($0314=EA31, $0318=FE47)
+        jsr $ff81               // CINT   — screen editor + VIC to defaults
+        jsr $e453               // BASIC vector init
+        jsr $e3bf               // BASIC RAM init
         lda #$01
         sta $2b
         lda #$08
         sta $2c
-        // Zero friet's own state area ($90-$FF) — clean slate.
         lda #$00
         ldx #$6f
-!clrzp: sta $90,x
+!cz:    sta $90,x
         dex
-        bpl !clrzp-
-        // Direct JMP to friet entry. Lyrics timing may drift slightly
-        // vs clean LOAD/RUN but at least it plays. BASIC RUN approach
-        // crashed because the IRQ context was wrong for BASIC dispatch.
-        jmp $0810
-friet_copier_end:
+        bpl !cz-
+        jmp $0810               // friet cold entry (SYS2064)
+// exod_get_crunched_byte — exomizer reads the crunched stream backwards
+// through this self-modified 16-bit pointer.
+exod_get_crunched_byte:
+        lda exod_byte_lo
+        bne !sk+
+        dec exod_byte_hi
+!sk:    dec exod_byte_lo
+.label exod_byte_lo = *+1
+.label exod_byte_hi = *+2
+        lda $ffff
+        rts
+#import "exo/exodecrunch.asm"
+}
 
 //==================================================================
-// Friet easter egg stash — the standalone player binary (sans 2-byte
-// PRG header) parked above end's code. The copier relocates this to
-// $0801 then JMPs $0810. At $4E00 to avoid overlapping end's code
-// ($3000-$4C31).
+// Friet easter egg stash — the exomizer-crunched koala friet (~7K),
+// parked at $5800 (above end's code + the $C000 launcher block). The
+// launcher copies it to $07FE and decrunches it to $0801-$8FE8.
 //==================================================================
-* = $4E00 "FrietStash"
-friet_stash:
-.import binary "../../parts/friet-met-desire/friet_payload.bin"
+* = $5800 "FrietExoStash"
+friet_exo_stash:
+.import binary "../../parts/friet-met-desire/friet_exo.bin"
