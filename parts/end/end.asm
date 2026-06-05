@@ -46,7 +46,7 @@
 .const zp_wrap_pending = $fc     // set non-zero in irq_top when yscroll wraps; consumed later to fire scroll_rows_up
 .const zp_ptr      = $fd         // 16-bit zero-page pointer ($FD/$FE) used by the flowing colour-RAM rotation
 
-.const N_CREDIT_ROWS = 71        // KEEP IN SYNC with the .text blocks below
+.const N_CREDIT_ROWS = 72        // KEEP IN SYNC with the .text blocks below
 .const FADE_DONE     = 99        // fade-in completes after 99 frames (~2 sec @50Hz)
 .const TEXT_REVEAL   = FADE_DONE // colour RAM flips from black to the gradient at this fade tick
 .const SCROLL_TICK_MASK = $03    // tick yscroll every (mask+1) frames — $03 = every 4 frames
@@ -1322,7 +1322,7 @@ credit_text:
         row("              from Kloot and Augurk     ")
         row("                                        ")
         row("           graphics                     ")
-        row("              logo images and fonts     ")
+        row("              logo, images and fonts    ")
         row("              hand pixeled with love    ")
         row("              by Anus                   ")
         row("                                        ")
@@ -1334,6 +1334,7 @@ credit_text:
         row("              vice-mcp                  ")
         row("              multipaint                ")
         row("              spritemate                ")
+        row("              grafx2                    ")
         row("                                        ")
         row("           documentation                ")
         row("              codebase.c64.org          ")
@@ -1367,7 +1368,9 @@ credit_text:
         row("                                        ")
         row("              thank you for watching    ")
         row("              from Anus and Kloot       ")
-        row("              see you at Evoke")
+        row("              see you at Evoke          ")
+        row("                                        ")
+        row("                                        ")
         row("                                        ")
         row("                                        ")
         row("                                        ")
