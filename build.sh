@@ -92,7 +92,7 @@ echo ">>> linking with pefchain"
 # --dirart      PETSCII-style box-drawing listing; see dirart.txt
 # --dir-entry   Index of the entry that's the actual PRG (= the row
 #               in dirart.txt holding the entry the user wants visible
-#               as "the demo file" when LISTing). Row 4 = "DE COMMODORE".
+#               as "the demo file" when LISTing). Entry 4 = "BROODTROMMEL".
 ( cd "$ROOT" && "$PEFCHAIN" -v \
     --title "DEFEEST/X2026" \
     --disk-id "KL" \
