@@ -51,10 +51,10 @@ suites {
     }
 
     test("pcr-wraps-at-end", "zp_text_row wraps to 0 after the last row") {
-      $f8 = $46          ; zp_text_row = 70 (N_CREDIT_ROWS-1)
+      $f8 = $47          ; zp_text_row = 71 (N_CREDIT_ROWS-1)
       $fb = $63
       jsr([push_next_credit_row], stop_on_rts = true, fail_on_brk = true)
-      assert($f8 == $00, "wraps 70 -> 0 at N_CREDIT_ROWS=71")
+      assert($f8 == $00, "wraps 71 -> 0 at N_CREDIT_ROWS=72")
     }
   }
 
