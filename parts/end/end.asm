@@ -1252,7 +1252,7 @@ is_header:
         .byte 0,0,0         //  0..2  blank
         .byte 1             //  3     you were watching
         .byte 0             //  4     blank
-        .byte 1             //  5     Kloten met de Commodore
+        .byte 1             //  5     Kloten met de broodtrommel
         .byte 1             //  6     leren ontdekken klooien (flash: was weak as plain body)
         .byte 0             //  7     blank
         .byte 0             //  8     by deFEEST
@@ -1305,7 +1305,7 @@ credit_text:
         row("                                        ")
         row("              you were watching         ")
         row("                                        ")
-        row("         Kloten met de Commodore        ")
+        row("       Kloten met de broodtrommel       ")
         row("         leren ontdekken klooien        ")
         row("                                        ")
         row("              by deFEEST                ")
