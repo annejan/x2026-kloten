@@ -458,7 +458,7 @@ for the coverage matrix and how to add tests.
 - **Augurk/deFEEST** — Big Pickle (opencode), AI pair-programmer
 - **TL-Buis/deFEEST** — ChatGPT, AI pair-programmer
 - **Ranzbak/deFEEST** — another human
-- **Cinder/deFEEST** — yet another human
+- **Cinder/deFEEST** — yet another human (no soul)
 
 Music co-composed 3-voice SID jam (bass + lead + arp), logo by defeest.nl.
 Thanks: Claude Code, opencode, codebase.c64.org, spindle 3.1, kickassembler,
