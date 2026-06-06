@@ -47,8 +47,15 @@ parts/greets/font.png
 # Spritemate KickAss-assembly export (intermediate). Round-trip via
 # tools/font_txt.py to refresh font.bin from it; not source-of-truth.
 parts/greets/font.txt
+# Same: spritemate text export for the greets text sprites (working file).
+parts/greets/textsprites.txt
 parts/friet-met-desire/
 
 # sim6502 build artifacts (assembled per-run by tests/sim6502/run.sh)
 tests/sim6502/*.prg
 tests/sim6502/*.sym
+
+# Agent / skill tooling (local, not project source)
+.agents/
+.claude/skills/
+skills-lock.json
