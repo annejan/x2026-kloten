@@ -450,6 +450,10 @@ for the coverage matrix and how to add tests.
   then `python3 vicemon.py read 0xADDR LEN`, `regs`, `resume`. Kept
   around for one-off CPU/memory pokes; for interactive driving use the
   VICE-MCP build that `run-mcp.sh` launches.
+- `remix/remix.py` — the full remix of the music that plays under the demo on
+  [annejan.com](https://annejan.com/#demo): synthesised from the demo's own
+  progression and patterns with numpy/scipy, no samples. 80 bars at 125 BPM,
+  five loops of the site demo. `python3 remix/remix.py out/remix.wav`.
 
 ## Credits
 
